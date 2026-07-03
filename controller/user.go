@@ -204,6 +204,16 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
+	affCode := strings.TrimSpace(user.AffCode)
+	if affCode == "" {
+		common.ApiErrorMsg(c, "邀请码无效")
+		return
+	}
+	inviterId, err := model.GetUserIdByAffCode(affCode)
+	if err != nil || inviterId == 0 {
+		common.ApiErrorMsg(c, "邀请码无效")
+		return
+	}
 	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -214,8 +224,6 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserExists)
 		return
 	}
-	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, _ := model.GetUserIdByAffCode(affCode)
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
