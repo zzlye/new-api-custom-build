@@ -41,6 +41,7 @@ type ImageURL struct {
 type responseTask struct {
 	ID                 string `json:"id"`
 	TaskID             string `json:"task_id,omitempty"` //兼容旧接口
+	RequestID          string `json:"request_id,omitempty"`
 	Object             string `json:"object"`
 	Model              string `json:"model"`
 	Status             string `json:"status"`
@@ -55,6 +56,9 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	Video *struct {
+		URL string `json:"url"`
+	} `json:"video,omitempty"`
 }
 
 // ============================
@@ -130,8 +134,11 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	if info.Action == constant.TaskActionRemix {
-		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
+	if info != nil && info.TaskRelayInfo != nil && info.TaskRelayInfo.Action == constant.TaskActionRemix {
+		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.TaskRelayInfo.OriginTaskID), nil
+	}
+	if isBafangGrokImagineVideo15Relay(info) {
+		return fmt.Sprintf("%s/v1/videos/generations", a.baseURL), nil
 	}
 	return fmt.Sprintf("%s/v1/videos", a.baseURL), nil
 }
@@ -245,8 +252,16 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		upstreamID = dResp.TaskID
 	}
 	if upstreamID == "" {
+		upstreamID = dResp.RequestID
+	}
+	if upstreamID == "" {
 		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 		return
+	}
+
+	if isBafangGrokImagineVideo15Relay(info) {
+		c.JSON(http.StatusOK, gin.H{"request_id": info.PublicTaskID})
+		return upstreamID, responseBody, nil
 	}
 
 	// 使用公开 task_xxxx ID 返回给客户端
@@ -302,9 +317,11 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusQueued
 	case "processing", "in_progress":
 		taskResult.Status = model.TaskStatusInProgress
-	case "completed":
+	case "completed", "done":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
+		if resTask.Video != nil {
+			taskResult.Url = resTask.Video.URL
+		}
 	case "failed", "cancelled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {
@@ -322,10 +339,68 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
+	if isBafangGrokImagineVideo15Task(task) {
+		return common.Marshal(buildBafangGrokImagineVideo15Response(task))
+	}
+
 	data := task.Data
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {
 		return nil, errors.Wrap(err, "set id failed")
 	}
 	return data, nil
+}
+
+func isBafangGrokImagineVideo15Model(modelName string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "grok-imagine-video-1.5")
+}
+
+func isBafangGrokImagineVideo15Relay(info *relaycommon.RelayInfo) bool {
+	if info == nil {
+		return false
+	}
+	if isBafangGrokImagineVideo15Model(info.OriginModelName) {
+		return true
+	}
+	return info.ChannelMeta != nil && isBafangGrokImagineVideo15Model(info.ChannelMeta.UpstreamModelName)
+}
+
+func isBafangGrokImagineVideo15Task(task *model.Task) bool {
+	if task == nil {
+		return false
+	}
+	if isBafangGrokImagineVideo15Model(task.Properties.OriginModelName) || isBafangGrokImagineVideo15Model(task.Properties.UpstreamModelName) {
+		return true
+	}
+	var data struct {
+		Model string `json:"model"`
+	}
+	return common.Unmarshal(task.Data, &data) == nil && isBafangGrokImagineVideo15Model(data.Model)
+}
+
+func buildBafangGrokImagineVideo15Response(task *model.Task) map[string]any {
+	resp := map[string]any{
+		"request_id": task.TaskID,
+		"status":     bafangGrokImagineVideo15Status(task.Status),
+	}
+	if url := task.GetResultURL(); strings.TrimSpace(url) != "" {
+		resp["video"] = map[string]any{"url": url}
+	}
+	if task.Status == model.TaskStatusFailure {
+		resp["error"] = map[string]any{"message": task.FailReason}
+	}
+	return resp
+}
+
+func bafangGrokImagineVideo15Status(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusSuccess:
+		return "done"
+	case model.TaskStatusFailure:
+		return "failed"
+	case model.TaskStatusQueued, model.TaskStatusSubmitted:
+		return "queued"
+	default:
+		return "processing"
+	}
 }
