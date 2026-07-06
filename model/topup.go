@@ -47,6 +47,76 @@ var (
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
 )
 
+type TopUpInviteCommissionResult struct {
+	InviterId       int
+	CommissionQuota int
+}
+
+func grantTopUpInviteCommissionTx(tx *gorm.DB, userId int, quotaToAdd int) (*TopUpInviteCommissionResult, error) {
+	if userId == 0 || quotaToAdd <= 0 || common.InviteTopUpCommissionRatio <= 0 {
+		return nil, nil
+	}
+
+	var user User
+	if err := tx.Select("id", "inviter_id").Where("id = ?", userId).First(&user).Error; err != nil {
+		return nil, err
+	}
+	if user.InviterId <= 0 {
+		return nil, nil
+	}
+
+	// 返利进入邀请额度，保持和原有 aff_quota 划转到余额的产品逻辑一致。
+	commissionQuota := int(decimal.NewFromInt(int64(quotaToAdd)).
+		Mul(decimal.NewFromFloat(common.InviteTopUpCommissionRatio)).
+		IntPart())
+	if commissionQuota <= 0 {
+		return nil, nil
+	}
+
+	err := tx.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
+		"aff_quota":   gorm.Expr("aff_quota + ?", commissionQuota),
+		"aff_history": gorm.Expr("aff_history + ?", commissionQuota),
+	}).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &TopUpInviteCommissionResult{
+		InviterId:       user.InviterId,
+		CommissionQuota: commissionQuota,
+	}, nil
+}
+
+func recordTopUpInviteCommissionLog(result *TopUpInviteCommissionResult, userId int, quotaToAdd int) {
+	if result == nil || result.InviterId == 0 || result.CommissionQuota <= 0 {
+		return
+	}
+	RecordLog(
+		result.InviterId,
+		LogTypeSystem,
+		fmt.Sprintf(
+			"邀请用户充值返利 %s（被邀请用户ID：%d，充值额度：%s）",
+			logger.LogQuota(result.CommissionQuota),
+			userId,
+			logger.LogQuota(quotaToAdd),
+		),
+	)
+}
+
+func GrantTopUpInviteCommission(userId int, quotaToAdd int) (*TopUpInviteCommissionResult, error) {
+	var result *TopUpInviteCommissionResult
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		result, txErr = grantTopUpInviteCommissionTx(tx, userId, quotaToAdd)
+		return txErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	recordTopUpInviteCommissionLog(result, userId, quotaToAdd)
+	return result, nil
+}
+
 func (topUp *TopUp) Insert() error {
 	var err error
 	err = DB.Create(topUp).Error
@@ -112,6 +182,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	var quota float64
+	var commissionResult *TopUpInviteCommissionResult
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -146,6 +217,11 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
+		commissionResult, err = grantTopUpInviteCommissionTx(tx, topUp.UserId, int(quota))
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -155,6 +231,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+	recordTopUpInviteCommissionLog(commissionResult, topUp.UserId, int(quota))
 
 	return nil
 }
@@ -331,6 +408,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	var commissionResult *TopUpInviteCommissionResult
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -375,6 +453,12 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return err
 		}
 
+		var txErr error
+		commissionResult, txErr = grantTopUpInviteCommissionTx(tx, topUp.UserId, quotaToAdd)
+		if txErr != nil {
+			return txErr
+		}
+
 		userId = topUp.UserId
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
@@ -387,6 +471,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 	// 事务外记录日志，避免阻塞
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	recordTopUpInviteCommissionLog(commissionResult, userId, quotaToAdd)
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
@@ -395,6 +480,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	}
 
 	var quota int64
+	var commissionResult *TopUpInviteCommissionResult
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -451,6 +537,11 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return err
 		}
 
+		commissionResult, err = grantTopUpInviteCommissionTx(tx, topUp.UserId, int(quota))
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -460,6 +551,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	}
 
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
+	recordTopUpInviteCommissionLog(commissionResult, topUp.UserId, int(quota))
 
 	return nil
 }
@@ -470,6 +562,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	var quotaToAdd int
+	var commissionResult *TopUpInviteCommissionResult
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -512,6 +605,11 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
+		commissionResult, err = grantTopUpInviteCommissionTx(tx, topUp.UserId, quotaToAdd)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -522,6 +620,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 
 	if quotaToAdd > 0 {
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
+		recordTopUpInviteCommissionLog(commissionResult, topUp.UserId, quotaToAdd)
 	}
 
 	return nil
@@ -533,6 +632,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 	}
 
 	var quotaToAdd int
+	var commissionResult *TopUpInviteCommissionResult
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -573,6 +673,11 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
+		commissionResult, err = grantTopUpInviteCommissionTx(tx, topUp.UserId, quotaToAdd)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -583,6 +688,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 
 	if quotaToAdd > 0 {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
+		recordTopUpInviteCommissionLog(commissionResult, topUp.UserId, quotaToAdd)
 	}
 
 	return nil

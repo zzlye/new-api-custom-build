@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import {
   compareObjects,
   API,
+  isRoot,
   showError,
   showSuccess,
   showWarning,
@@ -36,6 +37,7 @@ export default function SettingsCreditLimit(props) {
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
+    InviteTopUpCommissionRatio: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const refForm = useRef();
@@ -179,6 +181,26 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('邀请充值返利比例')}
+                  field={'InviteTopUpCommissionRatio'}
+                  step={0.01}
+                  min={0}
+                  max={1}
+                  disabled={!isRoot()}
+                  extraText={t(
+                    '仅 root 可修改，0.15 表示被邀请用户充值到账额度的 15% 进入邀请额度',
+                  )}
+                  placeholder={t('例如：0.15')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      InviteTopUpCommissionRatio: String(value),
                     })
                   }
                 />

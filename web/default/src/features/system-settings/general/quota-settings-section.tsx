@@ -34,6 +34,8 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -54,6 +56,7 @@ const quotaSchema = z.object({
   PreConsumedQuota: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
+  InviteTopUpCommissionRatio: z.coerce.number().min(0).max(1),
   TopUpLink: z.string(),
   general_setting: z.object({
     docs_link: z.string(),
@@ -75,6 +78,9 @@ export function QuotaSettingsSection({
   complianceConfirmed = true,
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
+  const isRoot = useAuthStore((state) => {
+    return (state.auth.user?.role ?? 0) >= ROLE.SUPER_ADMIN
+  })
   const updateOption = useUpdateOption()
   const handleNumberChange =
     (onChange: (value: number | string) => void) =>
@@ -214,6 +220,34 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t('Quota given to invited users')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='InviteTopUpCommissionRatio'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Invite Top-Up Commission Ratio')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      disabled={!isRoot}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Root only. 0.15 means 15% of invited users top-ups.')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

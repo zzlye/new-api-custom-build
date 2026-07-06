@@ -146,6 +146,9 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+
+// 邀请用户充值返利比例，0.15 表示按被邀请人实际到账额度的 15% 进入邀请人的邀请额度。
+var InviteTopUpCommissionRatio = 0.15
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

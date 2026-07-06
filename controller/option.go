@@ -138,7 +138,19 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
-	case "QuotaForInviter", "QuotaForInvitee":
+	case "InviteTopUpCommissionRatio":
+		if c.GetInt("role") != common.RoleRootUser {
+			common.ApiErrorMsg(c, "只有 root 用户可以修改邀请充值返利比例")
+			return
+		}
+		ratio, err := strconv.ParseFloat(strings.TrimSpace(option.Value.(string)), 64)
+		if err != nil || ratio < 0 || ratio > 1 {
+			common.ApiErrorMsg(c, "邀请充值返利比例必须在 0 到 1 之间，例如 0.15")
+			return
+		}
+	}
+	switch option.Key {
+	case "QuotaForInviter", "QuotaForInvitee", "InviteTopUpCommissionRatio":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
 			common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 			return
