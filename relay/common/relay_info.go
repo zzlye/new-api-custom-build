@@ -700,36 +700,22 @@ func (t *TaskSubmitReq) GetPrompt() string {
 }
 
 func (t *TaskSubmitReq) HasImage() bool {
-	return len(t.Images) > 0 || strings.TrimSpace(t.Image) != "" || strings.TrimSpace(t.InputReference) != ""
+	return len(t.Images) > 0
 }
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
+	type Alias TaskSubmitReq
 	aux := &struct {
-		Prompt         string          `json:"prompt"`
-		Model          string          `json:"model,omitempty"`
-		Mode           string          `json:"mode,omitempty"`
-		Image          json.RawMessage `json:"image,omitempty"`
-		Images         []string        `json:"images,omitempty"`
-		Size           string          `json:"size,omitempty"`
-		Duration       json.RawMessage `json:"duration,omitempty"`
-		Seconds        string          `json:"seconds,omitempty"`
-		InputReference string          `json:"input_reference,omitempty"`
-		Metadata       json.RawMessage `json:"metadata,omitempty"`
-	}{}
+		Metadata json.RawMessage `json:"metadata,omitempty"`
+		Duration json.RawMessage `json:"duration,omitempty"`
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
 
 	if err := common.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-
-	t.Prompt = aux.Prompt
-	t.Model = aux.Model
-	t.Mode = aux.Mode
-	t.Image = readTaskImageValue(aux.Image)
-	t.Images = aux.Images
-	t.Size = aux.Size
-	t.Seconds = aux.Seconds
-	t.InputReference = aux.InputReference
-	t.Metadata = nil
 
 	if len(aux.Duration) > 0 {
 		var durationInt int
@@ -763,28 +749,6 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
-
-func readTaskImageValue(raw json.RawMessage) string {
-	if len(raw) == 0 || string(raw) == "null" {
-		return ""
-	}
-	var imageStr string
-	if err := common.Unmarshal(raw, &imageStr); err == nil {
-		return imageStr
-	}
-	var imageObj struct {
-		URL    string `json:"url"`
-		FileID string `json:"file_id"`
-	}
-	if err := common.Unmarshal(raw, &imageObj); err == nil {
-		if strings.TrimSpace(imageObj.URL) != "" {
-			return imageObj.URL
-		}
-		return imageObj.FileID
-	}
-	return ""
-}
-
 func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 	metadata := t.Metadata
 	if metadata != nil {
