@@ -65,7 +65,7 @@ func grantTopUpInviteCommissionTx(tx *gorm.DB, userId int, quotaToAdd int) (*Top
 		return nil, nil
 	}
 
-	// 返利进入邀请额度，保持和原有 aff_quota 划转到余额的产品逻辑一致。
+	// 返利直接进入余额，aff_history 仅保留累计收入统计。
 	commissionQuota := int(decimal.NewFromInt(int64(quotaToAdd)).
 		Mul(decimal.NewFromFloat(common.InviteTopUpCommissionRatio)).
 		IntPart())
@@ -74,7 +74,7 @@ func grantTopUpInviteCommissionTx(tx *gorm.DB, userId int, quotaToAdd int) (*Top
 	}
 
 	err := tx.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
-		"aff_quota":   gorm.Expr("aff_quota + ?", commissionQuota),
+		"quota":       gorm.Expr("quota + ?", commissionQuota),
 		"aff_history": gorm.Expr("aff_history + ?", commissionQuota),
 	}).Error
 	if err != nil {
@@ -95,7 +95,7 @@ func recordTopUpInviteCommissionLog(result *TopUpInviteCommissionResult, userId 
 		result.InviterId,
 		LogTypeSystem,
 		fmt.Sprintf(
-			"邀请用户充值返利 %s（被邀请用户ID：%d，充值额度：%s）",
+			"邀请用户充值返利 %s，已自动到账余额（被邀请用户ID：%d，充值额度：%s）",
 			logger.LogQuota(result.CommissionQuota),
 			userId,
 			logger.LogQuota(quotaToAdd),

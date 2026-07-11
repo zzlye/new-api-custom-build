@@ -351,15 +351,77 @@ func HardDeleteUserById(id int) error {
 	})
 }
 
-func inviteUser(inviterId int) (err error) {
-	user, err := GetUserById(inviterId, true)
-	if err != nil {
-		return err
+func inviteUser(inviterId int, rewardQuota int) error {
+	updates := map[string]interface{}{
+		"aff_count": gorm.Expr("aff_count + ?", 1),
 	}
-	user.AffCount++
-	user.AffQuota += common.QuotaForInviter
-	user.AffHistoryQuota += common.QuotaForInviter
-	return DB.Save(user).Error
+	if rewardQuota > 0 {
+		updates["quota"] = gorm.Expr("quota + ?", rewardQuota)
+		updates["aff_history"] = gorm.Expr("aff_history + ?", rewardQuota)
+	}
+	return DB.Model(&User{}).Where("id = ?", inviterId).Updates(updates).Error
+}
+
+func finalizeInvitationRewards(userId int, inviterId int) {
+	if inviterId == 0 {
+		return
+	}
+
+	rewardQuota := 0
+	if operation_setting.IsPaymentComplianceConfirmed() {
+		if common.QuotaForInvitee > 0 {
+			_ = IncreaseUserQuota(userId, common.QuotaForInvitee, true)
+			RecordLog(userId, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+		}
+		if common.QuotaForInviter > 0 {
+			rewardQuota = common.QuotaForInviter
+		}
+	}
+
+	// 邀请关系与奖励配置无关，即使奖励为零也必须累计邀请人数。
+	if err := inviteUser(inviterId, rewardQuota); err != nil {
+		common.SysError(fmt.Sprintf("更新邀请关系失败 inviter_id=%d user_id=%d error=%v", inviterId, userId, err))
+		return
+	}
+	if rewardQuota > 0 {
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s，已自动到账余额", logger.LogQuota(rewardQuota)))
+	}
+}
+
+type affiliateInviteCount struct {
+	InviterId   int `gorm:"column:inviter_id"`
+	InviteCount int `gorm:"column:invite_count"`
+}
+
+func reconcileAffiliateData(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 历史待转奖励只迁移一次；成功后 aff_quota 归零，重复启动不会重复入账。
+		if err := tx.Model(&User{}).Where("aff_quota > ?", 0).Updates(map[string]interface{}{
+			"quota":     gorm.Expr("quota + aff_quota"),
+			"aff_quota": 0,
+		}).Error; err != nil {
+			return err
+		}
+
+		var counts []affiliateInviteCount
+		if err := tx.Unscoped().Model(&User{}).
+			Select("inviter_id, COUNT(*) AS invite_count").
+			Where("inviter_id > ?", 0).
+			Group("inviter_id").
+			Scan(&counts).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&User{}).Where("aff_count <> ?", 0).Update("aff_count", 0).Error; err != nil {
+			return err
+		}
+		for _, count := range counts {
+			if err := tx.Model(&User{}).Where("id = ?", count.InviterId).Update("aff_count", count.InviteCount).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
@@ -446,17 +508,7 @@ func (user *User) finishInsert(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
-	}
+	finalizeInvitationRewards(user.Id, inviterId)
 }
 
 func (user *User) FinishInsert(inviterId int) {
@@ -510,16 +562,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	if common.QuotaForNewUser > 0 {
 		RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("新用户注册赠送 %s", logger.LogQuota(common.QuotaForNewUser)))
 	}
-	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
-		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
-			RecordLog(user.Id, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
-		}
-		if common.QuotaForInviter > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
-		}
-	}
+	finalizeInvitationRewards(user.Id, inviterId)
 }
 
 func (user *User) Update(updatePassword bool) error {

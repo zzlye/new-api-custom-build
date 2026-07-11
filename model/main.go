@@ -312,7 +312,7 @@ func migrateDB() error {
 			return err
 		}
 	}
-	return nil
+	return reconcileAffiliateData(DB)
 }
 
 func migrateDBFast() error {
@@ -383,6 +383,9 @@ func migrateDBFast() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := reconcileAffiliateData(DB); err != nil {
+		return err
 	}
 	common.SysLog("database migrated")
 	return nil

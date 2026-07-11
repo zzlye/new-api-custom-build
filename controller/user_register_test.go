@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -137,4 +138,47 @@ func TestRegisterWithValidAffCodeCreatesUserWithInviter(t *testing.T) {
 	var created model.User
 	require.NoError(t, db.Where("username = ?", "invitee").First(&created).Error)
 	require.Equal(t, inviter.Id, created.InviterId)
+
+	var updatedInviter model.User
+	require.NoError(t, db.First(&updatedInviter, inviter.Id).Error)
+	require.Equal(t, 1, updatedInviter.AffCount)
+}
+
+func TestRegisterInviterRewardCreditsBalanceImmediately(t *testing.T) {
+	db := setupUserRegisterTestDB(t)
+	withRegisterTestOptions(t)
+
+	originalPaymentSetting := *operation_setting.GetPaymentSetting()
+	operation_setting.GetPaymentSetting().ComplianceConfirmed = true
+	operation_setting.GetPaymentSetting().ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
+	common.QuotaForInviter = 100
+	t.Cleanup(func() {
+		*operation_setting.GetPaymentSetting() = originalPaymentSetting
+	})
+
+	inviter := model.User{
+		Username:    "reward-inviter",
+		Password:    "password123",
+		DisplayName: "reward-inviter",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		AffCode:     "REWARD",
+	}
+	require.NoError(t, db.Create(&inviter).Error)
+
+	recorder, response := callRegister(t, `{
+		"username": "reward-invitee",
+		"password": "password123",
+		"aff_code": "REWARD"
+	}`)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, response.Success)
+
+	var updatedInviter model.User
+	require.NoError(t, db.First(&updatedInviter, inviter.Id).Error)
+	require.Equal(t, 1, updatedInviter.AffCount)
+	require.Equal(t, 100, updatedInviter.Quota)
+	require.Zero(t, updatedInviter.AffQuota)
+	require.Equal(t, 100, updatedInviter.AffHistoryQuota)
 }
