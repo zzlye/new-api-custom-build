@@ -36,10 +36,10 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
+  'appearance_setting.theme_preset': 'default',
   'appearance_setting.home_bg_type': 'none',
   'appearance_setting.home_bg_color': '#0f172a',
   'appearance_setting.home_bg_media': '',
-  'appearance_setting.success_tone': 'default',
 }
 
 export function SiteSettings() {

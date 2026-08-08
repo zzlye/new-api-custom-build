@@ -118,10 +118,10 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  'appearance_setting.theme_preset': string
   'appearance_setting.home_bg_type': string
   'appearance_setting.home_bg_color': string
   'appearance_setting.home_bg_media': string
-  'appearance_setting.success_tone': string
 }
 
 export type AuthSettings = {

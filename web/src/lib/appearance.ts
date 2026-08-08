@@ -16,79 +16,58 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  THEME_PRESET_VALUES,
+  type ThemePreset,
+} from '@/lib/theme-customization'
 
 /** 主页背景类型 */
 export type HomeBgType = 'none' | 'solid' | 'image' | 'video'
 
-/** 站点外观配置（由根用户配置，经 /api/status 下发） */
+/**
+ * 站点外观（根用户配置，全站生效）
+ * - theme_preset：整站配色（主色、成功、警告、侧边栏等一整套）
+ * - home_bg_*：仅主页背景
+ */
 export type AppearanceConfig = {
+  theme_preset: ThemePreset
   home_bg_type: HomeBgType
   home_bg_color: string
   home_bg_media: string
-  success_tone: string
 }
 
 export const DEFAULT_APPEARANCE: AppearanceConfig = {
+  theme_preset: 'default',
   home_bg_type: 'none',
   home_bg_color: '#0f172a',
   home_bg_media: '',
-  success_tone: 'default',
 }
 
-/** 成功色预设（欢迎回来 toast 等），与后端 allowedSuccessTones 对齐 */
-export const SUCCESS_TONES = [
-  {
-    value: 'default',
-    name: 'Default Green',
-    color: 'oklch(0.596 0.145 163.225)',
-  },
-  {
-    value: 'emerald',
-    name: 'Emerald',
-    color: 'oklch(0.5315 0.0694 156.19)',
-  },
-  {
-    value: 'teal',
-    name: 'Teal',
-    color: 'oklch(0.765 0.177 163.22)',
-  },
-  {
-    value: 'forest',
-    name: 'Forest',
-    color: 'oklch(0.5276 0.1072 182.22)',
-  },
-  {
-    value: 'blue',
-    name: 'Ocean Blue',
-    color: 'oklch(0.5461 0.2152 262.88)',
-  },
-  {
-    value: 'rose',
-    name: 'Rose',
-    color: 'oklch(0.5827 0.2418 12.23)',
-  },
-  {
-    value: 'amber',
-    name: 'Amber',
-    color: 'oklch(0.681 0.162 75.834)',
-  },
-] as const
-
-export type SuccessTone = (typeof SUCCESS_TONES)[number]['value']
-
-export function resolveSuccessToneColor(tone: string): string {
-  const found = SUCCESS_TONES.find((item) => item.value === tone)
-  return found?.color ?? SUCCESS_TONES[0].color
+/** 是否启用了自定义主页背景（需要布局透明才能透出） */
+export function hasHomeBackground(config: AppearanceConfig): boolean {
+  if (config.home_bg_type === 'none') return false
+  if (config.home_bg_type === 'solid') return true
+  return Boolean(config.home_bg_media)
 }
 
-/** 将外观配置应用到 document（成功色 CSS 变量） */
+/**
+ * 应用整站外观到 document：
+ * - 配色方案写入 body[data-theme-preset]，驱动 theme-presets.css 中全部语义色
+ * - 成功/警告/主色等由预设统一控制，不再单独拆「欢迎回来色」
+ */
 export function applyAppearanceToDocument(config: AppearanceConfig): void {
   if (typeof document === 'undefined') return
-  const root = document.documentElement
-  const success = resolveSuccessToneColor(config.success_tone || 'default')
-  root.style.setProperty('--success', success)
-  // 同步 data 属性，便于后续扩展
-  root.dataset.successTone = config.success_tone || 'default'
+  const body = document.body
+  if (!body) return
+
+  const preset = config.theme_preset || 'default'
+  if (preset === 'default') {
+    // default 预设使用 theme.css 根变量，去掉 data 属性即可
+    body.removeAttribute('data-theme-preset')
+  } else {
+    body.setAttribute('data-theme-preset', preset)
+  }
+  body.dataset.siteThemePreset = preset
 }
 
 export function normalizeAppearance(
@@ -100,10 +79,17 @@ export function normalizeAppearance(
   )
     ? type
     : 'none'
+
+  const presetRaw = (raw?.theme_preset || 'default') as string
+  const theme_preset = THEME_PRESET_VALUES.has(presetRaw as ThemePreset)
+    ? (presetRaw as ThemePreset)
+    : 'default'
+
   return {
+    theme_preset,
     home_bg_type: validType,
-    home_bg_color: raw?.home_bg_color?.trim() || DEFAULT_APPEARANCE.home_bg_color,
+    home_bg_color:
+      raw?.home_bg_color?.trim() || DEFAULT_APPEARANCE.home_bg_color,
     home_bg_media: raw?.home_bg_media?.trim() || '',
-    success_tone: raw?.success_tone?.trim() || 'default',
   }
 }

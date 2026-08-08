@@ -23,6 +23,8 @@ import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
+import { useAppearance } from '@/hooks/use-appearance'
+import { hasHomeBackground } from '@/lib/appearance'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -37,6 +39,9 @@ export function Home() {
   const { auth } = useAuthStore()
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
+  const appearance = useAppearance()
+  // 有自定义主页背景时布局必须透明，否则 bg-background 会盖住视频/图片
+  const transparentBg = hasHomeBackground(appearance)
 
   const syncIframePreferences = useCallback(() => {
     try {
@@ -61,7 +66,8 @@ export function Home() {
 
   if (!isLoaded) {
     return (
-      <PublicLayout showMainContainer={false}>
+      <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+        <HomeBackground />
         <main className='flex min-h-screen items-center justify-center'>
           <div className='text-muted-foreground'>{t('Loading...')}</div>
         </main>
@@ -72,15 +78,8 @@ export function Home() {
   if (content) {
     if (isUrl) {
       return (
-        <PublicLayout showMainContainer={false}>
-          {/*
-            allow-top-navigation-by-user-activation: the custom home page URL is
-            admin-configured (trusted); this lets its target="_top" nav/menu links
-            navigate the top-level window on user click. The default sandbox blocks
-            this on desktop, while some mobile browsers allow it via allow-popups,
-            causing inconsistent behavior. This token only permits user-activated
-            top-level navigation and does NOT grant same-origin access.
-          */}
+        <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+          <HomeBackground />
           <iframe
             ref={iframeRef}
             src={content}
@@ -97,7 +96,8 @@ export function Home() {
 
     if (contentIsHtml) {
       return (
-        <PublicLayout showMainContainer={false}>
+        <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+          <HomeBackground />
           <RichContent
             mode='html'
             htmlVariant='isolated'
@@ -109,7 +109,8 @@ export function Home() {
     }
 
     return (
-      <PublicLayout>
+      <PublicLayout transparentBg={transparentBg}>
+        <HomeBackground />
         <div className='mx-auto max-w-6xl px-4 py-8'>
           <RichContent
             mode='markdown'
@@ -122,8 +123,7 @@ export function Home() {
   }
 
   return (
-    <PublicLayout showMainContainer={false}>
-      {/* 根用户配置的主页背景（纯色 / 图片 / 短视频） */}
+    <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
       <HomeBackground />
       <Hero isAuthenticated={isAuthenticated} />
       <Stats />

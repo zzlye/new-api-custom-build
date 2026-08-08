@@ -223,6 +223,14 @@ func validateOptionValue(key string, value string) error {
 
 func validateAppearanceOption(key string, value string) error {
 	switch key {
+	case "appearance_setting.theme_preset":
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "default", "anthropic", "simple-large", "underground", "rose-garden",
+			"lake-view", "sunset-glow", "forest-whisper", "ocean-breeze", "lavender-dream":
+			return nil
+		default:
+			return fmt.Errorf("配色方案无效")
+		}
 	case "appearance_setting.home_bg_type":
 		switch strings.ToLower(strings.TrimSpace(value)) {
 		case "none", "solid", "image", "video":
@@ -230,14 +238,10 @@ func validateAppearanceOption(key string, value string) error {
 		default:
 			return fmt.Errorf("主页背景类型无效，仅支持 none/solid/image/video")
 		}
-	case "appearance_setting.success_tone":
-		switch strings.ToLower(strings.TrimSpace(value)) {
-		case "default", "emerald", "teal", "forest", "blue", "rose", "amber":
-			return nil
-		default:
-			return fmt.Errorf("成功色预设无效")
-		}
 	case "appearance_setting.home_bg_color", "appearance_setting.home_bg_media":
+		return nil
+	// 兼容旧字段：忽略不再使用的 success_tone
+	case "appearance_setting.success_tone":
 		return nil
 	default:
 		return nil

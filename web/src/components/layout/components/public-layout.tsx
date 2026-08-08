@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { cn } from '@/lib/utils'
+
 import type { TopNavLink } from '../types'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
 
@@ -30,11 +32,18 @@ type PublicLayoutProps = {
   showNotifications?: boolean
   logo?: React.ReactNode
   siteName?: string
+  /** 为 true 时去掉不透明底色，用于主页自定义背景透出 */
+  transparentBg?: boolean
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
   return (
-    <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
+    <div
+      className={cn(
+        'text-foreground relative min-h-svh overflow-x-clip',
+        props.transparentBg ? 'bg-transparent' : 'bg-background'
+      )}
+    >
       <PublicHeader
         navContent={props.navContent}
         navLinks={props.navLinks}
@@ -47,11 +56,11 @@ export function PublicLayout(props: PublicLayoutProps) {
       />
 
       {props.showMainContainer !== false ? (
-        <main className='container px-4 py-6 pt-20 md:px-4'>
+        <main className='relative z-10 container px-4 py-6 pt-20 md:px-4'>
           {props.children}
         </main>
       ) : (
-        props.children
+        <div className='relative z-10'>{props.children}</div>
       )}
     </div>
   )

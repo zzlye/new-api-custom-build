@@ -40,7 +40,11 @@ import { AppearanceSection } from './appearance-section'
 function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
   const type = (settings['appearance_setting.home_bg_type'] ||
     DEFAULT_APPEARANCE.home_bg_type) as HomeBgType
+  const preset =
+    settings['appearance_setting.theme_preset'] ||
+    DEFAULT_APPEARANCE.theme_preset
   return {
+    theme_preset: preset as AppearanceConfig['theme_preset'],
     home_bg_type: ['none', 'solid', 'image', 'video'].includes(type)
       ? type
       : 'none',
@@ -48,9 +52,6 @@ function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
       settings['appearance_setting.home_bg_color'] ||
       DEFAULT_APPEARANCE.home_bg_color,
     home_bg_media: settings['appearance_setting.home_bg_media'] || '',
-    success_tone:
-      settings['appearance_setting.success_tone'] ||
-      DEFAULT_APPEARANCE.success_tone,
   }
 }
 

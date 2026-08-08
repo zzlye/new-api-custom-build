@@ -16,11 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useStatus } from '@/hooks/use-status'
-import {
-  normalizeAppearance,
-  type AppearanceConfig,
-} from '@/lib/appearance'
+import { useAppearance } from '@/hooks/use-appearance'
+import { hasHomeBackground } from '@/lib/appearance'
 import { cn } from '@/lib/utils'
 
 type HomeBackgroundProps = {
@@ -28,15 +25,13 @@ type HomeBackgroundProps = {
 }
 
 /**
- * 主页全屏背景层：纯色 / 图片 / 短视频（由根用户外观设置控制）
+ * 主页全屏背景层。
+ * 父级 PublicLayout 必须 transparentBg，否则 bg-background 会盖住本层。
  */
 export function HomeBackground({ className }: HomeBackgroundProps) {
-  const { status } = useStatus()
-  const appearance = normalizeAppearance(
-    status?.appearance as Partial<AppearanceConfig> | undefined
-  )
+  const appearance = useAppearance()
 
-  if (appearance.home_bg_type === 'none') {
+  if (!hasHomeBackground(appearance)) {
     return null
   }
 
@@ -44,10 +39,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
     return (
       <div
         aria-hidden
-        className={cn(
-          'pointer-events-none fixed inset-0 -z-10',
-          className
-        )}
+        className={cn('pointer-events-none absolute inset-0 z-0', className)}
         style={{ background: appearance.home_bg_color || '#0f172a' }}
       />
     )
@@ -58,7 +50,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
       <div
         aria-hidden
         className={cn(
-          'pointer-events-none fixed inset-0 -z-10 overflow-hidden',
+          'pointer-events-none absolute inset-0 z-0 overflow-hidden',
           className
         )}
       >
@@ -67,8 +59,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
           alt=''
           className='size-full object-cover'
         />
-        {/* 轻微遮罩，保证文字可读 */}
-        <div className='absolute inset-0 bg-black/25' />
+        <div className='absolute inset-0 bg-black/30' />
       </div>
     )
   }
@@ -78,7 +69,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
       <div
         aria-hidden
         className={cn(
-          'pointer-events-none fixed inset-0 -z-10 overflow-hidden',
+          'pointer-events-none absolute inset-0 z-0 overflow-hidden',
           className
         )}
       >
@@ -90,7 +81,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
           loop
           playsInline
         />
-        <div className='absolute inset-0 bg-black/30' />
+        <div className='absolute inset-0 bg-black/35' />
       </div>
     )
   }

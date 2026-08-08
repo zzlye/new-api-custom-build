@@ -5274,6 +5274,13 @@
     "Ocean Blue": "Ocean Blue",
     "Rose": "Rose",
     "Amber": "Amber",
-    "Preview success toast": "Preview success toast"
+    "Preview success toast": "Preview success toast",
+    "Site color theme": "Site color theme",
+    "Applies site-wide: buttons, links, success toasts (Welcome back), warnings, charts, sidebar accents, and more.": "Applies site-wide: buttons, links, success toasts (Welcome back), warnings, charts, sidebar accents, and more.",
+    "Homepage background": "Homepage background",
+    "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "Only affects the public homepage. Solid color, image, or short video (max 200MB).",
+    "Background type": "Background type",
+    "Preview theme + success toast": "Preview theme + success toast",
+    "Simple Large-font": "Simple Large-font"
   }
 }

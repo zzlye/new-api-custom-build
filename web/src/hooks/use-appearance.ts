@@ -16,21 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect } from 'react'
+import { useMemo } from 'react'
 
-import { useAppearance } from '@/hooks/use-appearance'
-import { applyAppearanceToDocument } from '@/lib/appearance'
+import { useStatus } from '@/hooks/use-status'
+import {
+  normalizeAppearance,
+  type AppearanceConfig,
+} from '@/lib/appearance'
 
-/**
- * 将根用户配置的整站外观应用到 document。
- * 配色通过 data-theme-preset 驱动，成功/警告/主色等一整套语义色一起变。
- */
-export function AppearanceEffects() {
-  const appearance = useAppearance()
-
-  useEffect(() => {
-    applyAppearanceToDocument(appearance)
-  }, [appearance])
-
-  return null
+/** 读取站点外观配置（来自 /api/status） */
+export function useAppearance(): AppearanceConfig {
+  const { status } = useStatus()
+  return useMemo(
+    () =>
+      normalizeAppearance(
+        status?.appearance as Partial<AppearanceConfig> | undefined
+      ),
+    [status]
+  )
 }

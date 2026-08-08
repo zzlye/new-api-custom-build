@@ -38,10 +38,10 @@ const STATUS_RELATED_KEYS = new Set([
   'general_setting.custom_currency_exchange_rate',
   'oidc.display_name',
   // 站点外观：保存后刷新 status，全站立即生效
+  'appearance_setting.theme_preset',
   'appearance_setting.home_bg_type',
   'appearance_setting.home_bg_color',
   'appearance_setting.home_bg_media',
-  'appearance_setting.success_tone',
 ])
 
 export function useUpdateOption() {
