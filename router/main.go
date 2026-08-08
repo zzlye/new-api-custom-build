@@ -13,6 +13,10 @@ import (
 )
 
 func SetRouter(router *gin.Engine, assets WebAssets) {
+	// 外观上传文件对外只读访问（图片/短视频）
+	if err := os.MkdirAll("data/appearance", 0o755); err == nil {
+		router.Static("/uploads/appearance", "data/appearance")
+	}
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)

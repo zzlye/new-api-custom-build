@@ -27,6 +27,7 @@ import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CTA, Features, Hero, HowItWorks, Stats } from './components'
+import { HomeBackground } from './components/home-background'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
@@ -122,6 +123,8 @@ export function Home() {
 
   return (
     <PublicLayout showMainContainer={false}>
+      {/* 根用户配置的主页背景（纯色 / 图片 / 短视频） */}
+      <HomeBackground />
       <Hero isAuthenticated={isAuthenticated} />
       <Stats />
       <Features />

@@ -27,6 +27,7 @@ import {
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { useEffect } from 'react'
 
+import { AppearanceEffects } from '@/components/appearance-effects'
 import { NavigationProgress } from '@/components/navigation-progress'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeCustomizationProvider } from '@/context/theme-customization-provider'
@@ -94,6 +95,8 @@ function RootComponent() {
 
   return (
     <ThemeCustomizationProvider>
+      {/* 应用根用户外观配置（成功色等） */}
+      <AppearanceEffects />
       <NavigationProgress />
       <Outlet />
       <Toaster closeButton duration={5000} position='top-center' richColors />

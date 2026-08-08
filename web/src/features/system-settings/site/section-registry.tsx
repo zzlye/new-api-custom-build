@@ -16,6 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  DEFAULT_APPEARANCE,
+  type AppearanceConfig,
+  type HomeBgType,
+} from '@/lib/appearance'
+
 import { SystemInfoSection } from '../general/system-info-section'
 import {
   parseHeaderNavModules,
@@ -28,6 +34,25 @@ import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+
+import { AppearanceSection } from './appearance-section'
+
+function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
+  const type = (settings['appearance_setting.home_bg_type'] ||
+    DEFAULT_APPEARANCE.home_bg_type) as HomeBgType
+  return {
+    home_bg_type: ['none', 'solid', 'image', 'video'].includes(type)
+      ? type
+      : 'none',
+    home_bg_color:
+      settings['appearance_setting.home_bg_color'] ||
+      DEFAULT_APPEARANCE.home_bg_color,
+    home_bg_media: settings['appearance_setting.home_bg_media'] || '',
+    success_tone:
+      settings['appearance_setting.success_tone'] ||
+      DEFAULT_APPEARANCE.success_tone,
+  }
+}
 
 const SITE_SECTIONS = [
   {
@@ -48,6 +73,13 @@ const SITE_SECTIONS = [
           },
         }}
       />
+    ),
+  },
+  {
+    id: 'appearance',
+    titleKey: 'Appearance',
+    build: (settings: SiteSettings) => (
+      <AppearanceSection defaultValues={buildAppearanceDefaults(settings)} />
     ),
   },
   {

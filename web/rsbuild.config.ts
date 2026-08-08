@@ -16,8 +16,9 @@ export default defineConfig(({ envMode }) => {
     'http://localhost:3000'
 
   const isProd = envMode === 'production'
+  // /uploads 用于根用户上传的外观媒体（主页背景图/视频）
   const devProxy = Object.fromEntries(
-    (['/api', '/mj', '/pg'] as const).map((key) => [
+    (['/api', '/mj', '/pg', '/uploads'] as const).map((key) => [
       key,
       { target: serverUrl, changeOrigin: true },
     ])

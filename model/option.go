@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -213,7 +214,34 @@ func validateOptionValue(key string, value string) error {
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
 	}
+	// 外观相关选项基础校验
+	if strings.HasPrefix(key, "appearance_setting.") {
+		return validateAppearanceOption(key, value)
+	}
 	return nil
+}
+
+func validateAppearanceOption(key string, value string) error {
+	switch key {
+	case "appearance_setting.home_bg_type":
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "none", "solid", "image", "video":
+			return nil
+		default:
+			return fmt.Errorf("主页背景类型无效，仅支持 none/solid/image/video")
+		}
+	case "appearance_setting.success_tone":
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "default", "emerald", "teal", "forest", "blue", "rose", "amber":
+			return nil
+		default:
+			return fmt.Errorf("成功色预设无效")
+		}
+	case "appearance_setting.home_bg_color", "appearance_setting.home_bg_media":
+		return nil
+	default:
+		return nil
+	}
 }
 
 func UpdateOption(key string, value string) error {
