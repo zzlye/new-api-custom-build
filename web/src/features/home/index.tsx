@@ -20,7 +20,6 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
-import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
 import { useAppearance } from '@/hooks/use-appearance'
@@ -28,7 +27,7 @@ import { hasHomeBackground } from '@/lib/appearance'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { CTA, Features, Hero, HowItWorks, Stats } from './components'
+import { Hero } from './components'
 import { HomeBackground } from './components/home-background'
 import { useHomePageContent } from './hooks'
 
@@ -124,13 +123,8 @@ export function Home() {
 
   return (
     <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
-      <HomeBackground />
+      {/* 默认主页只保留首屏工作台，详细功能通过独立导航进入。 */}
       <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
-      <Footer />
     </PublicLayout>
   )
 }

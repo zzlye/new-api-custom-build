@@ -1,0 +1,184 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import assert from 'node:assert/strict'
+import { after, describe, test } from 'node:test'
+
+import { Window } from 'happy-dom'
+
+const domWindow = new Window()
+const domGlobals = [
+  'window',
+  'document',
+  'navigator',
+  'HTMLElement',
+  'HTMLAnchorElement',
+  'Node',
+  'Element',
+  'Event',
+  'CustomEvent',
+  'MutationObserver',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'getComputedStyle',
+] as const
+
+for (const key of domGlobals) {
+  Object.defineProperty(globalThis, key, {
+    configurable: true,
+    value: domWindow[key],
+  })
+}
+
+Object.defineProperty(domWindow, 'matchMedia', {
+  configurable: true,
+  value: () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }),
+})
+
+const { act, createElement } = await import('react')
+const { createRoot } = await import('react-dom/client')
+const { createInstance } = await import('i18next')
+const { I18nextProvider, initReactI18next } = await import('react-i18next')
+const bunTestModule = 'bun:test'
+const { mock } = (await import(bunTestModule)) as {
+  mock: {
+    module: (specifier: string, factory: () => Record<string, unknown>) => void
+  }
+}
+type ReactNode = import('react').ReactNode
+;(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true
+
+mock.module('@tanstack/react-router', () => ({
+  Link: (props: { to: string; children?: ReactNode }) =>
+    createElement('a', { href: props.to }, props.children),
+}))
+mock.module('lucide-react', () => ({
+  ArrowRight: () => createElement('span'),
+  BookOpen: () => createElement('span'),
+}))
+mock.module('@/components/ui/button', () => ({
+  Button: (props: {
+    render?: { props?: { href?: string; to?: string } }
+    children?: ReactNode
+    className?: string
+  }) => {
+    const tagName = props.render ? 'a' : 'button'
+    return createElement(
+      tagName,
+      {
+        className: props.className,
+        href: props.render?.props?.href || props.render?.props?.to,
+      },
+      props.children
+    )
+  },
+}))
+mock.module('@/hooks/use-status', () => ({
+  useStatus: () => ({ status: { docs_link: 'https://docs.example.test' } }),
+}))
+mock.module('@/hooks/use-appearance', () => ({
+  useAppearance: () => ({
+    theme_preset: 'default',
+    home_bg_type: 'none',
+    home_bg_color: '',
+    home_bg_media: '',
+    home_bg_overlay_opacity: 0,
+    login_bg_type: 'none',
+    login_bg_color: '',
+    login_bg_media: '',
+    login_bg_overlay_opacity: 0,
+  }),
+}))
+mock.module('@/lib/appearance', () => ({
+  getHomeBackground: () => ({ type: 'none', color: '', media: '' }),
+}))
+mock.module('@/components/page-background', () => ({
+  PageBackground: () =>
+    createElement('div', { 'data-testid': 'home-background' }),
+}))
+mock.module('@/features/home/components/hero-terminal-demo', () => ({
+  HeroTerminalDemo: () => createElement('div', { 'data-testid': 'hero-demo' }),
+}))
+
+const i18n = createInstance()
+await i18n.use(initReactI18next).init({
+  lng: 'en',
+  resources: {
+    en: {
+      translation: {
+        'Unified API Gateway for': 'Gateway',
+        'Vast Range of AI Models': 'Models',
+        Docs: 'Docs',
+        'Get Started': 'Start',
+        'View Pricing': 'Pricing',
+        'Go to Dashboard': 'Dashboard',
+      },
+    },
+  },
+})
+
+const { Hero } = await import('../hero')
+
+describe('单屏主页 Hero', () => {
+  after(() => domWindow.close())
+
+  test('保留主要操作和 API 演示，并移除冗余介绍', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Hero />
+        </I18nextProvider>
+      )
+    })
+
+    const hero = container.querySelector('section')
+    assert.ok(hero)
+    assert.equal(hero.classList.contains('min-h-svh'), true)
+    assert.ok(container.querySelector('[data-testid="home-background"]'))
+    assert.ok(container.querySelector('[data-testid="hero-demo"]'))
+    assert.equal(
+      container
+        .querySelector('[data-testid="hero-demo"]')
+        ?.parentElement?.classList.contains('hidden'),
+      true
+    )
+    assert.equal(
+      container.textContent?.includes('Supported Applications'),
+      false
+    )
+    assert.equal(
+      container
+        .querySelector('a[href="/sign-up"]')
+        ?.textContent?.includes('Start'),
+      true
+    )
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+})
