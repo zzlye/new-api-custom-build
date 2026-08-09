@@ -23,10 +23,7 @@ import { PageBackground } from '@/components/page-background'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useSystemConfig } from '@/hooks/use-system-config'
-import {
-  getLoginBackground,
-  hasLoginBackground,
-} from '@/lib/appearance'
+import { getLoginBackground, hasLoginBackground } from '@/lib/appearance'
 import { cn } from '@/lib/utils'
 
 type AuthLayoutProps = {
@@ -48,7 +45,10 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       )}
     >
       {/* 登录/注册页自定义背景 */}
-      <PageBackground config={loginBg} overlayOpacity={0.4} />
+      <PageBackground
+        config={loginBg}
+        overlayOpacity={appearance.login_bg_overlay_opacity}
+      />
 
       <Link
         to='/'

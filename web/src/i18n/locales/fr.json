@@ -5266,6 +5266,8 @@
     "File must be 200MB or smaller": "File must be 200MB or smaller",
     "Only images or short videos are allowed": "Only images or videos are allowed",
     "Background preview": "Background preview",
+    "Background overlay opacity": "Opacité de la superposition d'arrière-plan",
+    "0% is clear; 100% is fully dark.": "0 % laisse le fond clair ; 100 % le rend complètement sombre.",
     "Success color (e.g. Welcome back)": "Success color (e.g. Welcome back)",
     "Used for success toasts such as “Welcome back!” after login.": "Used for success toasts such as “Welcome back!” after login.",
     "Default Green": "Default Green",

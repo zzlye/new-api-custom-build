@@ -42,9 +42,11 @@ const STATUS_RELATED_KEYS = new Set([
   'appearance_setting.home_bg_type',
   'appearance_setting.home_bg_color',
   'appearance_setting.home_bg_media',
+  'appearance_setting.home_bg_overlay_opacity',
   'appearance_setting.login_bg_type',
   'appearance_setting.login_bg_color',
   'appearance_setting.login_bg_media',
+  'appearance_setting.login_bg_overlay_opacity',
 ])
 
 export function useUpdateOption() {

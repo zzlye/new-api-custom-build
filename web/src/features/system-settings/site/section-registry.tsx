@@ -34,12 +34,21 @@ import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-
 import { AppearanceSection } from './appearance-section'
 
-function parseBgType(value: string | undefined, fallback: HomeBgType): HomeBgType {
+function parseBgType(
+  value: string | undefined,
+  fallback: HomeBgType
+): HomeBgType {
   const t = (value || fallback) as HomeBgType
   return ['none', 'solid', 'image', 'video'].includes(t) ? t : 'none'
+}
+
+/** 将系统设置中的透明度转换为可供滑块使用的 0 到 1 数字。 */
+function parseOverlayOpacity(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : 0
 }
 
 function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
@@ -56,6 +65,9 @@ function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
       settings['appearance_setting.home_bg_color'] ||
       DEFAULT_APPEARANCE.home_bg_color,
     home_bg_media: settings['appearance_setting.home_bg_media'] || '',
+    home_bg_overlay_opacity: parseOverlayOpacity(
+      settings['appearance_setting.home_bg_overlay_opacity']
+    ),
     login_bg_type: parseBgType(
       settings['appearance_setting.login_bg_type'],
       DEFAULT_APPEARANCE.login_bg_type
@@ -64,6 +76,9 @@ function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
       settings['appearance_setting.login_bg_color'] ||
       DEFAULT_APPEARANCE.login_bg_color,
     login_bg_media: settings['appearance_setting.login_bg_media'] || '',
+    login_bg_overlay_opacity: parseOverlayOpacity(
+      settings['appearance_setting.login_bg_overlay_opacity']
+    ),
   }
 }
 

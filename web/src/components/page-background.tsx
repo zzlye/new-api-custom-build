@@ -16,16 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  hasPageBackground,
-  type PageBackgroundConfig,
-} from '@/lib/appearance'
+import { hasPageBackground, type PageBackgroundConfig } from '@/lib/appearance'
 import { cn } from '@/lib/utils'
 
 type PageBackgroundProps = {
   config: PageBackgroundConfig
   className?: string
-  /** 遮罩不透明度，登录页略深便于表单阅读 */
+  /** 图片和视频背景的黑色遮罩透明度。 */
   overlayOpacity?: number
 }
 
@@ -36,7 +33,7 @@ type PageBackgroundProps = {
 export function PageBackground({
   config,
   className,
-  overlayOpacity = 0.3,
+  overlayOpacity = 0,
 }: PageBackgroundProps) {
   if (!hasPageBackground(config)) {
     return null
@@ -61,11 +58,7 @@ export function PageBackground({
           className
         )}
       >
-        <img
-          src={config.media}
-          alt=''
-          className='size-full object-cover'
-        />
+        <img src={config.media} alt='' className='size-full object-cover' />
         <div
           className='absolute inset-0 bg-black'
           style={{ opacity: overlayOpacity }}
@@ -93,7 +86,7 @@ export function PageBackground({
         />
         <div
           className='absolute inset-0 bg-black'
-          style={{ opacity: overlayOpacity + 0.05 }}
+          style={{ opacity: overlayOpacity }}
         />
       </div>
     )

@@ -5266,6 +5266,8 @@
     "File must be 200MB or smaller": "文件不能超过 200MB",
     "Only images or short videos are allowed": "仅支持图片或视频",
     "Background preview": "背景预览",
+    "Background overlay opacity": "背景遮罩透明度",
+    "0% is clear; 100% is fully dark.": "0% 为完全清晰，100% 为完全变暗。",
     "Success color (e.g. Welcome back)": "成功色（如欢迎回来）",
     "Used for success toasts such as “Welcome back!” after login.": "用于登录成功后的「欢迎回来！」等成功提示颜色。",
     "Default Green": "默认绿",

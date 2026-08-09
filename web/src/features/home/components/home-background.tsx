@@ -31,7 +31,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
     <PageBackground
       config={getHomeBackground(appearance)}
       className={className}
-      overlayOpacity={0.3}
+      overlayOpacity={appearance.home_bg_overlay_opacity}
     />
   )
 }

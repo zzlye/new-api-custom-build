@@ -31,15 +31,18 @@ export type HomeBgType = BgType
  * - theme_preset：整站配色
  * - home_bg_*：主页背景
  * - login_bg_*：登录/注册等鉴权页背景
+ * - *_bg_overlay_opacity：图片和视频背景的黑色遮罩透明度（0 到 1）
  */
 export type AppearanceConfig = {
   theme_preset: ThemePreset
   home_bg_type: BgType
   home_bg_color: string
   home_bg_media: string
+  home_bg_overlay_opacity: number
   login_bg_type: BgType
   login_bg_color: string
   login_bg_media: string
+  login_bg_overlay_opacity: number
 }
 
 /** 单页背景配置切片 */
@@ -54,14 +57,23 @@ export const DEFAULT_APPEARANCE: AppearanceConfig = {
   home_bg_type: 'none',
   home_bg_color: '#0f172a',
   home_bg_media: '',
+  home_bg_overlay_opacity: 0,
   login_bg_type: 'none',
   login_bg_color: '#0f172a',
   login_bg_media: '',
+  login_bg_overlay_opacity: 0,
 }
 
 function normalizeBgType(type: string | undefined): BgType {
   const t = (type || 'none') as BgType
   return ['none', 'solid', 'image', 'video'].includes(t) ? t : 'none'
+}
+
+/** 将外部配置中的遮罩透明度限制在 0 到 1，避免非法值影响页面渲染。 */
+function normalizeOverlayOpacity(value: unknown, fallback: number): number {
+  const opacity = Number(value)
+  if (!Number.isFinite(opacity)) return fallback
+  return Math.min(1, Math.max(0, opacity))
 }
 
 /** 是否启用了自定义背景 */
@@ -138,9 +150,17 @@ export function normalizeAppearance(
     home_bg_color:
       raw?.home_bg_color?.trim() || DEFAULT_APPEARANCE.home_bg_color,
     home_bg_media: raw?.home_bg_media?.trim() || '',
+    home_bg_overlay_opacity: normalizeOverlayOpacity(
+      raw?.home_bg_overlay_opacity,
+      DEFAULT_APPEARANCE.home_bg_overlay_opacity
+    ),
     login_bg_type: normalizeBgType(raw?.login_bg_type),
     login_bg_color:
       raw?.login_bg_color?.trim() || DEFAULT_APPEARANCE.login_bg_color,
     login_bg_media: raw?.login_bg_media?.trim() || '',
+    login_bg_overlay_opacity: normalizeOverlayOpacity(
+      raw?.login_bg_overlay_opacity,
+      DEFAULT_APPEARANCE.login_bg_overlay_opacity
+    ),
   }
 }

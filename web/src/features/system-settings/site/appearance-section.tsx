@@ -44,8 +44,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
 import { api } from '@/lib/api'
-import { type AppearanceConfig, type BgType } from '@/lib/appearance'
+import type { AppearanceConfig, BgType } from '@/lib/appearance'
 import { THEME_PRESETS, type ThemePreset } from '@/lib/theme-customization'
 import { cn } from '@/lib/utils'
 
@@ -70,9 +71,11 @@ const appearanceSchema = z.object({
   home_bg_type: bgTypeEnum,
   home_bg_color: z.string(),
   home_bg_media: z.string(),
+  home_bg_overlay_opacity: z.number().min(0).max(1),
   login_bg_type: bgTypeEnum,
   login_bg_color: z.string(),
   login_bg_media: z.string(),
+  login_bg_overlay_opacity: z.number().min(0).max(1),
 })
 
 type AppearanceFormValues = z.infer<typeof appearanceSchema>
@@ -86,9 +89,11 @@ const OPTION_KEYS: Record<keyof AppearanceFormValues, string> = {
   home_bg_type: 'appearance_setting.home_bg_type',
   home_bg_color: 'appearance_setting.home_bg_color',
   home_bg_media: 'appearance_setting.home_bg_media',
+  home_bg_overlay_opacity: 'appearance_setting.home_bg_overlay_opacity',
   login_bg_type: 'appearance_setting.login_bg_type',
   login_bg_color: 'appearance_setting.login_bg_color',
   login_bg_media: 'appearance_setting.login_bg_media',
+  login_bg_overlay_opacity: 'appearance_setting.login_bg_overlay_opacity',
 }
 
 type BgFieldPrefix = 'home' | 'login'
@@ -110,9 +115,11 @@ function BackgroundFields({
   const typeKey = `${prefix}_bg_type` as const
   const colorKey = `${prefix}_bg_color` as const
   const mediaKey = `${prefix}_bg_media` as const
+  const opacityKey = `${prefix}_bg_overlay_opacity` as const
   const bgType = form.watch(typeKey) as BgType
   const mediaUrl = form.watch(mediaKey)
   const solidColor = form.watch(colorKey)
+  const overlayOpacity = form.watch(opacityKey)
 
   return (
     <SettingsFormGrid>
@@ -150,6 +157,47 @@ function BackgroundFields({
           </FormItem>
         )}
       />
+
+      {bgType === 'image' || bgType === 'video' ? (
+        <SettingsFormGridItem span='full'>
+          <FormField
+            control={form.control}
+            name={opacityKey}
+            render={({ field }) => {
+              const percent = Math.round(Number(field.value) * 100)
+              return (
+                <FormItem>
+                  <div className='flex items-center justify-between gap-3'>
+                    <FormLabel>{t('Background overlay opacity')}</FormLabel>
+                    <span className='text-muted-foreground text-sm tabular-nums'>
+                      {percent}%
+                    </span>
+                  </div>
+                  <FormControl>
+                    <Slider
+                      aria-label={t('Background overlay opacity')}
+                      max={1}
+                      min={0}
+                      step={0.01}
+                      value={[Number(overlayOpacity)]}
+                      onValueChange={(nextValue) => {
+                        const value = Array.isArray(nextValue)
+                          ? nextValue[0]
+                          : nextValue
+                        field.onChange(Number(value))
+                      }}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('0% is clear; 100% is fully dark.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )
+            }}
+          />
+        </SettingsFormGridItem>
+      ) : null}
 
       {bgType === 'solid' ? (
         <FormField
@@ -291,9 +339,11 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     home_bg_type: defaultValues.home_bg_type,
     home_bg_color: defaultValues.home_bg_color,
     home_bg_media: defaultValues.home_bg_media,
+    home_bg_overlay_opacity: defaultValues.home_bg_overlay_opacity,
     login_bg_type: defaultValues.login_bg_type,
     login_bg_color: defaultValues.login_bg_color,
     login_bg_media: defaultValues.login_bg_media,
+    login_bg_overlay_opacity: defaultValues.login_bg_overlay_opacity,
   }
 
   const { form, handleSubmit, isDirty, isSubmitting, handleReset } =
