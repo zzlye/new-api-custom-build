@@ -17,8 +17,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// UploadAppearanceMedia 根用户上传外观媒体（主页/登录页背景，最大 200MB）
-// form 字段：file 必填；target 可选 home|login，默认 home
+// UploadAppearanceMedia 根用户上传外观媒体（全局/主页/登录页背景，最大 200MB）
+// form 字段：file 必填；target 可选 global|home|login，默认 home
 func UploadAppearanceMedia(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, appearance_setting.MaxUploadBytes+2<<20)
 
@@ -42,7 +42,7 @@ func UploadAppearanceMedia(c *gin.Context) {
 
 	// 上传目标：主页或登录页
 	target := strings.ToLower(strings.TrimSpace(c.PostForm("target")))
-	if target != "login" {
+	if target != "global" && target != "login" {
 		target = "home"
 	}
 
@@ -86,7 +86,10 @@ func UploadAppearanceMedia(c *gin.Context) {
 
 	bgTypeKey := "appearance_setting.home_bg_type"
 	mediaKey := "appearance_setting.home_bg_media"
-	if target == "login" {
+	if target == "global" {
+		bgTypeKey = "appearance_setting.global_bg_type"
+		mediaKey = "appearance_setting.global_bg_media"
+	} else if target == "login" {
 		bgTypeKey = "appearance_setting.login_bg_type"
 		mediaKey = "appearance_setting.login_bg_media"
 	}

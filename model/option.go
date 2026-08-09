@@ -233,30 +233,67 @@ func validateAppearanceOption(key string, value string) error {
 		default:
 			return fmt.Errorf("配色方案无效")
 		}
-	case "appearance_setting.home_bg_type", "appearance_setting.login_bg_type":
+	case "appearance_setting.global_bg_type", "appearance_setting.home_bg_type", "appearance_setting.login_bg_type":
 		switch strings.ToLower(strings.TrimSpace(value)) {
 		case "none", "solid", "image", "video":
 			return nil
 		default:
 			return fmt.Errorf("背景类型无效，仅支持 none/solid/image/video")
 		}
-	case "appearance_setting.home_bg_color", "appearance_setting.home_bg_media",
+	case "appearance_setting.global_bg_color", "appearance_setting.global_bg_media",
+		"appearance_setting.home_bg_color", "appearance_setting.home_bg_media",
 		"appearance_setting.login_bg_color", "appearance_setting.login_bg_media":
 		return nil
-	case "appearance_setting.home_bg_overlay_opacity", "appearance_setting.login_bg_overlay_opacity":
-		opacity, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil || math.IsNaN(opacity) || math.IsInf(opacity, 0) ||
-			opacity < appearance_setting.MinBgOverlayOpacity ||
-			opacity > appearance_setting.MaxBgOverlayOpacity {
-			return fmt.Errorf("背景遮罩透明度必须在 0 到 1 之间")
-		}
-		return nil
+	case "appearance_setting.global_bg_overlay_opacity", "appearance_setting.home_bg_overlay_opacity", "appearance_setting.login_bg_overlay_opacity":
+		return validateAppearanceFloatRange(
+			value,
+			appearance_setting.MinBgOverlayOpacity,
+			appearance_setting.MaxBgOverlayOpacity,
+			"背景遮罩透明度",
+		)
+	case "appearance_setting.glass_opacity":
+		return validateAppearanceFloatRange(
+			value,
+			appearance_setting.MinGlassOpacity,
+			appearance_setting.MaxGlassOpacity,
+			"毛玻璃透明度",
+		)
+	case "appearance_setting.glass_border_opacity":
+		return validateAppearanceFloatRange(
+			value,
+			appearance_setting.MinGlassBorderOpacity,
+			appearance_setting.MaxGlassBorderOpacity,
+			"毛玻璃边框透明度",
+		)
+	case "appearance_setting.glass_shadow_opacity":
+		return validateAppearanceFloatRange(
+			value,
+			appearance_setting.MinGlassShadowOpacity,
+			appearance_setting.MaxGlassShadowOpacity,
+			"毛玻璃阴影透明度",
+		)
+	case "appearance_setting.glass_blur":
+		return validateAppearanceFloatRange(
+			value,
+			appearance_setting.MinGlassBlur,
+			appearance_setting.MaxGlassBlur,
+			"毛玻璃模糊半径",
+		)
 	// 兼容旧字段
 	case "appearance_setting.success_tone":
 		return nil
 	default:
 		return nil
 	}
+}
+
+// validateAppearanceFloatRange 校验外观设置中的有限浮点值范围。
+func validateAppearanceFloatRange(value string, min, max float64, label string) error {
+	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number < min || number > max {
+		return fmt.Errorf("%s必须在 %g 到 %g 之间", label, min, max)
+	}
+	return nil
 }
 
 func UpdateOption(key string, value string) error {
