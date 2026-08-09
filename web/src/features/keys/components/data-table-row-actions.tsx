@@ -52,6 +52,7 @@ import { resolveChatUrl, type ChatPreset } from '@/features/chat/lib/chat-links'
 import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
 import { encodeChannelConnectionInfo } from '@/lib/channel-connection-info'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { cn } from '@/lib/utils'
 
 import { updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
@@ -190,7 +191,7 @@ export function DataTableRowActions<TData>({
   }
 
   return (
-    <div className='-ml-1.5 flex items-center gap-1'>
+    <div className='appearance-glass-control -ml-1.5 flex items-center gap-1 rounded-lg border p-1 shadow-sm'>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -200,11 +201,12 @@ export function DataTableRowActions<TData>({
               onClick={handleToggleStatus}
               disabled={isTogglingStatus}
               aria-label={toggleLabel}
-              className={
+              className={cn(
+                'appearance-glass-control hover:bg-white/30 dark:hover:bg-white/15',
                 isEnabled
                   ? 'text-destructive hover:text-destructive'
                   : 'text-emerald-600 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-400'
-              }
+              )}
             />
           }
         >
@@ -224,6 +226,7 @@ export function DataTableRowActions<TData>({
                 setOpen('update')
               }}
               aria-label={t('Edit')}
+              className='appearance-glass-control hover:bg-white/30 dark:hover:bg-white/15'
             />
           }
         >
@@ -235,6 +238,7 @@ export function DataTableRowActions<TData>({
       <DataTableRowActionMenu
         ariaLabel={t('Open menu')}
         contentClassName='w-[200px]'
+        triggerClassName='appearance-glass-control hover:bg-white/30 dark:hover:bg-white/15'
         modal={false}
         onOpenChange={handleMenuOpenChange}
       >

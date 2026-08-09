@@ -31,6 +31,7 @@ type DataTableRowActionMenuProps = {
   children: React.ReactNode
   ariaLabel: string
   contentClassName?: string
+  triggerClassName?: string
   modal?: boolean
   onOpenChange?: (open: boolean) => void
 }
@@ -43,7 +44,7 @@ export function DataTableRowActionMenu(props: DataTableRowActionMenuProps) {
           <Button
             variant='ghost'
             size='icon'
-            className='data-popup-open:bg-muted'
+            className={cn('data-popup-open:bg-muted', props.triggerClassName)}
             aria-label={props.ariaLabel}
           />
         }

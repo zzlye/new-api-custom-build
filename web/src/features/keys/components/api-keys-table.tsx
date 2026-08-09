@@ -325,6 +325,7 @@ export function ApiKeysTable() {
             title: t('Status'),
             options: API_KEY_STATUS_OPTIONS,
             singleSelect: true,
+            className: 'appearance-glass-control',
           },
         ],
       }}
