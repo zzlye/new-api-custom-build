@@ -72,7 +72,7 @@ function isDisabledApiKeyRow(apiKey: ApiKey) {
 
 function ApiKeysMobileSkeleton() {
   return (
-    <div className='divide-border overflow-hidden rounded-lg border'>
+    <div className='appearance-glass-surface divide-border overflow-hidden rounded-lg border border-white/35 shadow-lg dark:border-white/15'>
       {API_KEYS_MOBILE_SKELETON_IDS.map((id) => (
         <div
           key={id}
@@ -107,7 +107,7 @@ function ApiKeysMobileList({
 
   if (!rows.length) {
     return (
-      <div className='rounded-lg border p-8'>
+      <div className='appearance-glass-surface rounded-lg border border-white/35 p-8 shadow-lg dark:border-white/15'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -126,7 +126,7 @@ function ApiKeysMobileList({
   }
 
   return (
-    <div className='divide-border overflow-hidden rounded-lg border'>
+    <div className='appearance-glass-surface divide-border overflow-hidden rounded-lg border border-white/35 shadow-lg dark:border-white/15'>
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
@@ -136,7 +136,7 @@ function ApiKeysMobileList({
           <div
             key={row.id}
             className={cn(
-              'bg-card space-y-2.5 border-b px-3 py-2.5 last:border-b-0',
+              'space-y-2.5 border-b bg-white/20 px-3 py-2.5 last:border-b-0 dark:bg-white/5',
               isDisabledApiKeyRow(apiKey) && DISABLED_ROW_MOBILE
             )}
           >
@@ -305,6 +305,9 @@ export function ApiKeysTable() {
       )}
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
+      paginationInFooter={false}
+      tableHeaderClassName='bg-white/35 backdrop-blur-md dark:bg-white/10'
+      tableClassName='appearance-glass-surface border-white/35 shadow-lg dark:border-white/15'
       toolbarProps={{
         searchPlaceholder: t('Filter by name...'),
         additionalSearch: (
