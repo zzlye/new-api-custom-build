@@ -30,7 +30,7 @@ type PageBackgroundProps = {
 }
 
 /**
- * 通用页面背景层（纯色 / 图片 / 短视频）
+ * 通用页面背景层（纯色 / 图片 / 视频）
  * 父级需 relative 且透明底色，内容层建议 relative z-10
  */
 export function PageBackground({

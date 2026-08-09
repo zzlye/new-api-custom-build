@@ -5253,7 +5253,7 @@
     "Homepage background type": "Homepage background type",
     "None (default)": "None (default)",
     "Solid color": "Solid color",
-    "Short video": "Short video",
+    "Short video": "影片",
     "Only root can change appearance. Visitors will see the homepage background.": "Only root can change appearance. Visitors will see the homepage background.",
     "Solid background color": "Solid background color",
     "Background video": "Background video",
@@ -5263,7 +5263,7 @@
     "Upload successful": "Upload successful",
     "Upload failed": "Upload failed",
     "File must be 200MB or smaller": "File must be 200MB or smaller",
-    "Only images or short videos are allowed": "Only images or short videos are allowed",
+    "Only images or short videos are allowed": "僅支持圖片或影片",
     "Background preview": "Background preview",
     "Success color (e.g. Welcome back)": "Success color (e.g. Welcome back)",
     "Used for success toasts such as “Welcome back!” after login.": "Used for success toasts such as “Welcome back!” after login.",
@@ -5278,11 +5278,15 @@
     "Site color theme": "Site color theme",
     "Applies site-wide: buttons, links, success toasts (Welcome back), warnings, charts, sidebar accents, and more.": "Applies site-wide: buttons, links, success toasts (Welcome back), warnings, charts, sidebar accents, and more.",
     "Homepage background": "Homepage background",
-    "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "Only affects the public homepage. Solid color, image, or short video (max 200MB).",
+    "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "僅作用於公開主頁。支持純色、圖片或影片（最大 200MB）。",
     "Background type": "Background type",
     "Preview theme + success toast": "Preview theme + success toast",
     "Simple Large-font": "Simple Large-font",
     "Login page background": "Login page background",
-    "Applies to sign-in, sign-up, password reset and other auth pages.": "Applies to sign-in, sign-up, password reset and other auth pages."
+    "Applies to sign-in, sign-up, password reset and other auth pages.": "Applies to sign-in, sign-up, password reset and other auth pages.",
+    "Only images or videos are allowed": "僅支持圖片或影片",
+    "Only affects the public homepage. Solid color, image, or video (max 200MB).": "僅作用於公開主頁。支持純色、圖片或影片（最大 200MB）。",
+    "Invite Top-Up Commission Ratio": "邀請儲值返佣比例",
+    "Root only. 0.15 means 15% of invited users top-ups.": "僅根用戶可設。0.15 表示被邀請用戶儲值額的 15%。"
   }
 }

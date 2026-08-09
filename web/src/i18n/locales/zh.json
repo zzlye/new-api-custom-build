@@ -5254,7 +5254,7 @@
     "Homepage background type": "主页背景类型",
     "None (default)": "无（默认）",
     "Solid color": "纯色",
-    "Short video": "短视频",
+    "Short video": "视频",
     "Only root can change appearance. Visitors will see the homepage background.": "仅根用户可修改外观。访客会看到配置后的主页背景。",
     "Solid background color": "纯色背景",
     "Background video": "背景视频",
@@ -5264,7 +5264,7 @@
     "Upload successful": "上传成功",
     "Upload failed": "上传失败",
     "File must be 200MB or smaller": "文件不能超过 200MB",
-    "Only images or short videos are allowed": "仅支持图片或短视频",
+    "Only images or short videos are allowed": "仅支持图片或视频",
     "Background preview": "背景预览",
     "Success color (e.g. Welcome back)": "成功色（如欢迎回来）",
     "Used for success toasts such as “Welcome back!” after login.": "用于登录成功后的「欢迎回来！」等成功提示颜色。",
@@ -5279,11 +5279,15 @@
     "Site color theme": "整站配色方案",
     "Applies site-wide: buttons, links, success toasts (Welcome back), warnings, charts, sidebar accents, and more.": "全站生效：按钮、链接、成功提示（欢迎回来）、警告、图表、侧边栏等语义色一起变。",
     "Homepage background": "主页背景",
-    "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "仅作用于公开主页。支持纯色、图片或短视频（最大 200MB）。",
+    "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "仅作用于公开主页。支持纯色、图片或视频（最大 200MB）。",
     "Background type": "背景类型",
     "Preview theme + success toast": "预览配色与成功提示",
     "Simple Large-font": "简约大字",
     "Login page background": "登录页背景",
-    "Applies to sign-in, sign-up, password reset and other auth pages.": "作用于登录、注册、重置密码等鉴权页面。"
+    "Applies to sign-in, sign-up, password reset and other auth pages.": "作用于登录、注册、重置密码等鉴权页面。",
+    "Only images or videos are allowed": "仅支持图片或视频",
+    "Only affects the public homepage. Solid color, image, or video (max 200MB).": "仅作用于公开主页。支持纯色、图片或视频（最大 200MB）。",
+    "Invite Top-Up Commission Ratio": "邀请充值返佣比例",
+    "Root only. 0.15 means 15% of invited users top-ups.": "仅根用户可设。0.15 表示被邀请用户充值额的 15%。"
   }
 }

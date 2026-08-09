@@ -128,7 +128,7 @@ function BackgroundFields({
                   { value: 'none', label: t('None (default)') },
                   { value: 'solid', label: t('Solid color') },
                   { value: 'image', label: t('Image') },
-                  { value: 'video', label: t('Short video') },
+                  { value: 'video', label: t('Video') },
                 ]}
                 value={field.value}
                 onValueChange={field.onChange}
@@ -141,7 +141,7 @@ function BackgroundFields({
                     <SelectItem value='none'>{t('None (default)')}</SelectItem>
                     <SelectItem value='solid'>{t('Solid color')}</SelectItem>
                     <SelectItem value='image'>{t('Image')}</SelectItem>
-                    <SelectItem value='video'>{t('Short video')}</SelectItem>
+                    <SelectItem value='video'>{t('Video')}</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -341,7 +341,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     const isVideo = file.type.startsWith('video/')
     const isImage = file.type.startsWith('image/')
     if (!isVideo && !isImage) {
-      toast.error(t('Only images or short videos are allowed'))
+      toast.error(t('Only images or videos are allowed'))
       return
     }
 
@@ -478,7 +478,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
                 </h3>
                 <p className='text-muted-foreground mt-1 text-xs'>
                   {t(
-                    'Only affects the public homepage. Solid color, image, or short video (max 200MB).'
+                    'Only affects the public homepage. Solid color, image, or video (max 200MB).'
                   )}
                 </p>
               </div>
