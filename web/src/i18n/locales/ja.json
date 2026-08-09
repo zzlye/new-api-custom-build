@@ -5252,7 +5252,7 @@
     "Zoom": "ズーム",
     "Appearance": "Appearance",
     "Global background": "グローバル背景",
-    "Applies to public and authentication pages unless a page-specific background is configured.": "公開ページと認証ページに適用されます。ページ固有の背景を設定した場合は、そちらが優先されます。",
+    "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.": "公開ページ、ログインページ、管理コンソールを含むサイト全体に適用されます。ページ固有の背景を設定した場合は、そちらが優先されます。",
     "Glass card appearance": "ガラスカードの外観",
     "Adjust the transparency, blur, border and shadow of glass cards.": "ガラスカードの透明度、ぼかし、境界線、影を調整します。",
     "Glass card opacity": "ガラスカードの透明度",

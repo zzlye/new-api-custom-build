@@ -5252,7 +5252,7 @@
     "Zoom": "Zoom",
     "Appearance": "Appearance",
     "Global background": "Nền toàn cục",
-    "Applies to public and authentication pages unless a page-specific background is configured.": "Áp dụng cho các trang công khai và xác thực; nếu đã cấu hình nền riêng cho trang thì nền riêng sẽ được ưu tiên.",
+    "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.": "Áp dụng cho toàn bộ trang web, bao gồm trang công khai, trang đăng nhập và bảng điều khiển quản trị. Nền riêng của từng trang sẽ được ưu tiên.",
     "Glass card appearance": "Giao diện thẻ kính",
     "Adjust the transparency, blur, border and shadow of glass cards.": "Điều chỉnh độ trong suốt, độ mờ, đường viền và bóng của thẻ kính.",
     "Glass card opacity": "Độ trong suốt thẻ kính",

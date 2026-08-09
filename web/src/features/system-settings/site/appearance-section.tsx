@@ -552,7 +552,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
                 </h3>
                 <p className='text-muted-foreground mt-1 text-xs'>
                   {t(
-                    'Applies to public and authentication pages unless a page-specific background is configured.'
+                    'Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.'
                   )}
                 </p>
               </div>

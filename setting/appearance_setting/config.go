@@ -11,7 +11,7 @@ import (
 // AppearanceSetting 站点外观（仅根用户可改，全站生效）
 // 分类：
 //  1. 整站配色方案 theme_preset
-//  2. 全局背景 global_bg_*（所有公共页面和鉴权页面共用）
+//  2. 全局背景 global_bg_*（公开页面、登录页和后台控制台共用）
 //  3. 主页背景 home_bg_*
 //  4. 登录页背景 login_bg_*（登录/注册等鉴权页共用）
 //  5. 卡片毛玻璃效果 glass_*

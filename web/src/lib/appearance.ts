@@ -29,7 +29,7 @@ export type HomeBgType = BgType
 /**
  * 站点外观（根用户配置，全站生效）
  * - theme_preset：整站配色
- * - global_bg_*：公共页面和鉴权页面共用的全局背景
+ * - global_bg_*：全站默认背景（包含公开页面、登录页和后台控制台）
  * - home_bg_*：主页背景
  * - login_bg_*：登录/注册等鉴权页背景
  * - *_bg_overlay_opacity：图片和视频背景的黑色遮罩透明度（0 到 1）
