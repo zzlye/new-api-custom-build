@@ -2,12 +2,14 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/appearance_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
@@ -240,6 +242,14 @@ func validateAppearanceOption(key string, value string) error {
 		}
 	case "appearance_setting.home_bg_color", "appearance_setting.home_bg_media",
 		"appearance_setting.login_bg_color", "appearance_setting.login_bg_media":
+		return nil
+	case "appearance_setting.home_bg_overlay_opacity", "appearance_setting.login_bg_overlay_opacity":
+		opacity, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || math.IsNaN(opacity) || math.IsInf(opacity, 0) ||
+			opacity < appearance_setting.MinBgOverlayOpacity ||
+			opacity > appearance_setting.MaxBgOverlayOpacity {
+			return fmt.Errorf("背景遮罩透明度必须在 0 到 1 之间")
+		}
 		return nil
 	// 兼容旧字段
 	case "appearance_setting.success_tone":
@@ -667,7 +677,12 @@ func handleConfigUpdate(key, value string) bool {
 	config.UpdateConfigFromMap(cfg, configMap)
 
 	// 特定配置的后处理
-	if configName == "performance_setting" {
+	if configName == "appearance_setting" {
+		// 配置从数据库或运行时更新后立即归一化，确保旧配置和非法浮点值不污染运行时。
+		if appearance, ok := cfg.(*appearance_setting.AppearanceSetting); ok {
+			appearance_setting.Normalize(appearance)
+		}
+	} else if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
 	} else if configName == "billing_setting" {
 		InvalidatePricingCache()
