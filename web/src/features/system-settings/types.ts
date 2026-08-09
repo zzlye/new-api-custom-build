@@ -122,6 +122,9 @@ export type SiteSettings = {
   'appearance_setting.home_bg_type': string
   'appearance_setting.home_bg_color': string
   'appearance_setting.home_bg_media': string
+  'appearance_setting.login_bg_type': string
+  'appearance_setting.login_bg_color': string
+  'appearance_setting.login_bg_media': string
 }
 
 export type AuthSettings = {

@@ -37,21 +37,33 @@ import { createSectionRegistry } from '../utils/section-registry'
 
 import { AppearanceSection } from './appearance-section'
 
+function parseBgType(value: string | undefined, fallback: HomeBgType): HomeBgType {
+  const t = (value || fallback) as HomeBgType
+  return ['none', 'solid', 'image', 'video'].includes(t) ? t : 'none'
+}
+
 function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
-  const type = (settings['appearance_setting.home_bg_type'] ||
-    DEFAULT_APPEARANCE.home_bg_type) as HomeBgType
   const preset =
     settings['appearance_setting.theme_preset'] ||
     DEFAULT_APPEARANCE.theme_preset
   return {
     theme_preset: preset as AppearanceConfig['theme_preset'],
-    home_bg_type: ['none', 'solid', 'image', 'video'].includes(type)
-      ? type
-      : 'none',
+    home_bg_type: parseBgType(
+      settings['appearance_setting.home_bg_type'],
+      DEFAULT_APPEARANCE.home_bg_type
+    ),
     home_bg_color:
       settings['appearance_setting.home_bg_color'] ||
       DEFAULT_APPEARANCE.home_bg_color,
     home_bg_media: settings['appearance_setting.home_bg_media'] || '',
+    login_bg_type: parseBgType(
+      settings['appearance_setting.login_bg_type'],
+      DEFAULT_APPEARANCE.login_bg_type
+    ),
+    login_bg_color:
+      settings['appearance_setting.login_bg_color'] ||
+      DEFAULT_APPEARANCE.login_bg_color,
+    login_bg_media: settings['appearance_setting.login_bg_media'] || '',
   }
 }
 

@@ -231,16 +231,17 @@ func validateAppearanceOption(key string, value string) error {
 		default:
 			return fmt.Errorf("配色方案无效")
 		}
-	case "appearance_setting.home_bg_type":
+	case "appearance_setting.home_bg_type", "appearance_setting.login_bg_type":
 		switch strings.ToLower(strings.TrimSpace(value)) {
 		case "none", "solid", "image", "video":
 			return nil
 		default:
-			return fmt.Errorf("主页背景类型无效，仅支持 none/solid/image/video")
+			return fmt.Errorf("背景类型无效，仅支持 none/solid/image/video")
 		}
-	case "appearance_setting.home_bg_color", "appearance_setting.home_bg_media":
+	case "appearance_setting.home_bg_color", "appearance_setting.home_bg_media",
+		"appearance_setting.login_bg_color", "appearance_setting.login_bg_media":
 		return nil
-	// 兼容旧字段：忽略不再使用的 success_tone
+	// 兼容旧字段
 	case "appearance_setting.success_tone":
 		return nil
 	default:

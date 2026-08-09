@@ -20,7 +20,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { Resolver } from 'react-hook-form'
+import type { Resolver, UseFormReturn } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -45,10 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
-import {
-  type AppearanceConfig,
-  type HomeBgType,
-} from '@/lib/appearance'
+import { type AppearanceConfig, type BgType } from '@/lib/appearance'
 import { THEME_PRESETS, type ThemePreset } from '@/lib/theme-customization'
 import { cn } from '@/lib/utils'
 
@@ -66,11 +63,16 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
+const bgTypeEnum = z.enum(['none', 'solid', 'image', 'video'])
+
 const appearanceSchema = z.object({
   theme_preset: z.string(),
-  home_bg_type: z.enum(['none', 'solid', 'image', 'video']),
+  home_bg_type: bgTypeEnum,
   home_bg_color: z.string(),
   home_bg_media: z.string(),
+  login_bg_type: bgTypeEnum,
+  login_bg_color: z.string(),
+  login_bg_media: z.string(),
 })
 
 type AppearanceFormValues = z.infer<typeof appearanceSchema>
@@ -84,14 +86,215 @@ const OPTION_KEYS: Record<keyof AppearanceFormValues, string> = {
   home_bg_type: 'appearance_setting.home_bg_type',
   home_bg_color: 'appearance_setting.home_bg_color',
   home_bg_media: 'appearance_setting.home_bg_media',
+  login_bg_type: 'appearance_setting.login_bg_type',
+  login_bg_color: 'appearance_setting.login_bg_color',
+  login_bg_media: 'appearance_setting.login_bg_media',
+}
+
+type BgFieldPrefix = 'home' | 'login'
+
+/** 主页 / 登录页共用的背景字段块 */
+function BackgroundFields({
+  form,
+  prefix,
+  uploading,
+  onUpload,
+}: {
+  form: UseFormReturn<AppearanceFormValues>
+  prefix: BgFieldPrefix
+  uploading: boolean
+  onUpload: (file: File, target: BgFieldPrefix) => void
+}) {
+  const { t } = useTranslation()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const typeKey = `${prefix}_bg_type` as const
+  const colorKey = `${prefix}_bg_color` as const
+  const mediaKey = `${prefix}_bg_media` as const
+  const bgType = form.watch(typeKey) as BgType
+  const mediaUrl = form.watch(mediaKey)
+  const solidColor = form.watch(colorKey)
+
+  return (
+    <SettingsFormGrid>
+      <FormField
+        control={form.control}
+        name={typeKey}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>{t('Background type')}</FormLabel>
+            <FormControl>
+              <Select
+                items={[
+                  { value: 'none', label: t('None (default)') },
+                  { value: 'solid', label: t('Solid color') },
+                  { value: 'image', label: t('Image') },
+                  { value: 'video', label: t('Short video') },
+                ]}
+                value={field.value}
+                onValueChange={field.onChange}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value='none'>{t('None (default)')}</SelectItem>
+                    <SelectItem value='solid'>{t('Solid color')}</SelectItem>
+                    <SelectItem value='image'>{t('Image')}</SelectItem>
+                    <SelectItem value='video'>{t('Short video')}</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {bgType === 'solid' ? (
+        <FormField
+          control={form.control}
+          name={colorKey}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Solid background color')}</FormLabel>
+              <div className='flex items-center gap-3'>
+                <input
+                  type='color'
+                  className='border-input h-9 w-12 cursor-pointer rounded border bg-transparent p-1'
+                  value={
+                    /^#[0-9A-Fa-f]{6}$/.test(field.value)
+                      ? field.value
+                      : '#0f172a'
+                  }
+                  onChange={(e) => field.onChange(e.target.value)}
+                />
+                <FormControl>
+                  <Input
+                    placeholder='#0f172a'
+                    {...field}
+                    className='font-mono'
+                  />
+                </FormControl>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      ) : null}
+
+      {bgType === 'image' || bgType === 'video' ? (
+        <SettingsFormGridItem span='full'>
+          <FormField
+            control={form.control}
+            name={mediaKey}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  {bgType === 'video'
+                    ? t('Background video')
+                    : t('Background image')}
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder={
+                      bgType === 'video'
+                        ? '/uploads/appearance/xxx.mp4'
+                        : '/uploads/appearance/xxx.jpg'
+                    }
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t('Paste a URL or upload a local file (max 200MB).')}
+                </FormDescription>
+                <div className='flex flex-wrap items-center gap-2 pt-1'>
+                  <input
+                    ref={fileInputRef}
+                    type='file'
+                    className='hidden'
+                    accept={
+                      bgType === 'video'
+                        ? 'video/mp4,video/webm,video/quicktime'
+                        : 'image/jpeg,image/png,image/webp,image/gif'
+                    }
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) onUpload(file, prefix)
+                    }}
+                  />
+                  <Button
+                    type='button'
+                    variant='outline'
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? (
+                      <Loader2 className='size-4 animate-spin' />
+                    ) : (
+                      <Upload className='size-4' />
+                    )}
+                    <span className='ml-2'>
+                      {uploading ? t('Uploading...') : t('Upload file')}
+                    </span>
+                  </Button>
+                </div>
+                {mediaUrl ? (
+                  <div className='border-border bg-muted/30 mt-3 overflow-hidden rounded-lg border'>
+                    {bgType === 'video' ||
+                    /\.(mp4|webm|mov)(\?|$)/i.test(mediaUrl) ? (
+                      <video
+                        src={mediaUrl}
+                        className='max-h-48 w-full object-cover'
+                        muted
+                        loop
+                        autoPlay
+                        playsInline
+                      />
+                    ) : (
+                      <img
+                        src={mediaUrl}
+                        alt={t('Background preview')}
+                        className='max-h-48 w-full object-cover'
+                      />
+                    )}
+                  </div>
+                ) : null}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </SettingsFormGridItem>
+      ) : null}
+
+      {bgType === 'solid' ? (
+        <SettingsFormGridItem span='full'>
+          <div
+            className='border-border h-24 rounded-lg border'
+            style={{ background: solidColor || '#0f172a' }}
+            aria-hidden
+          />
+        </SettingsFormGridItem>
+      ) : null}
+    </SettingsFormGrid>
+  )
 }
 
 export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const queryClient = useQueryClient()
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+
+  const formDefaults: AppearanceFormValues = {
+    theme_preset: defaultValues.theme_preset,
+    home_bg_type: defaultValues.home_bg_type,
+    home_bg_color: defaultValues.home_bg_color,
+    home_bg_media: defaultValues.home_bg_media,
+    login_bg_type: defaultValues.login_bg_type,
+    login_bg_color: defaultValues.login_bg_color,
+    login_bg_media: defaultValues.login_bg_media,
+  }
 
   const { form, handleSubmit, isDirty, isSubmitting, handleReset } =
     useSettingsForm<AppearanceFormValues>({
@@ -100,12 +303,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
         unknown,
         AppearanceFormValues
       >,
-      defaultValues: {
-        theme_preset: defaultValues.theme_preset,
-        home_bg_type: defaultValues.home_bg_type,
-        home_bg_color: defaultValues.home_bg_color,
-        home_bg_media: defaultValues.home_bg_media,
-      },
+      defaultValues: formDefaults,
       onSubmit: async (_data, changedFields) => {
         for (const [field, value] of Object.entries(changedFields)) {
           const key = OPTION_KEYS[field as keyof AppearanceFormValues]
@@ -119,17 +317,10 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     })
 
   useEffect(() => {
-    form.reset({
-      theme_preset: defaultValues.theme_preset,
-      home_bg_type: defaultValues.home_bg_type,
-      home_bg_color: defaultValues.home_bg_color,
-      home_bg_media: defaultValues.home_bg_media,
-    })
+    form.reset(formDefaults)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随 defaultValues 同步
   }, [defaultValues, form])
 
-  const bgType = form.watch('home_bg_type') as HomeBgType
-  const mediaUrl = form.watch('home_bg_media')
-  const solidColor = form.watch('home_bg_color')
   const themePreset = form.watch('theme_preset') as ThemePreset
 
   const refreshStatus = () => {
@@ -142,7 +333,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     }
   }
 
-  const handleUpload = async (file: File) => {
+  const handleUpload = async (file: File, target: BgFieldPrefix) => {
     if (file.size > MAX_UPLOAD_BYTES) {
       toast.error(t('File must be 200MB or smaller'))
       return
@@ -158,6 +349,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     try {
       const body = new FormData()
       body.append('file', file)
+      body.append('target', target)
       const res = await api.post<{
         success: boolean
         message?: string
@@ -172,9 +364,10 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
       const nextType = (res.data.data.type === 'video' ? 'video' : 'image') as
         | 'image'
         | 'video'
-      form.setValue('home_bg_type', nextType, { shouldDirty: true })
-      form.setValue('home_bg_media', res.data.data.url, { shouldDirty: true })
-      // 上传接口已写入数据库，立即刷新 status 让主页生效
+      form.setValue(`${target}_bg_type`, nextType, { shouldDirty: true })
+      form.setValue(`${target}_bg_media`, res.data.data.url, {
+        shouldDirty: true,
+      })
       refreshStatus()
       toast.success(t('Upload successful'))
     } catch (error: unknown) {
@@ -183,7 +376,6 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
       toast.error(message)
     } finally {
       setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -201,7 +393,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
             />
             <FormDirtyIndicator isDirty={isDirty} />
 
-            {/* ── 1. 整站配色方案 ── */}
+            {/* 1. 整站配色 */}
             <div className='space-y-3'>
               <div>
                 <h3 className='text-sm font-semibold'>
@@ -258,30 +450,27 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
                   </FormItem>
                 )}
               />
-              <div className='flex flex-wrap gap-2'>
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  onClick={() => {
-                    // 临时应用当前选中预设预览
-                    const body = document.body
-                    if (themePreset === 'default') {
-                      body.removeAttribute('data-theme-preset')
-                    } else {
-                      body.setAttribute('data-theme-preset', themePreset)
-                    }
-                    toast.success(t('Welcome back!'))
-                  }}
-                >
-                  {t('Preview theme + success toast')}
-                </Button>
-              </div>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                onClick={() => {
+                  const body = document.body
+                  if (themePreset === 'default') {
+                    body.removeAttribute('data-theme-preset')
+                  } else {
+                    body.setAttribute('data-theme-preset', themePreset)
+                  }
+                  toast.success(t('Welcome back!'))
+                }}
+              >
+                {t('Preview theme + success toast')}
+              </Button>
             </div>
 
             <div className='bg-border my-2 h-px w-full' />
 
-            {/* ── 2. 主页背景 ── */}
+            {/* 2. 主页背景 */}
             <div className='space-y-3'>
               <div>
                 <h3 className='text-sm font-semibold'>
@@ -293,179 +482,34 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
                   )}
                 </p>
               </div>
+              <BackgroundFields
+                form={form}
+                prefix='home'
+                uploading={uploading}
+                onUpload={handleUpload}
+              />
+            </div>
 
-              <SettingsFormGrid>
-                <FormField
-                  control={form.control}
-                  name='home_bg_type'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Background type')}</FormLabel>
-                      <FormControl>
-                        <Select
-                          items={[
-                            { value: 'none', label: t('None (default)') },
-                            { value: 'solid', label: t('Solid color') },
-                            { value: 'image', label: t('Image') },
-                            { value: 'video', label: t('Short video') },
-                          ]}
-                          value={field.value}
-                          onValueChange={field.onChange}
-                        >
-                          <SelectTrigger className='w-full'>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              <SelectItem value='none'>
-                                {t('None (default)')}
-                              </SelectItem>
-                              <SelectItem value='solid'>
-                                {t('Solid color')}
-                              </SelectItem>
-                              <SelectItem value='image'>{t('Image')}</SelectItem>
-                              <SelectItem value='video'>
-                                {t('Short video')}
-                              </SelectItem>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+            <div className='bg-border my-2 h-px w-full' />
+
+            {/* 3. 登录页背景 */}
+            <div className='space-y-3'>
+              <div>
+                <h3 className='text-sm font-semibold'>
+                  {t('Login page background')}
+                </h3>
+                <p className='text-muted-foreground mt-1 text-xs'>
+                  {t(
+                    'Applies to sign-in, sign-up, password reset and other auth pages.'
                   )}
-                />
-
-                {bgType === 'solid' ? (
-                  <FormField
-                    control={form.control}
-                    name='home_bg_color'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Solid background color')}</FormLabel>
-                        <div className='flex items-center gap-3'>
-                          <input
-                            type='color'
-                            className='border-input h-9 w-12 cursor-pointer rounded border bg-transparent p-1'
-                            value={
-                              /^#[0-9A-Fa-f]{6}$/.test(field.value)
-                                ? field.value
-                                : '#0f172a'
-                            }
-                            onChange={(e) => field.onChange(e.target.value)}
-                          />
-                          <FormControl>
-                            <Input
-                              placeholder='#0f172a'
-                              {...field}
-                              className='font-mono'
-                            />
-                          </FormControl>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                ) : null}
-
-                {bgType === 'image' || bgType === 'video' ? (
-                  <SettingsFormGridItem span='full'>
-                    <FormField
-                      control={form.control}
-                      name='home_bg_media'
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {bgType === 'video'
-                              ? t('Background video')
-                              : t('Background image')}
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder={
-                                bgType === 'video'
-                                  ? '/uploads/appearance/xxx.mp4'
-                                  : '/uploads/appearance/xxx.jpg'
-                              }
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            {t(
-                              'Paste a URL or upload a local file (max 200MB).'
-                            )}
-                          </FormDescription>
-                          <div className='flex flex-wrap items-center gap-2 pt-1'>
-                            <input
-                              ref={fileInputRef}
-                              type='file'
-                              className='hidden'
-                              accept={
-                                bgType === 'video'
-                                  ? 'video/mp4,video/webm,video/quicktime'
-                                  : 'image/jpeg,image/png,image/webp,image/gif'
-                              }
-                              onChange={(e) => {
-                                const file = e.target.files?.[0]
-                                if (file) void handleUpload(file)
-                              }}
-                            />
-                            <Button
-                              type='button'
-                              variant='outline'
-                              disabled={uploading}
-                              onClick={() => fileInputRef.current?.click()}
-                            >
-                              {uploading ? (
-                                <Loader2 className='size-4 animate-spin' />
-                              ) : (
-                                <Upload className='size-4' />
-                              )}
-                              <span className='ml-2'>
-                                {uploading
-                                  ? t('Uploading...')
-                                  : t('Upload file')}
-                              </span>
-                            </Button>
-                          </div>
-                          {mediaUrl ? (
-                            <div className='border-border bg-muted/30 mt-3 overflow-hidden rounded-lg border'>
-                              {bgType === 'video' ||
-                              /\.(mp4|webm|mov)(\?|$)/i.test(mediaUrl) ? (
-                                <video
-                                  src={mediaUrl}
-                                  className='max-h-48 w-full object-cover'
-                                  muted
-                                  loop
-                                  autoPlay
-                                  playsInline
-                                />
-                              ) : (
-                                <img
-                                  src={mediaUrl}
-                                  alt={t('Background preview')}
-                                  className='max-h-48 w-full object-cover'
-                                />
-                              )}
-                            </div>
-                          ) : null}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </SettingsFormGridItem>
-                ) : null}
-
-                {bgType === 'solid' ? (
-                  <SettingsFormGridItem span='full'>
-                    <div
-                      className='border-border h-24 rounded-lg border'
-                      style={{ background: solidColor || '#0f172a' }}
-                      aria-hidden
-                    />
-                  </SettingsFormGridItem>
-                ) : null}
-              </SettingsFormGrid>
+                </p>
+              </div>
+              <BackgroundFields
+                form={form}
+                prefix='login'
+                uploading={uploading}
+                onUpload={handleUpload}
+              />
             </div>
           </SettingsForm>
         </Form>

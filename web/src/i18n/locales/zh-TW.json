@@ -5281,6 +5281,8 @@
     "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "Only affects the public homepage. Solid color, image, or short video (max 200MB).",
     "Background type": "Background type",
     "Preview theme + success toast": "Preview theme + success toast",
-    "Simple Large-font": "Simple Large-font"
+    "Simple Large-font": "Simple Large-font",
+    "Login page background": "Login page background",
+    "Applies to sign-in, sign-up, password reset and other auth pages.": "Applies to sign-in, sign-up, password reset and other auth pages."
   }
 }

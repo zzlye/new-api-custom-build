@@ -17,9 +17,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// UploadAppearanceMedia 根用户上传主页背景图片/短视频（最大 200MB）
+// UploadAppearanceMedia 根用户上传外观媒体（主页/登录页背景，最大 200MB）
+// form 字段：file 必填；target 可选 home|login，默认 home
 func UploadAppearanceMedia(c *gin.Context) {
-	// 限制请求体，略大于 200MB 以容纳 multipart 边界
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, appearance_setting.MaxUploadBytes+2<<20)
 
 	file, err := c.FormFile("file")
@@ -38,6 +38,12 @@ func UploadAppearanceMedia(c *gin.Context) {
 	if !appearance_setting.IsAllowedUploadExt(file.Filename) {
 		common.ApiErrorMsg(c, "仅支持图片（jpg/png/webp/gif）或短视频（mp4/webm/mov）")
 		return
+	}
+
+	// 上传目标：主页或登录页
+	target := strings.ToLower(strings.TrimSpace(c.PostForm("target")))
+	if target != "login" {
+		target = "home"
 	}
 
 	if err := os.MkdirAll(appearance_setting.UploadDir, 0o755); err != nil {
@@ -78,21 +84,25 @@ func UploadAppearanceMedia(c *gin.Context) {
 	kind := appearance_setting.MediaKindFromExt(file.Filename)
 	url := appearance_setting.UploadURLPrefix + "/" + name
 
-	// 上传后同步写回外观配置，便于立即预览
 	bgTypeKey := "appearance_setting.home_bg_type"
 	mediaKey := "appearance_setting.home_bg_media"
+	if target == "login" {
+		bgTypeKey = "appearance_setting.login_bg_type"
+		mediaKey = "appearance_setting.login_bg_media"
+	}
+
 	if err := model.UpdateOptionsBulk(map[string]string{
 		bgTypeKey: kind,
 		mediaKey:  url,
 	}); err != nil {
 		common.SysError("update appearance after upload failed: " + err.Error())
-		// 文件已落盘，仍返回 URL，前端可再手动保存
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"url":  url,
-		"type": kind,
-		"size": written,
-		"name": name,
+		"url":    url,
+		"type":   kind,
+		"size":   written,
+		"name":   name,
+		"target": target,
 	})
 }

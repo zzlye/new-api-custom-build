@@ -21,19 +21,32 @@ import {
   type ThemePreset,
 } from '@/lib/theme-customization'
 
-/** 主页背景类型 */
-export type HomeBgType = 'none' | 'solid' | 'image' | 'video'
+/** 页面背景类型 */
+export type BgType = 'none' | 'solid' | 'image' | 'video'
+/** @deprecated 使用 BgType */
+export type HomeBgType = BgType
 
 /**
  * 站点外观（根用户配置，全站生效）
- * - theme_preset：整站配色（主色、成功、警告、侧边栏等一整套）
- * - home_bg_*：仅主页背景
+ * - theme_preset：整站配色
+ * - home_bg_*：主页背景
+ * - login_bg_*：登录/注册等鉴权页背景
  */
 export type AppearanceConfig = {
   theme_preset: ThemePreset
-  home_bg_type: HomeBgType
+  home_bg_type: BgType
   home_bg_color: string
   home_bg_media: string
+  login_bg_type: BgType
+  login_bg_color: string
+  login_bg_media: string
+}
+
+/** 单页背景配置切片 */
+export type PageBackgroundConfig = {
+  type: BgType
+  color: string
+  media: string
 }
 
 export const DEFAULT_APPEARANCE: AppearanceConfig = {
@@ -41,19 +54,61 @@ export const DEFAULT_APPEARANCE: AppearanceConfig = {
   home_bg_type: 'none',
   home_bg_color: '#0f172a',
   home_bg_media: '',
+  login_bg_type: 'none',
+  login_bg_color: '#0f172a',
+  login_bg_media: '',
 }
 
-/** 是否启用了自定义主页背景（需要布局透明才能透出） */
+function normalizeBgType(type: string | undefined): BgType {
+  const t = (type || 'none') as BgType
+  return ['none', 'solid', 'image', 'video'].includes(t) ? t : 'none'
+}
+
+/** 是否启用了自定义背景 */
+export function hasPageBackground(bg: PageBackgroundConfig): boolean {
+  if (bg.type === 'none') return false
+  if (bg.type === 'solid') return true
+  return Boolean(bg.media)
+}
+
 export function hasHomeBackground(config: AppearanceConfig): boolean {
-  if (config.home_bg_type === 'none') return false
-  if (config.home_bg_type === 'solid') return true
-  return Boolean(config.home_bg_media)
+  return hasPageBackground({
+    type: config.home_bg_type,
+    color: config.home_bg_color,
+    media: config.home_bg_media,
+  })
+}
+
+export function hasLoginBackground(config: AppearanceConfig): boolean {
+  return hasPageBackground({
+    type: config.login_bg_type,
+    color: config.login_bg_color,
+    media: config.login_bg_media,
+  })
+}
+
+export function getHomeBackground(
+  config: AppearanceConfig
+): PageBackgroundConfig {
+  return {
+    type: config.home_bg_type,
+    color: config.home_bg_color,
+    media: config.home_bg_media,
+  }
+}
+
+export function getLoginBackground(
+  config: AppearanceConfig
+): PageBackgroundConfig {
+  return {
+    type: config.login_bg_type,
+    color: config.login_bg_color,
+    media: config.login_bg_media,
+  }
 }
 
 /**
- * 应用整站外观到 document：
- * - 配色方案写入 body[data-theme-preset]，驱动 theme-presets.css 中全部语义色
- * - 成功/警告/主色等由预设统一控制，不再单独拆「欢迎回来色」
+ * 应用整站外观到 document（配色方案）
  */
 export function applyAppearanceToDocument(config: AppearanceConfig): void {
   if (typeof document === 'undefined') return
@@ -62,7 +117,6 @@ export function applyAppearanceToDocument(config: AppearanceConfig): void {
 
   const preset = config.theme_preset || 'default'
   if (preset === 'default') {
-    // default 预设使用 theme.css 根变量，去掉 data 属性即可
     body.removeAttribute('data-theme-preset')
   } else {
     body.setAttribute('data-theme-preset', preset)
@@ -73,13 +127,6 @@ export function applyAppearanceToDocument(config: AppearanceConfig): void {
 export function normalizeAppearance(
   raw: Partial<AppearanceConfig> | null | undefined
 ): AppearanceConfig {
-  const type = (raw?.home_bg_type || 'none') as HomeBgType
-  const validType: HomeBgType = ['none', 'solid', 'image', 'video'].includes(
-    type
-  )
-    ? type
-    : 'none'
-
   const presetRaw = (raw?.theme_preset || 'default') as string
   const theme_preset = THEME_PRESET_VALUES.has(presetRaw as ThemePreset)
     ? (presetRaw as ThemePreset)
@@ -87,9 +134,13 @@ export function normalizeAppearance(
 
   return {
     theme_preset,
-    home_bg_type: validType,
+    home_bg_type: normalizeBgType(raw?.home_bg_type),
     home_bg_color:
       raw?.home_bg_color?.trim() || DEFAULT_APPEARANCE.home_bg_color,
     home_bg_media: raw?.home_bg_media?.trim() || '',
+    login_bg_type: normalizeBgType(raw?.login_bg_type),
+    login_bg_color:
+      raw?.login_bg_color?.trim() || DEFAULT_APPEARANCE.login_bg_color,
+    login_bg_media: raw?.login_bg_media?.trim() || '',
   }
 }

@@ -5282,6 +5282,8 @@
     "Only affects the public homepage. Solid color, image, or short video (max 200MB).": "仅作用于公开主页。支持纯色、图片或短视频（最大 200MB）。",
     "Background type": "背景类型",
     "Preview theme + success toast": "预览配色与成功提示",
-    "Simple Large-font": "简约大字"
+    "Simple Large-font": "简约大字",
+    "Login page background": "登录页背景",
+    "Applies to sign-in, sign-up, password reset and other auth pages.": "作用于登录、注册、重置密码等鉴权页面。"
   }
 }

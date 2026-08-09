@@ -16,75 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { PageBackground } from '@/components/page-background'
 import { useAppearance } from '@/hooks/use-appearance'
-import { hasHomeBackground } from '@/lib/appearance'
-import { cn } from '@/lib/utils'
+import { getHomeBackground } from '@/lib/appearance'
 
 type HomeBackgroundProps = {
   className?: string
 }
 
-/**
- * 主页全屏背景层。
- * 父级 PublicLayout 必须 transparentBg，否则 bg-background 会盖住本层。
- */
+/** 主页背景（读取 appearance.home_bg_*） */
 export function HomeBackground({ className }: HomeBackgroundProps) {
   const appearance = useAppearance()
-
-  if (!hasHomeBackground(appearance)) {
-    return null
-  }
-
-  if (appearance.home_bg_type === 'solid') {
-    return (
-      <div
-        aria-hidden
-        className={cn('pointer-events-none absolute inset-0 z-0', className)}
-        style={{ background: appearance.home_bg_color || '#0f172a' }}
-      />
-    )
-  }
-
-  if (appearance.home_bg_type === 'image' && appearance.home_bg_media) {
-    return (
-      <div
-        aria-hidden
-        className={cn(
-          'pointer-events-none absolute inset-0 z-0 overflow-hidden',
-          className
-        )}
-      >
-        <img
-          src={appearance.home_bg_media}
-          alt=''
-          className='size-full object-cover'
-        />
-        <div className='absolute inset-0 bg-black/30' />
-      </div>
-    )
-  }
-
-  if (appearance.home_bg_type === 'video' && appearance.home_bg_media) {
-    return (
-      <div
-        aria-hidden
-        className={cn(
-          'pointer-events-none absolute inset-0 z-0 overflow-hidden',
-          className
-        )}
-      >
-        <video
-          className='size-full object-cover'
-          src={appearance.home_bg_media}
-          autoPlay
-          muted
-          loop
-          playsInline
-        />
-        <div className='absolute inset-0 bg-black/35' />
-      </div>
-    )
-  }
-
-  return null
+  return (
+    <PageBackground
+      config={getHomeBackground(appearance)}
+      className={className}
+      overlayOpacity={0.3}
+    />
+  )
 }

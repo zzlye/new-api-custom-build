@@ -9,31 +9,36 @@ import (
 
 // AppearanceSetting 站点外观（仅根用户可改，全站生效）
 // 分类：
-//  1. 整站配色方案 theme_preset —— 一次切换主色/成功/警告等整套语义色
-//  2. 主页背景 home_bg_* —— 纯色 / 图片 / 短视频
+//  1. 整站配色方案 theme_preset
+//  2. 主页背景 home_bg_*
+//  3. 登录页背景 login_bg_*（登录/注册等鉴权页共用）
 type AppearanceSetting struct {
-	// ThemePreset 整站配色预设，对应前端 THEME_PRESETS
-	ThemePreset string `json:"theme_preset"`
-	// HomeBgType 主页背景：none / solid / image / video
-	HomeBgType string `json:"home_bg_type"`
-	// HomeBgColor 纯色背景
-	HomeBgColor string `json:"home_bg_color"`
-	// HomeBgMedia 图片或短视频 URL
-	HomeBgMedia string `json:"home_bg_media"`
+	ThemePreset  string `json:"theme_preset"`
+	HomeBgType   string `json:"home_bg_type"`
+	HomeBgColor  string `json:"home_bg_color"`
+	HomeBgMedia  string `json:"home_bg_media"`
+	LoginBgType  string `json:"login_bg_type"`
+	LoginBgColor string `json:"login_bg_color"`
+	LoginBgMedia string `json:"login_bg_media"`
 }
 
 const (
-	HomeBgTypeNone  = "none"
-	HomeBgTypeSolid = "solid"
-	HomeBgTypeImage = "image"
-	HomeBgTypeVideo = "video"
+	BgTypeNone  = "none"
+	BgTypeSolid = "solid"
+	BgTypeImage = "image"
+	BgTypeVideo = "video"
+
+	// 兼容旧命名
+	HomeBgTypeNone  = BgTypeNone
+	HomeBgTypeSolid = BgTypeSolid
+	HomeBgTypeImage = BgTypeImage
+	HomeBgTypeVideo = BgTypeVideo
 
 	MaxUploadBytes  int64  = 200 << 20
 	UploadDir       string = "data/appearance"
 	UploadURLPrefix string = "/uploads/appearance"
 )
 
-// 与前端 THEME_PRESETS 对齐
 var allowedThemePresets = map[string]struct{}{
 	"default":        {},
 	"anthropic":      {},
@@ -48,10 +53,13 @@ var allowedThemePresets = map[string]struct{}{
 }
 
 var defaultAppearanceSetting = AppearanceSetting{
-	ThemePreset: "default",
-	HomeBgType:  HomeBgTypeNone,
-	HomeBgColor: "#0f172a",
-	HomeBgMedia: "",
+	ThemePreset:  "default",
+	HomeBgType:   BgTypeNone,
+	HomeBgColor:  "#0f172a",
+	HomeBgMedia:  "",
+	LoginBgType:  BgTypeNone,
+	LoginBgColor: "#0f172a",
+	LoginBgMedia: "",
 }
 
 var appearanceSetting = defaultAppearanceSetting
@@ -65,6 +73,15 @@ func GetAppearanceSetting() *AppearanceSetting {
 	return &appearanceSetting
 }
 
+func normalizeBgType(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case BgTypeSolid, BgTypeImage, BgTypeVideo:
+		return strings.ToLower(strings.TrimSpace(v))
+	default:
+		return BgTypeNone
+	}
+}
+
 // Normalize 校正非法值
 func Normalize(s *AppearanceSetting) {
 	if s == nil {
@@ -76,16 +93,17 @@ func Normalize(s *AppearanceSetting) {
 	}
 	s.ThemePreset = preset
 
-	switch strings.ToLower(strings.TrimSpace(s.HomeBgType)) {
-	case HomeBgTypeSolid, HomeBgTypeImage, HomeBgTypeVideo:
-		s.HomeBgType = strings.ToLower(strings.TrimSpace(s.HomeBgType))
-	default:
-		s.HomeBgType = HomeBgTypeNone
-	}
+	s.HomeBgType = normalizeBgType(s.HomeBgType)
 	if strings.TrimSpace(s.HomeBgColor) == "" {
 		s.HomeBgColor = defaultAppearanceSetting.HomeBgColor
 	}
 	s.HomeBgMedia = strings.TrimSpace(s.HomeBgMedia)
+
+	s.LoginBgType = normalizeBgType(s.LoginBgType)
+	if strings.TrimSpace(s.LoginBgColor) == "" {
+		s.LoginBgColor = defaultAppearanceSetting.LoginBgColor
+	}
+	s.LoginBgMedia = strings.TrimSpace(s.LoginBgMedia)
 }
 
 // PublicMap 供 /api/status 暴露
@@ -93,10 +111,13 @@ func PublicMap() map[string]any {
 	s := *GetAppearanceSetting()
 	Normalize(&s)
 	return map[string]any{
-		"theme_preset":  s.ThemePreset,
-		"home_bg_type":  s.HomeBgType,
-		"home_bg_color": s.HomeBgColor,
-		"home_bg_media": s.HomeBgMedia,
+		"theme_preset":   s.ThemePreset,
+		"home_bg_type":   s.HomeBgType,
+		"home_bg_color":  s.HomeBgColor,
+		"home_bg_media":  s.HomeBgMedia,
+		"login_bg_type":  s.LoginBgType,
+		"login_bg_color": s.LoginBgColor,
+		"login_bg_media": s.LoginBgMedia,
 	}
 }
 
@@ -116,8 +137,8 @@ func MediaKindFromExt(filename string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".mp4", ".webm", ".mov":
-		return HomeBgTypeVideo
+		return BgTypeVideo
 	default:
-		return HomeBgTypeImage
+		return BgTypeImage
 	}
 }
