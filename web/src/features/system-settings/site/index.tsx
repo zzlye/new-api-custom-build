@@ -37,6 +37,10 @@ const defaultSiteSettings: SiteSettings = {
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
   'appearance_setting.theme_preset': 'default',
+  'appearance_setting.global_bg_type': 'none',
+  'appearance_setting.global_bg_color': '#0f172a',
+  'appearance_setting.global_bg_media': '',
+  'appearance_setting.global_bg_overlay_opacity': 0,
   'appearance_setting.home_bg_type': 'none',
   'appearance_setting.home_bg_color': '#0f172a',
   'appearance_setting.home_bg_media': '',
@@ -45,6 +49,10 @@ const defaultSiteSettings: SiteSettings = {
   'appearance_setting.login_bg_color': '#0f172a',
   'appearance_setting.login_bg_media': '',
   'appearance_setting.login_bg_overlay_opacity': 0,
+  'appearance_setting.glass_opacity': 0.72,
+  'appearance_setting.glass_blur': 16,
+  'appearance_setting.glass_border_opacity': 0.35,
+  'appearance_setting.glass_shadow_opacity': 0.35,
 }
 
 export function SiteSettings() {

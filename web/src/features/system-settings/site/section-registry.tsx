@@ -57,6 +57,17 @@ function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
     DEFAULT_APPEARANCE.theme_preset
   return {
     theme_preset: preset as AppearanceConfig['theme_preset'],
+    global_bg_type: parseBgType(
+      settings['appearance_setting.global_bg_type'],
+      DEFAULT_APPEARANCE.global_bg_type
+    ),
+    global_bg_color:
+      settings['appearance_setting.global_bg_color'] ||
+      DEFAULT_APPEARANCE.global_bg_color,
+    global_bg_media: settings['appearance_setting.global_bg_media'] || '',
+    global_bg_overlay_opacity: parseOverlayOpacity(
+      settings['appearance_setting.global_bg_overlay_opacity']
+    ),
     home_bg_type: parseBgType(
       settings['appearance_setting.home_bg_type'],
       DEFAULT_APPEARANCE.home_bg_type
@@ -79,7 +90,43 @@ function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
     login_bg_overlay_opacity: parseOverlayOpacity(
       settings['appearance_setting.login_bg_overlay_opacity']
     ),
+    glass_opacity: parseAppearanceRange(
+      settings['appearance_setting.glass_opacity'],
+      DEFAULT_APPEARANCE.glass_opacity,
+      0,
+      1
+    ),
+    glass_blur: parseAppearanceRange(
+      settings['appearance_setting.glass_blur'],
+      DEFAULT_APPEARANCE.glass_blur,
+      0,
+      40
+    ),
+    glass_border_opacity: parseAppearanceRange(
+      settings['appearance_setting.glass_border_opacity'],
+      DEFAULT_APPEARANCE.glass_border_opacity,
+      0,
+      1
+    ),
+    glass_shadow_opacity: parseAppearanceRange(
+      settings['appearance_setting.glass_shadow_opacity'],
+      DEFAULT_APPEARANCE.glass_shadow_opacity,
+      0,
+      1
+    ),
   }
+}
+
+/** 将设置接口返回的数值限制在指定范围，并兼容字符串格式。 */
+function parseAppearanceRange(
+  value: number | string | undefined,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, parsed))
 }
 
 const SITE_SECTIONS = [

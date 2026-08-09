@@ -68,6 +68,10 @@ const bgTypeEnum = z.enum(['none', 'solid', 'image', 'video'])
 
 const appearanceSchema = z.object({
   theme_preset: z.string(),
+  global_bg_type: bgTypeEnum,
+  global_bg_color: z.string(),
+  global_bg_media: z.string(),
+  global_bg_overlay_opacity: z.number().min(0).max(1),
   home_bg_type: bgTypeEnum,
   home_bg_color: z.string(),
   home_bg_media: z.string(),
@@ -76,6 +80,10 @@ const appearanceSchema = z.object({
   login_bg_color: z.string(),
   login_bg_media: z.string(),
   login_bg_overlay_opacity: z.number().min(0).max(1),
+  glass_opacity: z.number().min(0).max(1),
+  glass_blur: z.number().min(0).max(40),
+  glass_border_opacity: z.number().min(0).max(1),
+  glass_shadow_opacity: z.number().min(0).max(1),
 })
 
 type AppearanceFormValues = z.infer<typeof appearanceSchema>
@@ -86,6 +94,10 @@ type AppearanceSectionProps = {
 
 const OPTION_KEYS: Record<keyof AppearanceFormValues, string> = {
   theme_preset: 'appearance_setting.theme_preset',
+  global_bg_type: 'appearance_setting.global_bg_type',
+  global_bg_color: 'appearance_setting.global_bg_color',
+  global_bg_media: 'appearance_setting.global_bg_media',
+  global_bg_overlay_opacity: 'appearance_setting.global_bg_overlay_opacity',
   home_bg_type: 'appearance_setting.home_bg_type',
   home_bg_color: 'appearance_setting.home_bg_color',
   home_bg_media: 'appearance_setting.home_bg_media',
@@ -94,11 +106,15 @@ const OPTION_KEYS: Record<keyof AppearanceFormValues, string> = {
   login_bg_color: 'appearance_setting.login_bg_color',
   login_bg_media: 'appearance_setting.login_bg_media',
   login_bg_overlay_opacity: 'appearance_setting.login_bg_overlay_opacity',
+  glass_opacity: 'appearance_setting.glass_opacity',
+  glass_blur: 'appearance_setting.glass_blur',
+  glass_border_opacity: 'appearance_setting.glass_border_opacity',
+  glass_shadow_opacity: 'appearance_setting.glass_shadow_opacity',
 }
 
-type BgFieldPrefix = 'home' | 'login'
+type BgFieldPrefix = 'global' | 'home' | 'login'
 
-/** 主页 / 登录页共用的背景字段块 */
+/** 全局、主页和登录页共用的背景字段块。 */
 function BackgroundFields({
   form,
   prefix,
@@ -336,6 +352,10 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
 
   const formDefaults: AppearanceFormValues = {
     theme_preset: defaultValues.theme_preset,
+    global_bg_type: defaultValues.global_bg_type,
+    global_bg_color: defaultValues.global_bg_color,
+    global_bg_media: defaultValues.global_bg_media,
+    global_bg_overlay_opacity: defaultValues.global_bg_overlay_opacity,
     home_bg_type: defaultValues.home_bg_type,
     home_bg_color: defaultValues.home_bg_color,
     home_bg_media: defaultValues.home_bg_media,
@@ -344,6 +364,10 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     login_bg_color: defaultValues.login_bg_color,
     login_bg_media: defaultValues.login_bg_media,
     login_bg_overlay_opacity: defaultValues.login_bg_overlay_opacity,
+    glass_opacity: defaultValues.glass_opacity,
+    glass_blur: defaultValues.glass_blur,
+    glass_border_opacity: defaultValues.glass_border_opacity,
+    glass_shadow_opacity: defaultValues.glass_shadow_opacity,
   }
 
   const { form, handleSubmit, isDirty, isSubmitting, handleReset } =
@@ -520,7 +544,29 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
 
             <div className='bg-border my-2 h-px w-full' />
 
-            {/* 2. 主页背景 */}
+            {/* 2. 全局背景 */}
+            <div className='space-y-3'>
+              <div>
+                <h3 className='text-sm font-semibold'>
+                  {t('Global background')}
+                </h3>
+                <p className='text-muted-foreground mt-1 text-xs'>
+                  {t(
+                    'Applies to public and authentication pages unless a page-specific background is configured.'
+                  )}
+                </p>
+              </div>
+              <BackgroundFields
+                form={form}
+                prefix='global'
+                uploading={uploading}
+                onUpload={handleUpload}
+              />
+            </div>
+
+            <div className='bg-border my-2 h-px w-full' />
+
+            {/* 3. 主页背景 */}
             <div className='space-y-3'>
               <div>
                 <h3 className='text-sm font-semibold'>
@@ -542,7 +588,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
 
             <div className='bg-border my-2 h-px w-full' />
 
-            {/* 3. 登录页背景 */}
+            {/* 4. 登录页背景 */}
             <div className='space-y-3'>
               <div>
                 <h3 className='text-sm font-semibold'>
@@ -561,9 +607,126 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
                 onUpload={handleUpload}
               />
             </div>
+
+            <div className='bg-border my-2 h-px w-full' />
+
+            {/* 5. 卡片毛玻璃参数 */}
+            <GlassSettingsFields form={form} />
           </SettingsForm>
         </Form>
       </SettingsSection>
     </>
+  )
+}
+
+/** 卡片毛玻璃参数滑块，统一处理数值显示和范围更新。 */
+function GlassSettingsFields({
+  form,
+}: {
+  form: UseFormReturn<AppearanceFormValues>
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <div className='space-y-3'>
+      <div>
+        <h3 className='text-sm font-semibold'>{t('Glass card appearance')}</h3>
+        <p className='text-muted-foreground mt-1 text-xs'>
+          {t(
+            'Adjust the transparency, blur, border and shadow of glass cards.'
+          )}
+        </p>
+      </div>
+      <SettingsFormGrid>
+        <GlassSliderField
+          form={form}
+          name='glass_opacity'
+          label={t('Glass card opacity')}
+          max={1}
+          step={0.01}
+          formatValue={(value) => `${Math.round(value * 100)}%`}
+        />
+        <GlassSliderField
+          form={form}
+          name='glass_blur'
+          label={t('Glass card blur')}
+          max={40}
+          step={1}
+          formatValue={(value) => `${Math.round(value)}px`}
+        />
+        <GlassSliderField
+          form={form}
+          name='glass_border_opacity'
+          label={t('Glass card border opacity')}
+          max={1}
+          step={0.01}
+          formatValue={(value) => `${Math.round(value * 100)}%`}
+        />
+        <GlassSliderField
+          form={form}
+          name='glass_shadow_opacity'
+          label={t('Glass card shadow opacity')}
+          max={1}
+          step={0.01}
+          formatValue={(value) => `${Math.round(value * 100)}%`}
+        />
+      </SettingsFormGrid>
+    </div>
+  )
+}
+
+type GlassSliderName =
+  | 'glass_opacity'
+  | 'glass_blur'
+  | 'glass_border_opacity'
+  | 'glass_shadow_opacity'
+
+/** 毛玻璃滑块字段的通用渲染器。 */
+function GlassSliderField({
+  form,
+  name,
+  label,
+  max,
+  step,
+  formatValue,
+}: {
+  form: UseFormReturn<AppearanceFormValues>
+  name: GlassSliderName
+  label: string
+  max: number
+  step: number
+  formatValue: (value: number) => string
+}) {
+  const value = form.watch(name)
+
+  return (
+    <FormField
+      control={form.control}
+      name={name}
+      render={({ field }) => (
+        <FormItem>
+          <div className='flex items-center justify-between gap-3'>
+            <FormLabel>{label}</FormLabel>
+            <span className='text-muted-foreground text-sm tabular-nums'>
+              {formatValue(Number(value))}
+            </span>
+          </div>
+          <FormControl>
+            <Slider
+              aria-label={label}
+              max={max}
+              min={0}
+              step={step}
+              value={[Number(value)]}
+              onValueChange={(nextValue) => {
+                const next = Array.isArray(nextValue) ? nextValue[0] : nextValue
+                field.onChange(Number(next))
+              }}
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   )
 }

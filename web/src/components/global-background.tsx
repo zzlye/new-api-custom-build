@@ -18,23 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { PageBackground } from '@/components/page-background'
 import { useAppearance } from '@/hooks/use-appearance'
-import {
-  getEffectiveHomeBackground,
-  getEffectiveHomeBackgroundOverlayOpacity,
-} from '@/lib/appearance'
+import { getGlobalBackground, hasGlobalBackground } from '@/lib/appearance'
 
-type HomeBackgroundProps = {
+type GlobalBackgroundProps = {
   className?: string
 }
 
-/** 主页背景（读取 appearance.home_bg_*） */
-export function HomeBackground({ className }: HomeBackgroundProps) {
+/** 渲染站点级背景；页面专属背景由页面自身决定是否覆盖它。 */
+export function GlobalBackground(props: GlobalBackgroundProps) {
   const appearance = useAppearance()
+  if (!hasGlobalBackground(appearance)) return null
+
   return (
     <PageBackground
-      config={getEffectiveHomeBackground(appearance)}
-      className={className}
-      overlayOpacity={getEffectiveHomeBackgroundOverlayOpacity(appearance)}
+      config={getGlobalBackground(appearance)}
+      className={props.className}
+      overlayOpacity={appearance.global_bg_overlay_opacity}
     />
   )
 }

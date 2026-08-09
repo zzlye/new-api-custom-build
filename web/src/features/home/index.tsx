@@ -23,7 +23,7 @@ import { PublicLayout } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
 import { useAppearance } from '@/hooks/use-appearance'
-import { hasHomeBackground } from '@/lib/appearance'
+import { hasEffectiveHomeBackground } from '@/lib/appearance'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -39,8 +39,8 @@ export function Home() {
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
   const appearance = useAppearance()
-  // 有自定义主页背景时布局必须透明，否则 bg-background 会盖住视频/图片
-  const transparentBg = hasHomeBackground(appearance)
+  // 有页面或全局背景时布局必须透明，否则不透明底色会盖住背景媒体
+  const transparentBg = hasEffectiveHomeBackground(appearance)
 
   const syncIframePreferences = useCallback(() => {
     try {
@@ -65,7 +65,11 @@ export function Home() {
 
   if (!isLoaded) {
     return (
-      <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+      <PublicLayout
+        showMainContainer={false}
+        transparentBg={transparentBg}
+        disableGlobalBackground
+      >
         <HomeBackground />
         <main className='flex min-h-screen items-center justify-center'>
           <div className='text-muted-foreground'>{t('Loading...')}</div>
@@ -77,7 +81,11 @@ export function Home() {
   if (content) {
     if (isUrl) {
       return (
-        <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+        <PublicLayout
+          showMainContainer={false}
+          transparentBg={transparentBg}
+          disableGlobalBackground
+        >
           <HomeBackground />
           <iframe
             ref={iframeRef}
@@ -95,7 +103,11 @@ export function Home() {
 
     if (contentIsHtml) {
       return (
-        <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+        <PublicLayout
+          showMainContainer={false}
+          transparentBg={transparentBg}
+          disableGlobalBackground
+        >
           <HomeBackground />
           <RichContent
             mode='html'
@@ -108,7 +120,7 @@ export function Home() {
     }
 
     return (
-      <PublicLayout transparentBg={transparentBg}>
+      <PublicLayout transparentBg={transparentBg} disableGlobalBackground>
         <HomeBackground />
         <div className='mx-auto max-w-6xl px-4 py-8'>
           <RichContent
@@ -122,7 +134,11 @@ export function Home() {
   }
 
   return (
-    <PublicLayout showMainContainer={false} transparentBg={transparentBg}>
+    <PublicLayout
+      showMainContainer={false}
+      transparentBg={transparentBg}
+      disableGlobalBackground
+    >
       {/* 默认主页只保留首屏工作台，详细功能通过独立导航进入。 */}
       <Hero isAuthenticated={isAuthenticated} />
     </PublicLayout>

@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { GlobalBackground } from '@/components/global-background'
 import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -35,26 +36,35 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
 
   return (
-    <LayoutProvider>
-      <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
-          <SkipToMain />
-          <AppHeader />
-          <div className='flex min-h-0 w-full flex-1'>
-            <AppSidebar />
-            <SidebarInset
-              className={cn(
-                '@container/content',
-                'h-[calc(100svh-var(--app-header-height,0px))]',
-                'min-h-0 overflow-hidden',
-                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
-              )}
+    <div className='relative min-h-svh overflow-hidden'>
+      <GlobalBackground />
+      <div className='relative z-10 min-h-svh'>
+        <LayoutProvider>
+          <SearchProvider>
+            <SidebarProvider
+              defaultOpen={defaultOpen}
+              className='flex-col bg-transparent'
             >
-              {props.children ?? <AnimatedOutlet />}
-            </SidebarInset>
-          </div>
-        </SidebarProvider>
-      </SearchProvider>
-    </LayoutProvider>
+              <SkipToMain />
+              <AppHeader />
+              <div className='flex min-h-0 w-full flex-1'>
+                <AppSidebar />
+                <SidebarInset
+                  className={cn(
+                    '@container/content',
+                    'h-[calc(100svh-var(--app-header-height,0px))]',
+                    'min-h-0 overflow-hidden',
+                    'bg-transparent',
+                    'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
+                  )}
+                >
+                  {props.children ?? <AnimatedOutlet />}
+                </SidebarInset>
+              </div>
+            </SidebarProvider>
+          </SearchProvider>
+        </LayoutProvider>
+      </div>
+    </div>
   )
 }

@@ -272,6 +272,50 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* Launch UI Animations and Effects - Matching Template Exactly */
 @layer utilities {
+  /* 根用户可调的毛玻璃卡片，变量由外观设置同步到 body。 */
+  .appearance-glass-card {
+    background: color-mix(
+      in oklch,
+      var(--card) calc(var(--appearance-glass-opacity, 0.72) * 100%),
+      transparent
+    );
+    border-color: color-mix(
+      in oklch,
+      var(--border) calc(var(--appearance-glass-border-opacity, 0.35) * 100%),
+      transparent
+    );
+    box-shadow: 0 24px 64px -28px
+      color-mix(
+        in oklch,
+        black calc(var(--appearance-glass-shadow-opacity, 0.35) * 100%),
+        transparent
+      );
+    -webkit-backdrop-filter: blur(var(--appearance-glass-blur, 16px));
+    backdrop-filter: blur(var(--appearance-glass-blur, 16px));
+  }
+
+  .glass-morphism {
+    /* 兼容旧主页组件使用的类名，避免依赖 Tailwind 的自定义 @apply。 */
+    background: color-mix(
+      in oklch,
+      var(--card) calc(var(--appearance-glass-opacity, 0.72) * 100%),
+      transparent
+    );
+    border-color: color-mix(
+      in oklch,
+      var(--border) calc(var(--appearance-glass-border-opacity, 0.35) * 100%),
+      transparent
+    );
+    box-shadow: 0 24px 64px -28px
+      color-mix(
+        in oklch,
+        black calc(var(--appearance-glass-shadow-opacity, 0.35) * 100%),
+        transparent
+      );
+    -webkit-backdrop-filter: blur(var(--appearance-glass-blur, 16px));
+    backdrop-filter: blur(var(--appearance-glass-blur, 16px));
+  }
+
   /* Gradient utilities */
   .bg-radial {
     background-image: radial-gradient(var(--tw-gradient-stops));

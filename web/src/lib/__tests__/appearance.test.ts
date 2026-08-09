@@ -41,4 +41,49 @@ describe('页面背景遮罩透明度', () => {
     assert.equal(appearance.home_bg_overlay_opacity, 0)
     assert.equal(appearance.login_bg_overlay_opacity, 0)
   })
+
+  test('全局背景在页面专属背景关闭时作为回退背景', async () => {
+    const {
+      getEffectiveHomeBackground,
+      getEffectiveLoginBackground,
+      hasEffectiveHomeBackground,
+    } = await import('../appearance')
+    const appearance = normalizeAppearance({
+      global_bg_type: 'image',
+      global_bg_media: '/uploads/global.jpg',
+      global_bg_overlay_opacity: 0.2,
+      glass_blur: 99,
+      glass_opacity: -0.1,
+    } as unknown as Partial<AppearanceConfig>)
+
+    assert.deepEqual(getEffectiveHomeBackground(appearance), {
+      type: 'image',
+      color: '#0f172a',
+      media: '/uploads/global.jpg',
+    })
+    assert.deepEqual(getEffectiveLoginBackground(appearance), {
+      type: 'image',
+      color: '#0f172a',
+      media: '/uploads/global.jpg',
+    })
+    assert.equal(hasEffectiveHomeBackground(appearance), true)
+    assert.equal(appearance.glass_blur, 40)
+    assert.equal(appearance.glass_opacity, 0)
+  })
+
+  test('页面专属背景启用时覆盖全局背景', async () => {
+    const { getEffectiveHomeBackground } = await import('../appearance')
+    const appearance = normalizeAppearance({
+      global_bg_type: 'solid',
+      global_bg_color: '#111111',
+      home_bg_type: 'solid',
+      home_bg_color: '#222222',
+    } as unknown as Partial<AppearanceConfig>)
+
+    assert.deepEqual(getEffectiveHomeBackground(appearance), {
+      type: 'solid',
+      color: '#222222',
+      media: '',
+    })
+  })
 })

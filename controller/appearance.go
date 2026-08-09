@@ -18,7 +18,7 @@ import (
 )
 
 // UploadAppearanceMedia 根用户上传外观媒体（全局/主页/登录页背景，最大 200MB）
-// form 字段：file 必填；target 可选 global|home|login，默认 home
+// 表单字段：file 必填；target 可选 global|home|login，默认 home
 func UploadAppearanceMedia(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, appearance_setting.MaxUploadBytes+2<<20)
 
@@ -40,7 +40,7 @@ func UploadAppearanceMedia(c *gin.Context) {
 		return
 	}
 
-	// 上传目标：主页或登录页
+	// 上传目标：全局、主页或登录页
 	target := strings.ToLower(strings.TrimSpace(c.PostForm("target")))
 	if target != "global" && target != "login" {
 		target = "home"

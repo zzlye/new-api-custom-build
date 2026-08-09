@@ -111,7 +111,9 @@ mock.module('@/hooks/use-appearance', () => ({
   }),
 }))
 mock.module('@/lib/appearance', () => ({
-  getHomeBackground: () => ({ type: 'none', color: '', media: '' }),
+  // 测试主页无背景时的回退分支，保持与真实背景辅助函数接口一致。
+  getEffectiveHomeBackground: () => ({ type: 'none', color: '', media: '' }),
+  getEffectiveHomeBackgroundOverlayOpacity: () => 0,
 }))
 mock.module('@/components/page-background', () => ({
   PageBackground: () =>

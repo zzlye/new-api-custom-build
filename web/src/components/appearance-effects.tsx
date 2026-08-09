@@ -23,7 +23,7 @@ import { applyAppearanceToDocument } from '@/lib/appearance'
 
 /**
  * 将根用户配置的整站外观应用到 document。
- * 配色通过 data-theme-preset 驱动，成功/警告/主色等一整套语义色一起变。
+ * 配色通过 data-theme-preset 驱动，毛玻璃参数通过 CSS 变量驱动。
  */
 export function AppearanceEffects() {
   const appearance = useAppearance()

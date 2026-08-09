@@ -23,7 +23,11 @@ import { PageBackground } from '@/components/page-background'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useSystemConfig } from '@/hooks/use-system-config'
-import { getLoginBackground, hasLoginBackground } from '@/lib/appearance'
+import {
+  getEffectiveLoginBackground,
+  getEffectiveLoginBackgroundOverlayOpacity,
+  hasEffectiveLoginBackground,
+} from '@/lib/appearance'
 import { cn } from '@/lib/utils'
 
 type AuthLayoutProps = {
@@ -34,8 +38,8 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()
   const appearance = useAppearance()
-  const loginBg = getLoginBackground(appearance)
-  const withBg = hasLoginBackground(appearance)
+  const loginBg = getEffectiveLoginBackground(appearance)
+  const withBg = hasEffectiveLoginBackground(appearance)
 
   return (
     <div
@@ -47,7 +51,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       {/* 登录/注册页自定义背景 */}
       <PageBackground
         config={loginBg}
-        overlayOpacity={appearance.login_bg_overlay_opacity}
+        overlayOpacity={getEffectiveLoginBackgroundOverlayOpacity(appearance)}
       />
 
       <Link
@@ -78,13 +82,13 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           </h1>
         )}
       </Link>
-      <div className='relative z-10 container flex items-center pt-16 sm:pt-0'>
-        <div className='mx-auto flex w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8'>
+      <div className='relative z-10 container min-h-0 overflow-y-auto pt-16 sm:pt-0'>
+        <div className='mx-auto flex min-h-full w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8'>
           {/* 有背景时给表单加半透明卡片，保证可读性 */}
           <div
+            data-slot='auth-surface'
             className={cn(
-              withBg &&
-                'bg-background/90 border-border/50 rounded-2xl border p-6 shadow-lg backdrop-blur-md sm:p-8'
+              withBg && 'appearance-glass-card rounded-2xl border p-6 sm:p-8'
             )}
           >
             {children}
