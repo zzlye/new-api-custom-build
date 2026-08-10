@@ -912,6 +912,7 @@
     "Comma-separated model names (leave empty to keep current)": "Noms de modèles séparés par des virgules (laissez vide pour conserver l'actuel)",
     "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo": "Noms de modèles séparés par des virgules, p. ex., gpt-4,gpt-3.5-turbo",
     "Command": "Commande",
+    "Commission Rate": "Taux de commission",
     "Common": "Commun",
     "Common Keys": "Clés courantes",
     "Common Logs": "Journaux courants",
@@ -5299,6 +5300,21 @@
     "Only images or videos are allowed": "Only images or videos are allowed",
     "Only affects the public homepage. Solid color, image, or video (max 200MB).": "Only affects the public homepage. Solid color, image, or video (max 200MB).",
     "Invite Top-Up Commission Ratio": "Invite Top-Up Commission Ratio",
-    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups."
+    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups.",
+    "Add rate limit": "Ajouter une limite de débit",
+    "Configure rate limiting rules for a group or model.": "Configurer les règles de limitation de débit pour un groupe ou un modèle.",
+    "Edit rate limit": "Modifier la limite de débit",
+    "Must be an integer": "La valeur doit être un entier",
+    "No target-specific rate limits configured. Click \"Add\" to get started.": "Aucune limite de débit par cible n'est configurée. Cliquez sur « Ajouter » pour commencer.",
+    "No targets match your search": "Aucune cible ne correspond à votre recherche",
+    "Search targets...": "Rechercher des cibles...",
+    "Select the target type to edit its JSON configuration.": "Sélectionnez le type de cible pour modifier la configuration JSON correspondante.",
+    "Target": "Cible",
+    "Target config overrides global limits and shares the same period.": "La configuration de la cible remplace les limites globales et utilise la même période.",
+    "Target name is required": "Le nom de la cible est requis",
+    "Target-specific rate limits": "Limites de débit par cible",
+    "This target already has a rate limit.": "Cette cible possède déjà une limite de débit.",
+    "Unique identifier for this target.": "Identifiant unique de cette cible.",
+    "e.g., gpt-4o, claude-sonnet": "par exemple, gpt-4o, claude-sonnet"
   }
 }

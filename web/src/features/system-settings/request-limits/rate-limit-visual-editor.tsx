@@ -30,15 +30,54 @@ import { isObjectRecord } from '../utils/json-validators'
 import { RateLimitDialog, type RateLimitEntryData } from './rate-limit-dialog'
 
 type RateLimitVisualEditorProps = {
-  value: string
-  onChange: (value: string) => void
+  groupValue: string
+  modelValue: string
+  onGroupChange: (value: string) => void
+  onModelChange: (value: string) => void
 }
 
 type RateLimitEntry = RateLimitEntryData
 
+function parseRateLimitMap(value: string): Record<string, unknown> {
+  return safeJsonParseWithValidation<Record<string, unknown>>(value, {
+    fallback: {},
+    validator: isObjectRecord,
+    validatorMessage: 'Rate limits must be a JSON object',
+    context: 'rate limits',
+  })
+}
+
+function parseRateLimitEntries(
+  value: string,
+  targetType: RateLimitEntry['targetType']
+): RateLimitEntry[] {
+  if (!value || value.trim() === '') return []
+
+  return Object.entries(parseRateLimitMap(value))
+    .map(([target, limits]) => {
+      if (
+        Array.isArray(limits) &&
+        limits.length === 2 &&
+        typeof limits[0] === 'number' &&
+        typeof limits[1] === 'number'
+      ) {
+        return {
+          targetType,
+          target,
+          maxRequests: limits[0],
+          maxSuccess: limits[1],
+        }
+      }
+      return null
+    })
+    .filter((item): item is RateLimitEntry => item !== null)
+}
+
 export function RateLimitVisualEditor({
-  value,
-  onChange,
+  groupValue,
+  modelValue,
+  onGroupChange,
+  onModelChange,
 }: RateLimitVisualEditorProps) {
   const { t } = useTranslation()
   const [searchText, setSearchText] = useState('')
@@ -46,68 +85,74 @@ export function RateLimitVisualEditor({
   const [editData, setEditData] = useState<RateLimitEntry | null>(null)
 
   const rateLimits = useMemo(() => {
-    if (!value || value.trim() === '') return []
-
-    const parsed = safeJsonParseWithValidation<Record<string, unknown>>(value, {
-      fallback: {},
-      validator: isObjectRecord,
-      validatorMessage: 'Rate limits must be a JSON object',
-      context: 'rate limits',
-    })
-
-    return Object.entries(parsed)
-      .map(([groupName, limits]) => {
-        if (
-          Array.isArray(limits) &&
-          limits.length === 2 &&
-          typeof limits[0] === 'number' &&
-          typeof limits[1] === 'number'
-        ) {
-          return {
-            groupName,
-            maxRequests: limits[0],
-            maxSuccess: limits[1],
-          }
-        }
-        return null
-      })
-      .filter((item): item is RateLimitEntry => item !== null)
-  }, [value])
+    // 两类后端配置在视觉模式下合并展示，保存时仍分别写回原字段。
+    return [
+      ...parseRateLimitEntries(groupValue, 'group'),
+      ...parseRateLimitEntries(modelValue, 'model'),
+    ]
+  }, [groupValue, modelValue])
 
   const filteredRateLimits = useMemo(() => {
     if (!searchText) return rateLimits
     const lowerSearch = searchText.toLowerCase()
     return rateLimits.filter((limit) =>
-      limit.groupName.toLowerCase().includes(lowerSearch)
+      limit.target.toLowerCase().includes(lowerSearch)
     )
   }, [rateLimits, searchText])
 
-  const handleSave = (data: RateLimitEntryData) => {
-    const parsed = safeJsonParseWithValidation<Record<string, unknown>>(value, {
-      fallback: {},
-      validator: isObjectRecord,
-      silent: true,
-    })
-
-    if (editData && editData.groupName !== data.groupName) {
-      delete parsed[editData.groupName]
+  const handleSave = (data: RateLimitEntryData): string | null => {
+    const normalizedData = { ...data, target: data.target.trim() }
+    const duplicate = rateLimits.some(
+      (limit) =>
+        limit.targetType === normalizedData.targetType &&
+        limit.target === normalizedData.target &&
+        (!editData ||
+          limit.targetType !== editData.targetType ||
+          limit.target !== editData.target)
+    )
+    if (duplicate) {
+      return t('This target already has a rate limit.')
     }
 
-    parsed[data.groupName] = [data.maxRequests, data.maxSuccess]
+    const maps = {
+      group: parseRateLimitMap(groupValue),
+      model: parseRateLimitMap(modelValue),
+    }
+    const changedTypes = new Set<RateLimitEntry['targetType']>()
 
-    onChange(JSON.stringify(parsed, null, 2))
+    if (editData) {
+      delete maps[editData.targetType][editData.target]
+      changedTypes.add(editData.targetType)
+    }
+
+    maps[normalizedData.targetType][normalizedData.target] = [
+      normalizedData.maxRequests,
+      normalizedData.maxSuccess,
+    ]
+    changedTypes.add(normalizedData.targetType)
+
+    if (changedTypes.has('group')) {
+      onGroupChange(JSON.stringify(maps.group, null, 2))
+    }
+    if (changedTypes.has('model')) {
+      onModelChange(JSON.stringify(maps.model, null, 2))
+    }
+
+    return null
   }
 
-  const handleDelete = (groupName: string) => {
-    const parsed = safeJsonParseWithValidation<Record<string, unknown>>(value, {
-      fallback: {},
-      validator: isObjectRecord,
-      silent: true,
-    })
+  const handleDelete = (limit: RateLimitEntry) => {
+    const value = limit.targetType === 'group' ? groupValue : modelValue
+    const parsed = parseRateLimitMap(value)
 
-    delete parsed[groupName]
+    delete parsed[limit.target]
 
-    onChange(JSON.stringify(parsed, null, 2))
+    const nextValue = JSON.stringify(parsed, null, 2)
+    if (limit.targetType === 'group') {
+      onGroupChange(nextValue)
+    } else {
+      onModelChange(nextValue)
+    }
   }
 
   const handleEdit = (limit: RateLimitEntry) => {
@@ -121,39 +166,54 @@ export function RateLimitVisualEditor({
   }
 
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center gap-4'>
-        <div className='relative flex-1'>
+    <div className='min-w-0 space-y-4'>
+      <div className='flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center'>
+        <div className='relative min-w-0 flex-1'>
           <Search className='text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4' />
           <Input
-            placeholder={t('Search group names...')}
+            placeholder={t('Search targets...')}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             className='pl-9'
           />
         </div>
-        <Button onClick={handleAdd}>
+        <Button
+          type='button'
+          className='self-end sm:self-auto'
+          onClick={handleAdd}
+        >
           <Plus className='mr-2 h-4 w-4' />
-          {t('Add group')}
+          {t('Add')}
         </Button>
       </div>
 
       <StaticDataTable
+        className='max-w-full min-w-0'
+        tableClassName='min-w-[680px]'
         data={filteredRateLimits}
-        getRowKey={(limit) => limit.groupName}
+        getRowKey={(limit) => `${limit.targetType}:${limit.target}`}
         emptyContent={
           searchText
-            ? t('No groups match your search')
+            ? t('No targets match your search')
             : t(
-                'No group-based rate limits configured. Click "Add group" to get started.'
+                'No target-specific rate limits configured. Click "Add" to get started.'
               )
         }
         columns={[
           {
-            id: 'group',
-            header: t('Group Name'),
+            id: 'type',
+            header: t('Type'),
+            cell: (limit) => (
+              <span className='bg-muted rounded-md px-2 py-1 text-xs font-medium'>
+                {t(limit.targetType === 'group' ? 'Group' : 'Model')}
+              </span>
+            ),
+          },
+          {
+            id: 'target',
+            header: t('Target'),
             cellClassName: 'font-medium',
-            cell: (limit) => limit.groupName,
+            cell: (limit) => limit.target,
           },
           {
             id: 'max-requests',
@@ -190,7 +250,7 @@ export function RateLimitVisualEditor({
                 deleteLabel={t('Delete')}
                 menuLabel={t('Open menu')}
                 onEdit={() => handleEdit(limit)}
-                onDelete={() => handleDelete(limit.groupName)}
+                onDelete={() => handleDelete(limit)}
               />
             ),
           },

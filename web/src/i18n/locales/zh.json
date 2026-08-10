@@ -912,6 +912,7 @@
     "Comma-separated model names (leave empty to keep current)": "逗号分隔的模型名称（留空以保持当前设置）",
     "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo": "逗号分隔的模型名称，例如 gpt-4,gpt-3.5-turbo",
     "Command": "命令",
+    "Commission Rate": "返佣比例",
     "Common": "通用",
     "Common Keys": "常用 Key",
     "Common Logs": "通用日志",
@@ -5299,6 +5300,21 @@
     "Only images or videos are allowed": "仅支持图片或视频",
     "Only affects the public homepage. Solid color, image, or video (max 200MB).": "仅作用于公开主页。支持纯色、图片或视频（最大 200MB）。",
     "Invite Top-Up Commission Ratio": "邀请充值返佣比例",
-    "Root only. 0.15 means 15% of invited users top-ups.": "仅根用户可设。0.15 表示被邀请用户充值额的 15%。"
+    "Root only. 0.15 means 15% of invited users top-ups.": "仅根用户可设。0.15 表示被邀请用户充值额的 15%。",
+    "Add rate limit": "添加速率限制",
+    "Configure rate limiting rules for a group or model.": "为指定分组或模型配置速率限制规则。",
+    "Edit rate limit": "编辑速率限制",
+    "Must be an integer": "必须是整数",
+    "No target-specific rate limits configured. Click \"Add\" to get started.": "尚未配置按目标划分的速率限制。点击“添加”开始配置。",
+    "No targets match your search": "没有符合搜索条件的目标",
+    "Search targets...": "搜索目标...",
+    "Select the target type to edit its JSON configuration.": "选择目标类型以编辑对应的 JSON 配置。",
+    "Target": "目标",
+    "Target config overrides global limits and shares the same period.": "目标配置会覆盖全局限制，并使用相同的时间周期。",
+    "Target name is required": "目标名称不能为空",
+    "Target-specific rate limits": "按目标设置速率限制",
+    "This target already has a rate limit.": "该目标已配置速率限制。",
+    "Unique identifier for this target.": "该目标的唯一标识。",
+    "e.g., gpt-4o, claude-sonnet": "例如：gpt-4o、claude-sonnet"
   }
 }

@@ -912,6 +912,7 @@
     "Comma-separated model names (leave empty to keep current)": "Comma-separated model names (leave empty to keep current)",
     "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo": "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo",
     "Command": "Command",
+    "Commission Rate": "Commission Rate",
     "Common": "Common",
     "Common Keys": "Common Keys",
     "Common Logs": "Common Logs",
@@ -5299,6 +5300,21 @@
     "Only images or videos are allowed": "Only images or videos are allowed",
     "Only affects the public homepage. Solid color, image, or video (max 200MB).": "Only affects the public homepage. Solid color, image, or video (max 200MB).",
     "Invite Top-Up Commission Ratio": "Invite Top-Up Commission Ratio",
-    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups."
+    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups.",
+    "Add rate limit": "Add rate limit",
+    "Configure rate limiting rules for a group or model.": "Configure rate limiting rules for a group or model.",
+    "Edit rate limit": "Edit rate limit",
+    "Must be an integer": "Must be an integer",
+    "No target-specific rate limits configured. Click \"Add\" to get started.": "No target-specific rate limits configured. Click \"Add\" to get started.",
+    "No targets match your search": "No targets match your search",
+    "Search targets...": "Search targets...",
+    "Select the target type to edit its JSON configuration.": "Select the target type to edit its JSON configuration.",
+    "Target": "Target",
+    "Target config overrides global limits and shares the same period.": "Target config overrides global limits and shares the same period.",
+    "Target name is required": "Target name is required",
+    "Target-specific rate limits": "Target-specific rate limits",
+    "This target already has a rate limit.": "This target already has a rate limit.",
+    "Unique identifier for this target.": "Unique identifier for this target.",
+    "e.g., gpt-4o, claude-sonnet": "e.g., gpt-4o, claude-sonnet"
   }
 }

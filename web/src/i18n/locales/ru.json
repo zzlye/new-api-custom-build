@@ -912,6 +912,7 @@
     "Comma-separated model names (leave empty to keep current)": "Названия моделей, разделенные запятыми (оставьте пустым, чтобы сохранить текущие)",
     "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo": "Имена моделей, разделённые запятыми, например, gpt-4,gpt-3.5-turbo",
     "Command": "Команда",
+    "Commission Rate": "Ставка комиссии",
     "Common": "Общие",
     "Common Keys": "Часто используемые ключи",
     "Common Logs": "Общие журналы",
@@ -5299,6 +5300,21 @@
     "Only images or videos are allowed": "Only images or videos are allowed",
     "Only affects the public homepage. Solid color, image, or video (max 200MB).": "Only affects the public homepage. Solid color, image, or video (max 200MB).",
     "Invite Top-Up Commission Ratio": "Invite Top-Up Commission Ratio",
-    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups."
+    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups.",
+    "Add rate limit": "Добавить ограничение частоты",
+    "Configure rate limiting rules for a group or model.": "Настроить правила ограничения частоты для группы или модели.",
+    "Edit rate limit": "Изменить ограничение частоты",
+    "Must be an integer": "Требуется целое число",
+    "No target-specific rate limits configured. Click \"Add\" to get started.": "Ограничения частоты по целям не настроены. Нажмите «Добавить», чтобы начать.",
+    "No targets match your search": "Цели по запросу не найдены",
+    "Search targets...": "Поиск целей...",
+    "Select the target type to edit its JSON configuration.": "Выберите тип цели, чтобы изменить соответствующую конфигурацию JSON.",
+    "Target": "Цель",
+    "Target config overrides global limits and shares the same period.": "Настройка цели переопределяет глобальные ограничения и использует тот же период.",
+    "Target name is required": "Укажите имя цели",
+    "Target-specific rate limits": "Ограничения частоты по целям",
+    "This target already has a rate limit.": "Для этой цели уже задано ограничение частоты.",
+    "Unique identifier for this target.": "Уникальный идентификатор этой цели.",
+    "e.g., gpt-4o, claude-sonnet": "Например: gpt-4o, claude-sonnet"
   }
 }

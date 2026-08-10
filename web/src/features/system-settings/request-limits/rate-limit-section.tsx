@@ -35,6 +35,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 
 import {
@@ -45,6 +46,10 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  RateLimitTargetTypeToggle,
+  type RateLimitTargetType,
+} from './rate-limit-dialog'
 import { RateLimitVisualEditor } from './rate-limit-visual-editor'
 
 const isValidJSON = (value: string | undefined) => {
@@ -54,9 +59,11 @@ const isValidJSON = (value: string | undefined) => {
     if (typeof parsed !== 'object' || Array.isArray(parsed)) {
       return false
     }
-    for (const [, val] of Object.entries(parsed)) {
+    for (const [target, val] of Object.entries(parsed)) {
+      if (!target.trim()) return false
       if (!Array.isArray(val) || val.length !== 2) return false
       if (typeof val[0] !== 'number' || typeof val[1] !== 'number') return false
+      if (!Number.isInteger(val[0]) || !Number.isInteger(val[1])) return false
       if (val[0] < 0 || val[1] < 1) return false
       if (val[0] > 2147483647 || val[1] > 2147483647) return false
     }
@@ -78,6 +85,12 @@ const createRateLimitSchema = (t: (key: string) => string) =>
       .refine(isValidJSON, {
         message: t('Invalid JSON format or values out of allowed range'),
       }),
+    ModelRequestRateLimitModel: z
+      .string()
+      .optional()
+      .refine(isValidJSON, {
+        message: t('Invalid JSON format or values out of allowed range'),
+      }),
   })
 
 type RateLimitFormValues = z.infer<ReturnType<typeof createRateLimitSchema>>
@@ -90,6 +103,8 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [useVisualEditor, setUseVisualEditor] = useState(true)
+  const [jsonTargetType, setJsonTargetType] =
+    useState<RateLimitTargetType>('group')
 
   const rateLimitSchema = createRateLimitSchema(t)
 
@@ -161,7 +176,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         step={1}
                         {...field}
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 0)
+                          field.onChange(Number.parseInt(e.target.value) || 0)
                         }
                       />
                       <span className='text-muted-foreground text-sm'>
@@ -192,7 +207,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         step={1}
                         {...field}
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 0)
+                          field.onChange(Number.parseInt(e.target.value) || 0)
                         }
                       />
                       <span className='text-muted-foreground text-sm'>
@@ -223,7 +238,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                         step={1}
                         {...field}
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value) || 1)
+                          field.onChange(Number.parseInt(e.target.value) || 1)
                         }
                       />
                       <span className='text-muted-foreground text-sm'>
@@ -240,83 +255,136 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
             />
           </div>
 
-          <FormField
-            control={form.control}
-            name='ModelRequestRateLimitGroup'
-            render={({ field }) => (
-              <FormItem>
-                <div className='flex items-center justify-between'>
-                  <FormLabel>{t('Group-based rate limits')}</FormLabel>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    onClick={() => setUseVisualEditor(!useVisualEditor)}
-                  >
-                    {useVisualEditor ? (
-                      <>
-                        <Code2 className='mr-2 h-4 w-4' />
-                        {t('JSON Mode')}
-                      </>
-                    ) : (
-                      <>
-                        <Palette className='mr-2 h-4 w-4' />
-                        {t('Visual Mode')}
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <FormControl>
-                  {useVisualEditor ? (
-                    <RateLimitVisualEditor
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                    />
-                  ) : (
-                    <JsonCodeEditor
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      textareaRef={field.ref}
-                      placeholder={`{\n  "default": [200, 100],\n  "vip": [0, 1000]\n}`}
-                      aria-invalid={Boolean(
-                        form.formState.errors.ModelRequestRateLimitGroup
-                      )}
-                    />
-                  )}
-                </FormControl>
-                {!useVisualEditor && (
-                  <FormDescription>
-                    <div className='space-y-1 text-xs'>
-                      <p className='font-semibold'>{t('Format:')}</p>
-                      <ul className='list-inside list-disc space-y-0.5 pl-2'>
-                        <li>
-                          {t('JSON object:')}{' '}
-                          {`{"groupName": [maxRequests, maxSuccess]}`}
-                        </li>
-                        <li>
-                          {t('Example:')}{' '}
-                          {`{"default": [200, 100], "vip": [0, 1000]}`}
-                        </li>
-                        <li>
-                          {t(
-                            'maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647'
-                          )}
-                        </li>
-                        <li>
-                          {t(
-                            'Group config overrides global limits, shares the same period'
-                          )}
-                        </li>
-                      </ul>
-                    </div>
-                  </FormDescription>
+          <div className='min-w-0 space-y-4'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <Label>{t('Target-specific rate limits')}</Label>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                onClick={() => setUseVisualEditor(!useVisualEditor)}
+              >
+                {useVisualEditor ? (
+                  <>
+                    <Code2 className='mr-2 h-4 w-4' />
+                    {t('JSON Mode')}
+                  </>
+                ) : (
+                  <>
+                    <Palette className='mr-2 h-4 w-4' />
+                    {t('Visual Mode')}
+                  </>
                 )}
-                <FormMessage />
-              </FormItem>
+              </Button>
+            </div>
+
+            {useVisualEditor ? (
+              <>
+                <RateLimitVisualEditor
+                  groupValue={form.watch('ModelRequestRateLimitGroup') || ''}
+                  modelValue={form.watch('ModelRequestRateLimitModel') || ''}
+                  onGroupChange={(value) =>
+                    form.setValue('ModelRequestRateLimitGroup', value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                  onModelChange={(value) =>
+                    form.setValue('ModelRequestRateLimitModel', value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
+                {form.formState.errors.ModelRequestRateLimitGroup?.message && (
+                  <p className='text-destructive text-sm'>
+                    {t('Group')}:{' '}
+                    {String(
+                      form.formState.errors.ModelRequestRateLimitGroup.message
+                    )}
+                  </p>
+                )}
+                {form.formState.errors.ModelRequestRateLimitModel?.message && (
+                  <p className='text-destructive text-sm'>
+                    {t('Model')}:{' '}
+                    {String(
+                      form.formState.errors.ModelRequestRateLimitModel.message
+                    )}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className='space-y-4'>
+                <RateLimitTargetTypeToggle
+                  value={jsonTargetType}
+                  onChange={setJsonTargetType}
+                  ariaLabel={t('Type')}
+                />
+                <p className='text-muted-foreground text-sm'>
+                  {t('Select the target type to edit its JSON configuration.')}
+                </p>
+                <FormField
+                  control={form.control}
+                  name={
+                    jsonTargetType === 'group'
+                      ? 'ModelRequestRateLimitGroup'
+                      : 'ModelRequestRateLimitModel'
+                  }
+                  render={({ field }) => {
+                    const isGroup = jsonTargetType === 'group'
+                    const targetName = isGroup ? 'groupName' : 'modelName'
+                    const example = isGroup
+                      ? `{"default": [200, 100], "vip": [0, 1000]}`
+                      : `{"gpt-4o": [200, 100], "claude-sonnet": [0, 1000]}`
+
+                    return (
+                      <FormItem>
+                        <FormLabel>{t(isGroup ? 'Group' : 'Model')}</FormLabel>
+                        <FormControl>
+                          <JsonCodeEditor
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            textareaRef={field.ref}
+                            placeholder={`{\n  "${isGroup ? 'default' : 'gpt-4o'}": [200, 100]\n}`}
+                            aria-invalid={Boolean(
+                              form.formState.errors[field.name]
+                            )}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          <span className='block space-y-1 text-xs'>
+                            <span className='block font-semibold'>
+                              {t('Format:')}
+                            </span>
+                            <span className='block'>
+                              {t('JSON object:')}{' '}
+                              {`{"${targetName}": [maxRequests, maxSuccess]}`}
+                            </span>
+                            <span className='block'>
+                              {t('Example:')} {example}
+                            </span>
+                            <span className='block'>
+                              {t(
+                                'maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647'
+                              )}
+                            </span>
+                            <span className='block'>
+                              {t(
+                                'Target config overrides global limits and shares the same period.'
+                              )}
+                            </span>
+                          </span>
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )
+                  }}
+                />
+              </div>
             )}
-          />
+          </div>
         </SettingsForm>
       </Form>
     </SettingsSection>

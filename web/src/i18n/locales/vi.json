@@ -912,6 +912,7 @@
     "Comma-separated model names (leave empty to keep current)": "Tên mô hình phân tách bằng dấu phẩy (để trống để giữ nguyên hiện tại)",
     "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo": "Tên mô hình được phân tách bằng dấu phẩy, ví dụ: gpt-4,gpt-3.5-turbo",
     "Command": "Lệnh",
+    "Commission Rate": "Tỷ lệ hoa hồng",
     "Common": "Chung",
     "Common Keys": "Khóa thường dùng",
     "Common Logs": "Logarit thập phân",
@@ -5299,6 +5300,21 @@
     "Only images or videos are allowed": "Only images or videos are allowed",
     "Only affects the public homepage. Solid color, image, or video (max 200MB).": "Only affects the public homepage. Solid color, image, or video (max 200MB).",
     "Invite Top-Up Commission Ratio": "Invite Top-Up Commission Ratio",
-    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups."
+    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups.",
+    "Add rate limit": "Thêm giới hạn tốc độ",
+    "Configure rate limiting rules for a group or model.": "Cấu hình quy tắc giới hạn tốc độ cho một nhóm hoặc mô hình.",
+    "Edit rate limit": "Chỉnh sửa giới hạn tốc độ",
+    "Must be an integer": "Phải là số nguyên",
+    "No target-specific rate limits configured. Click \"Add\" to get started.": "Chưa cấu hình giới hạn tốc độ theo mục tiêu. Nhấp \"Thêm\" để bắt đầu.",
+    "No targets match your search": "Không có mục tiêu nào khớp với tìm kiếm",
+    "Search targets...": "Tìm kiếm mục tiêu...",
+    "Select the target type to edit its JSON configuration.": "Chọn loại mục tiêu để chỉnh sửa cấu hình JSON tương ứng.",
+    "Target": "Mục tiêu",
+    "Target config overrides global limits and shares the same period.": "Cấu hình mục tiêu ghi đè giới hạn toàn cục và dùng chung khoảng thời gian.",
+    "Target name is required": "Tên mục tiêu là bắt buộc",
+    "Target-specific rate limits": "Giới hạn tốc độ theo mục tiêu",
+    "This target already has a rate limit.": "Mục tiêu này đã có giới hạn tốc độ.",
+    "Unique identifier for this target.": "Định danh duy nhất cho mục tiêu này.",
+    "e.g., gpt-4o, claude-sonnet": "Ví dụ: gpt-4o, claude-sonnet"
   }
 }

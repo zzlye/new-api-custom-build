@@ -912,6 +912,7 @@
     "Comma-separated model names (leave empty to keep current)": "カンマ区切りのモデル名 (空欄のままにすると現在の設定を維持)",
     "Comma-separated model names, e.g., gpt-4,gpt-3.5-turbo": "カンマ区切りのモデル名、例: gpt-4,gpt-3.5-turbo",
     "Command": "コマンド",
+    "Commission Rate": "紹介報酬率",
     "Common": "共通",
     "Common Keys": "よく使うキー",
     "Common Logs": "一般的なログ",
@@ -5299,6 +5300,21 @@
     "Only images or videos are allowed": "Only images or videos are allowed",
     "Only affects the public homepage. Solid color, image, or video (max 200MB).": "Only affects the public homepage. Solid color, image, or video (max 200MB).",
     "Invite Top-Up Commission Ratio": "Invite Top-Up Commission Ratio",
-    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups."
+    "Root only. 0.15 means 15% of invited users top-ups.": "Root only. 0.15 means 15% of invited users top-ups.",
+    "Add rate limit": "レート制限を追加",
+    "Configure rate limiting rules for a group or model.": "グループまたはモデルのレート制限ルールを設定します。",
+    "Edit rate limit": "レート制限を編集",
+    "Must be an integer": "整数を入力してください",
+    "No target-specific rate limits configured. Click \"Add\" to get started.": "対象別のレート制限が設定されていません。「追加」をクリックして開始してください。",
+    "No targets match your search": "検索条件に一致する対象がありません",
+    "Search targets...": "対象を検索...",
+    "Select the target type to edit its JSON configuration.": "対象タイプを選択して、対応する JSON 設定を編集します。",
+    "Target": "対象",
+    "Target config overrides global limits and shares the same period.": "対象の設定はグローバル制限を上書きし、同じ期間を使用します。",
+    "Target name is required": "対象名は必須です",
+    "Target-specific rate limits": "対象別レート制限",
+    "This target already has a rate limit.": "この対象にはすでにレート制限が設定されています。",
+    "Unique identifier for this target.": "この対象の一意の識別子です。",
+    "e.g., gpt-4o, claude-sonnet": "例: gpt-4o、claude-sonnet"
   }
 }

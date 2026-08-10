@@ -24,19 +24,21 @@ import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatQuota } from '@/lib/format'
+import { formatPercent } from '@/lib/format'
 
 import type { UserWalletData } from '../types'
 
 interface AffiliateRewardsCardProps {
   user: UserWalletData | null
   affiliateLink: string
+  commissionRatio?: number
   loading?: boolean
 }
 
 export function AffiliateRewardsCard({
   user,
   affiliateLink,
+  commissionRatio,
   loading,
 }: AffiliateRewardsCardProps) {
   const { t } = useTranslation()
@@ -76,11 +78,16 @@ export function AffiliateRewardsCard({
 
         <div className='grid grid-cols-2 gap-1.5 text-center'>
           {[
-            [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
+            [
+              t('Commission Rate'),
+              formatPercent(
+                commissionRatio == null ? undefined : commissionRatio * 100
+              ),
+            ],
             [t('Invites'), String(user?.aff_count ?? 0)],
           ].map(([label, value]) => (
             <div key={label}>
-              <div className='text-muted-foreground truncate text-[10px] font-medium uppercase tracking-wider'>
+              <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
                 {label}
               </div>
               <div className='mt-0.5 truncate text-sm font-semibold tabular-nums'>

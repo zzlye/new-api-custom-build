@@ -43,6 +43,9 @@ func (l *InMemoryRateLimiter) clearExpiredItems() {
 
 // Request parameter duration's unit is seconds
 func (l *InMemoryRateLimiter) Request(key string, maxRequestNum int, duration int64) bool {
+	if maxRequestNum <= 0 {
+		return true
+	}
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 	// [old <-- new]
@@ -67,4 +70,19 @@ func (l *InMemoryRateLimiter) Request(key string, maxRequestNum int, duration in
 		*(l.store[key]) = append(*(l.store[key]), now)
 	}
 	return true
+}
+
+// Rollback 退回最近一次预占的额度。
+func (l *InMemoryRateLimiter) Rollback(key string) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+
+	queue, ok := l.store[key]
+	if !ok || len(*queue) == 0 {
+		return
+	}
+	*queue = (*queue)[:len(*queue)-1]
+	if len(*queue) == 0 {
+		delete(l.store, key)
+	}
 }

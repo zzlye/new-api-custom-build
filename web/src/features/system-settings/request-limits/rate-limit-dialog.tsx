@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, type ComponentProps } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
@@ -34,25 +34,35 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
-const rateLimitDialogSchema = z.object({
-  groupName: z.string().min(1, 'Group name is required'),
-  maxRequests: z
-    .number()
-    .min(0, 'Must be ≥ 0')
-    .max(2147483647, 'Must be ≤ 2,147,483,647'),
-  maxSuccess: z
-    .number()
-    .min(1, 'Must be ≥ 1')
-    .max(2147483647, 'Must be ≤ 2,147,483,647'),
-})
+export type RateLimitTargetType = 'group' | 'model'
 
-type RateLimitDialogFormValues = z.infer<typeof rateLimitDialogSchema>
+const createRateLimitDialogSchema = (t: (key: string) => string) =>
+  z.object({
+    targetType: z.enum(['group', 'model']),
+    target: z.string().trim().min(1, t('Target name is required')),
+    maxRequests: z
+      .number()
+      .int(t('Must be an integer'))
+      .min(0, 'Must be ≥ 0')
+      .max(2147483647, 'Must be ≤ 2,147,483,647'),
+    maxSuccess: z
+      .number()
+      .int(t('Must be an integer'))
+      .min(1, 'Must be ≥ 1')
+      .max(2147483647, 'Must be ≤ 2,147,483,647'),
+  })
+
+type RateLimitDialogFormValues = z.infer<
+  ReturnType<typeof createRateLimitDialogSchema>
+>
 
 const RATE_LIMIT_FORM_ID = 'rate-limit-form'
 
 export type RateLimitEntryData = {
-  groupName: string
+  targetType: RateLimitTargetType
+  target: string
   maxRequests: number
   maxSuccess: number
 }
@@ -60,8 +70,59 @@ export type RateLimitEntryData = {
 type RateLimitDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (data: RateLimitEntryData) => void
+  onSave: (data: RateLimitEntryData) => string | null
   editData?: RateLimitEntryData | null
+}
+
+type RateLimitTargetTypeToggleProps = Omit<
+  ComponentProps<'div'>,
+  'onChange'
+> & {
+  value: RateLimitTargetType
+  onChange: (value: RateLimitTargetType) => void
+  ariaLabel: string
+}
+
+export function RateLimitTargetTypeToggle({
+  value,
+  onChange,
+  ariaLabel,
+  className,
+  ...props
+}: RateLimitTargetTypeToggleProps) {
+  const { t } = useTranslation()
+
+  return (
+    <div
+      role='group'
+      aria-label={ariaLabel}
+      className={cn(
+        'bg-muted/60 inline-flex h-9 items-center rounded-lg border p-0.5',
+        className
+      )}
+      {...props}
+    >
+      {(['group', 'model'] as const).map((targetType) => {
+        const isActive = targetType === value
+        return (
+          <button
+            key={targetType}
+            type='button'
+            aria-pressed={isActive}
+            onClick={() => onChange(targetType)}
+            className={cn(
+              'inline-flex h-full min-w-20 items-center justify-center rounded-md px-4 text-sm font-medium transition-colors',
+              isActive
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {t(targetType === 'group' ? 'Group' : 'Model')}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 export function RateLimitDialog({
@@ -72,11 +133,13 @@ export function RateLimitDialog({
 }: RateLimitDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
+  const rateLimitDialogSchema = createRateLimitDialogSchema(t)
 
   const form = useForm<RateLimitDialogFormValues>({
     resolver: zodResolver(rateLimitDialogSchema),
     defaultValues: {
-      groupName: '',
+      targetType: 'group',
+      target: '',
       maxRequests: 0,
       maxSuccess: 1,
     },
@@ -87,7 +150,8 @@ export function RateLimitDialog({
       form.reset(editData)
     } else {
       form.reset({
-        groupName: '',
+        targetType: 'group',
+        target: '',
         maxRequests: 0,
         maxSuccess: 1,
       })
@@ -95,7 +159,11 @@ export function RateLimitDialog({
   }, [editData, form, open])
 
   const handleSubmit = (values: RateLimitDialogFormValues) => {
-    onSave(values)
+    const saveError = onSave(values)
+    if (saveError) {
+      form.setError('target', { type: 'manual', message: saveError })
+      return
+    }
     form.reset()
     onOpenChange(false)
   }
@@ -104,12 +172,8 @@ export function RateLimitDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={
-        isEditMode ? t('Edit group rate limit') : t('Add group rate limit')
-      }
-      description={t(
-        'Configure rate limiting rules for a specific user group.'
-      )}
+      title={isEditMode ? t('Edit rate limit') : t('Add rate limit')}
+      description={t('Configure rate limiting rules for a group or model.')}
       contentClassName='sm:max-w-[500px]'
       contentHeight='auto'
       bodyClassName='space-y-4'
@@ -136,25 +200,50 @@ export function RateLimitDialog({
         >
           <FormField
             control={form.control}
-            name='groupName'
+            name='targetType'
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t('Group Name')}</FormLabel>
+                <FormLabel>{t('Type')}</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder={t('e.g., default, vip, premium')}
-                    {...field}
-                    disabled={isEditMode}
+                  <RateLimitTargetTypeToggle
+                    value={field.value}
+                    onChange={(targetType) => {
+                      field.onChange(targetType)
+                      form.clearErrors('target')
+                    }}
+                    ariaLabel={t('Type')}
                   />
                 </FormControl>
-                <FormDescription>
-                  {isEditMode
-                    ? t('Group name cannot be changed when editing.')
-                    : t('Unique identifier for this group.')}
-                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
+          />
+
+          <FormField
+            control={form.control}
+            name='target'
+            render={({ field }) => {
+              const targetType = form.watch('targetType')
+              return (
+                <FormItem>
+                  <FormLabel>{t('Target')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={
+                        targetType === 'group'
+                          ? t('e.g., default, vip, premium')
+                          : t('e.g., gpt-4o, claude-sonnet')
+                      }
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Unique identifier for this target.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )
+            }}
           />
 
           <FormField
@@ -172,7 +261,7 @@ export function RateLimitDialog({
                       step={1}
                       {...field}
                       onChange={(e) =>
-                        field.onChange(parseInt(e.target.value) || 0)
+                        field.onChange(Number.parseInt(e.target.value) || 0)
                       }
                     />
                     <span className='text-muted-foreground text-sm'>
@@ -203,7 +292,7 @@ export function RateLimitDialog({
                       step={1}
                       {...field}
                       onChange={(e) =>
-                        field.onChange(parseInt(e.target.value) || 1)
+                        field.onChange(Number.parseInt(e.target.value) || 1)
                       }
                     />
                     <span className='text-muted-foreground text-sm'>

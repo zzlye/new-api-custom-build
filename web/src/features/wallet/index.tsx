@@ -78,7 +78,7 @@ export function Wallet(props: WalletProps) {
     useState<CreemProduct | null>(null)
   const [showSubscriptionPanel, setShowSubscriptionPanel] = useState(true)
 
-  const { status } = useStatus()
+  const { status, loading: statusLoading } = useStatus()
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
@@ -326,7 +326,8 @@ export function Wallet(props: WalletProps) {
             <AffiliateRewardsCard
               user={user}
               affiliateLink={affiliateLink}
-              loading={affiliateLoading}
+              commissionRatio={status?.invite_top_up_commission_ratio}
+              loading={affiliateLoading || statusLoading}
             />
           </div>
         </SectionPageLayout.Content>
