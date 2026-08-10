@@ -5254,6 +5254,7 @@
     "Global background": "全局背景",
     "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.": "作用于全站，包括公开页面、登录页和后台控制台；如果单独配置了页面背景，则优先使用页面背景。",
     "Glass card appearance": "卡片毛玻璃效果",
+    "Glass effect strength": "毛玻璃强度",
     "Adjust the transparency, blur, border and shadow of glass cards.": "调节毛玻璃卡片的透明度、模糊、边框和阴影。",
     "Glass card opacity": "毛玻璃卡片透明度",
     "Glass card blur": "毛玻璃卡片模糊",

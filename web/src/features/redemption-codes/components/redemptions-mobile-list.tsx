@@ -49,7 +49,7 @@ const MOBILE_SKELETON_KEYS = [
 
 function RedemptionsMobileSkeleton() {
   return (
-    <div className='divide-border overflow-hidden rounded-lg border'>
+    <div className='appearance-glass-surface divide-border overflow-hidden rounded-lg border'>
       {MOBILE_SKELETON_KEYS.map((key) => (
         <div
           key={key}
@@ -83,7 +83,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
 
   if (!rows.length) {
     return (
-      <div className='rounded-lg border p-8'>
+      <div className='appearance-glass-surface rounded-lg border p-8'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -102,7 +102,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
   }
 
   return (
-    <div className='divide-border overflow-hidden rounded-lg border'>
+    <div className='appearance-glass-surface divide-border overflow-hidden rounded-lg border'>
       {rows.map((row) => {
         const redemption = row.original
         const expired = isRedemptionExpired(
@@ -116,7 +116,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
           <div
             key={row.id}
             className={cn(
-              'bg-card space-y-2.5 border-b px-3 py-2.5 last:border-b-0',
+              'space-y-2.5 border-b px-3 py-2.5 last:border-b-0',
               expired || redemption.status !== REDEMPTION_STATUS.ENABLED
                 ? DISABLED_ROW_MOBILE
                 : undefined

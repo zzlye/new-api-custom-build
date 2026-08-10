@@ -68,8 +68,8 @@ function getPinnedColumnClassName(
     pinnedColumn.side === 'left' ? 'left-0' : 'right-0',
     edgeClassName,
     kind === 'header'
-      ? '[background-color:var(--table-header-bg,var(--table-header))] group-hover:[background-color:var(--table-header-hover)] z-30'
-      : 'bg-background z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted)_50%,var(--background))] group-data-[state=selected]:bg-muted',
+      ? 'appearance-glass-fixed-cell z-30'
+      : 'appearance-glass-fixed-cell z-10',
     pinnedColumn.className,
     kind === 'header'
       ? pinnedColumn.headerClassName

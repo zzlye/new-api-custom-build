@@ -5254,6 +5254,7 @@
     "Global background": "Global background",
     "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.": "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.",
     "Glass card appearance": "Glass card appearance",
+    "Glass effect strength": "Glass effect strength",
     "Adjust the transparency, blur, border and shadow of glass cards.": "Adjust the transparency, blur, border and shadow of glass cards.",
     "Glass card opacity": "Glass card opacity",
     "Glass card blur": "Glass card blur",

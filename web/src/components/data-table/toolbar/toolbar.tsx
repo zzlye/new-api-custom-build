@@ -345,7 +345,12 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
 
   if (hasLeftActions) {
     return (
-      <div className={cn('flex flex-col gap-2', props.className)}>
+      <div
+        className={cn(
+          'appearance-glass-surface flex flex-col gap-2 rounded-lg border p-2.5 sm:p-3',
+          props.className
+        )}
+      >
         <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
           {props.customSearch !== undefined ? props.customSearch : searchInput}
           {props.additionalSearch}
@@ -378,7 +383,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-2 sm:gap-3',
+        'appearance-glass-surface flex flex-wrap items-center gap-2 rounded-lg border p-2.5 sm:gap-3 sm:p-3',
         props.className
       )}
     >

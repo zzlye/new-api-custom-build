@@ -231,7 +231,7 @@ export function SystemTasksPanel() {
   const historyTasks = tasks.filter((task) => !isActiveStatus(task.status))
 
   return (
-    <section className='bg-card overflow-hidden rounded-lg border shadow-xs'>
+    <section className='appearance-glass-surface overflow-hidden rounded-lg border shadow-xs'>
       <div className='flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5'>
         <div className='min-w-0'>
           <div className='flex items-center gap-2'>

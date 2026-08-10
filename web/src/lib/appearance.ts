@@ -82,6 +82,121 @@ export const DEFAULT_APPEARANCE: AppearanceConfig = {
   glass_shadow_opacity: 0.35,
 }
 
+export type GlassProfile = Pick<
+  AppearanceConfig,
+  'glass_opacity' | 'glass_border_opacity' | 'glass_shadow_opacity'
+>
+
+export const DEFAULT_GLASS_STRENGTH = 70
+
+const GLASS_PROFILE_ANCHORS: ReadonlyArray<{
+  strength: number
+  profile: GlassProfile
+}> = [
+  {
+    strength: 0,
+    profile: {
+      glass_opacity: 0.56,
+      glass_border_opacity: 0.2,
+      glass_shadow_opacity: 0.045,
+    },
+  },
+  {
+    // 保留旧版默认参数，让已有站点首次拖动时从当前观感平滑过渡。
+    strength: 50,
+    profile: {
+      glass_opacity: 0.72,
+      glass_border_opacity: 0.35,
+      glass_shadow_opacity: 0.35,
+    },
+  },
+  {
+    // 日常推荐档位兼顾背景可见度与正文对比度。
+    strength: DEFAULT_GLASS_STRENGTH,
+    profile: {
+      glass_opacity: 0.7,
+      glass_border_opacity: 0.84,
+      glass_shadow_opacity: 0.15,
+    },
+  },
+  {
+    strength: 100,
+    profile: {
+      glass_opacity: 0.76,
+      glass_border_opacity: 1,
+      glass_shadow_opacity: 0.195,
+    },
+  },
+]
+
+function interpolateGlassValue(start: number, end: number, ratio: number) {
+  return Number((start + (end - start) * ratio).toFixed(3))
+}
+
+/** 将简化后的强度值转换为兼容旧接口的三项玻璃参数。 */
+export function getGlassProfile(strength: number): GlassProfile {
+  const normalized = Math.min(100, Math.max(0, strength))
+  const upperIndex = GLASS_PROFILE_ANCHORS.findIndex(
+    (anchor) => normalized <= anchor.strength
+  )
+  if (upperIndex <= 0) {
+    return { ...GLASS_PROFILE_ANCHORS[0].profile }
+  }
+
+  const lower = GLASS_PROFILE_ANCHORS[upperIndex - 1]
+  const upper = GLASS_PROFILE_ANCHORS[upperIndex]
+  const ratio =
+    (normalized - lower.strength) / (upper.strength - lower.strength)
+
+  return {
+    glass_opacity: interpolateGlassValue(
+      lower.profile.glass_opacity,
+      upper.profile.glass_opacity,
+      ratio
+    ),
+    glass_border_opacity: interpolateGlassValue(
+      lower.profile.glass_border_opacity,
+      upper.profile.glass_border_opacity,
+      ratio
+    ),
+    glass_shadow_opacity: interpolateGlassValue(
+      lower.profile.glass_shadow_opacity,
+      upper.profile.glass_shadow_opacity,
+      ratio
+    ),
+  }
+}
+
+const GLASS_PROFILES_BY_STRENGTH = Array.from({ length: 101 }, (_, strength) =>
+  getGlassProfile(strength)
+)
+
+/** 从历史三项参数中找出最接近的简化强度值。 */
+export function getGlassStrength(profile: GlassProfile): number {
+  if (Object.values(profile).some((value) => !Number.isFinite(value))) {
+    return DEFAULT_GLASS_STRENGTH
+  }
+
+  let closestStrength = DEFAULT_GLASS_STRENGTH
+  let closestDistance = Number.POSITIVE_INFINITY
+  GLASS_PROFILES_BY_STRENGTH.forEach((candidate, strength) => {
+    const opacityDistance =
+      (profile.glass_opacity - candidate.glass_opacity) / 0.2
+    const borderDistance =
+      (profile.glass_border_opacity - candidate.glass_border_opacity) / 0.8
+    const shadowDistance =
+      (profile.glass_shadow_opacity - candidate.glass_shadow_opacity) / 0.305
+    const distance =
+      opacityDistance ** 2 + borderDistance ** 2 + shadowDistance ** 2
+    if (distance < closestDistance) {
+      closestDistance = distance
+      closestStrength = strength
+    }
+  })
+
+  return closestStrength
+}
+
 function normalizeBgType(type: string | undefined): BgType {
   const t = (type || 'none') as BgType
   return ['none', 'solid', 'image', 'video'].includes(t) ? t : 'none'
@@ -254,6 +369,102 @@ export function applyAppearanceToDocument(config: AppearanceConfig): void {
   body.style.setProperty(
     '--appearance-glass-shadow-opacity',
     String(config.glass_shadow_opacity)
+  )
+
+  // 从主参数派生控件层级，确保一个强度值即可保持所有玻璃表面协调。
+  const controlOpacity = Math.min(
+    0.42,
+    Math.max(0.18, config.glass_opacity - 0.46)
+  )
+  const controlBorderOpacity = Math.min(
+    0.62,
+    Math.max(0.22, config.glass_border_opacity * 0.57)
+  )
+  const controlHighlightOpacity = Math.min(
+    0.36,
+    Math.max(0.12, 0.18 + config.glass_shadow_opacity * 0.66)
+  )
+  const darkControlOpacity = Math.min(
+    0.2,
+    Math.max(0.08, (config.glass_opacity - 0.5) * 0.5)
+  )
+  const darkBorderOpacity = Math.min(
+    0.4,
+    Math.max(0.16, config.glass_border_opacity * 0.29)
+  )
+  const darkHighlightOpacity = Math.min(
+    0.28,
+    Math.max(0.1, 0.1 + config.glass_shadow_opacity * 0.4)
+  )
+  const fixedCellOpacity = Math.min(
+    0.99,
+    Math.max(0.94, config.glass_opacity + 0.28)
+  )
+  const subtleOpacity = Math.min(0.2, Math.max(0.1, controlOpacity * 0.5))
+  const subtleDarkOpacity = Math.min(
+    0.12,
+    Math.max(0.05, darkControlOpacity * 0.55)
+  )
+  const popupOpacity = Math.min(
+    0.92,
+    Math.max(0.82, config.glass_opacity + 0.12)
+  )
+  const popupDarkOpacity = Math.min(
+    0.9,
+    Math.max(0.78, config.glass_opacity + 0.08)
+  )
+
+  body.style.setProperty(
+    '--appearance-glass-control-opacity',
+    `${Math.round(controlOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-hover-opacity',
+    `${Math.round(Math.min(0.5, controlOpacity + 0.08) * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-border-opacity',
+    `${Math.round(controlBorderOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-highlight-opacity',
+    `${Math.round(controlHighlightOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-dark-opacity',
+    `${Math.round(darkControlOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-dark-hover-opacity',
+    `${Math.round(Math.min(0.28, darkControlOpacity + 0.06) * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-dark-border-opacity',
+    `${Math.round(darkBorderOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-control-dark-highlight-opacity',
+    `${Math.round(darkHighlightOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-fixed-cell-opacity',
+    `${Math.round(fixedCellOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-subtle-opacity',
+    `${Math.round(subtleOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-subtle-dark-opacity',
+    `${Math.round(subtleDarkOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-popup-opacity',
+    `${Math.round(popupOpacity * 100)}%`
+  )
+  body.style.setProperty(
+    '--appearance-glass-popup-dark-opacity',
+    `${Math.round(popupDarkOpacity * 100)}%`
   )
 }
 

@@ -38,7 +38,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   return (
     <div className='relative min-h-svh overflow-hidden'>
       <GlobalBackground />
-      <div className='relative z-10 min-h-svh'>
+      <div className='appearance-glass-scope relative z-10 min-h-svh'>
         <LayoutProvider>
           <SearchProvider>
             <SidebarProvider

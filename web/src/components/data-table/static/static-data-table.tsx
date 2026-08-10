@@ -78,6 +78,7 @@ export function StaticDataTable<TData = unknown>(
 
   return (
     <div
+      data-slot='static-data-table'
       className={cn(staticDataTableClassNames.container, className)}
       {...containerProps}
     >

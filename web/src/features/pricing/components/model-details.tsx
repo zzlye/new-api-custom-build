@@ -255,7 +255,7 @@ function CatalogTextValue(props: { children: React.ReactNode }) {
 
 function CatalogInfoCell(props: { label: string; children: React.ReactNode }) {
   return (
-    <div className='bg-card flex min-w-0 flex-col gap-1 px-3 py-2.5'>
+    <div className='appearance-glass-control flex min-w-0 flex-col gap-1 px-3 py-2.5'>
       <span className='text-muted-foreground text-[10px] font-medium tracking-wider uppercase'>
         {props.label}
       </span>
@@ -361,7 +361,7 @@ function ModelBackendQuickStats(props: { model: PricingModel }) {
         return (
           <div
             key={stat.key}
-            className='bg-background flex min-w-0 flex-col gap-0.5 px-3 py-2.5'
+            className='appearance-glass-control flex min-w-0 flex-col gap-0.5 px-3 py-2.5'
           >
             <span className='text-muted-foreground inline-flex min-w-0 items-center gap-1 text-[10px] font-medium tracking-wider uppercase'>
               <Icon className='size-3 shrink-0' />
@@ -1169,7 +1169,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         <TabsContent value='overview' className='space-y-6 outline-none'>
           <OverviewSummaryGrid model={props.model} />
 
-          <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
+          <section className='appearance-glass-control space-y-5 rounded-xl border p-4 shadow-sm'>
             <SectionTitle>{t('Pricing')}</SectionTitle>
             <PriceSection
               model={props.model}

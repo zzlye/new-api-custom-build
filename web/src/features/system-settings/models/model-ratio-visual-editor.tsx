@@ -527,7 +527,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         value: string | undefined
       ) => {
         if (!value || value === '') return
-        const parsed = parseFloat(value)
+        const parsed = Number.parseFloat(value)
         if (Number.isFinite(parsed)) target[name] = parsed
       }
 
@@ -782,7 +782,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
               className='h-full min-h-0'
             />
           ) : (
-            <div className='bg-card text-muted-foreground flex h-full min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center'>
+            <div className='appearance-glass-control text-muted-foreground flex h-full min-h-0 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-6 text-center'>
               <div className='text-foreground text-base font-medium'>
                 {t('Select a model to edit pricing')}
               </div>

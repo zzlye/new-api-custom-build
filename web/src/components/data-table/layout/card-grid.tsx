@@ -160,7 +160,7 @@ export function DataTableCardGrid<TData>(props: DataTableCardGridProps<TData>) {
 
   if (!rows || rows.length === 0) {
     return (
-      <div className='rounded-lg border p-6'>
+      <div className='appearance-glass-surface rounded-lg border p-6'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -185,7 +185,7 @@ export function DataTableCardGrid<TData>(props: DataTableCardGridProps<TData>) {
             data-slot='data-table-card'
             data-state={isSelected ? 'selected' : undefined}
             className={cn(
-              'rounded-lg border bg-(--data-table-card-bg,var(--table-row)) px-3 py-2.5 transition-[background-color,border-color] duration-150 data-[state=selected]:[--data-table-card-bg:color-mix(in_oklch,var(--primary)_7%,var(--table-row))] data-[state=selected]:border-primary/40',
+              'appearance-glass-surface rounded-lg border px-3 py-2.5 transition-[border-color,box-shadow] duration-150 data-[state=selected]:border-primary/50 data-[state=selected]:ring-2 data-[state=selected]:ring-primary/20',
               props.getRowClassName?.(row)
             )}
           >

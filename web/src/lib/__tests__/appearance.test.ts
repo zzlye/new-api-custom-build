@@ -19,7 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { normalizeAppearance, type AppearanceConfig } from '../appearance'
+import {
+  DEFAULT_APPEARANCE,
+  DEFAULT_GLASS_STRENGTH,
+  getGlassProfile,
+  getGlassStrength,
+  normalizeAppearance,
+  type AppearanceConfig,
+} from '../appearance'
 
 describe('页面背景遮罩透明度', () => {
   test('将接口返回的字符串透明度转换为 0 到 1 之间的数字', () => {
@@ -85,5 +92,53 @@ describe('页面背景遮罩透明度', () => {
       color: '#222222',
       media: '',
     })
+  })
+})
+
+describe('毛玻璃简化设置', () => {
+  test('旧版默认参数映射到稳定档位且往返不改变数值', () => {
+    const profile = {
+      glass_opacity: DEFAULT_APPEARANCE.glass_opacity,
+      glass_border_opacity: DEFAULT_APPEARANCE.glass_border_opacity,
+      glass_shadow_opacity: DEFAULT_APPEARANCE.glass_shadow_opacity,
+    }
+
+    const strength = getGlassStrength(profile)
+
+    assert.equal(strength, 50)
+    assert.deepEqual(getGlassProfile(strength), profile)
+  })
+
+  test('当前高强度参数保持在最高档位', () => {
+    const profile = {
+      glass_opacity: 0.76,
+      glass_border_opacity: 1,
+      glass_shadow_opacity: 0.195,
+    }
+
+    assert.equal(getGlassStrength(profile), 100)
+    assert.deepEqual(getGlassProfile(100), profile)
+  })
+
+  test('推荐强度精确映射到当前确认的舒适参数', () => {
+    const profile = {
+      glass_opacity: 0.7,
+      glass_border_opacity: 0.84,
+      glass_shadow_opacity: 0.15,
+    }
+
+    assert.equal(getGlassStrength(profile), DEFAULT_GLASS_STRENGTH)
+    assert.deepEqual(getGlassProfile(DEFAULT_GLASS_STRENGTH), profile)
+  })
+
+  test('非法历史参数回退到推荐档位', () => {
+    assert.equal(
+      getGlassStrength({
+        glass_opacity: Number.NaN,
+        glass_border_opacity: 0.5,
+        glass_shadow_opacity: 0.1,
+      }),
+      DEFAULT_GLASS_STRENGTH
+    )
   })
 })

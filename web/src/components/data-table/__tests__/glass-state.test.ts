@@ -16,25 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { PageBackground } from '@/components/page-background'
-import { useAppearance } from '@/hooks/use-appearance'
-import { getGlobalBackground, hasGlobalBackground } from '@/lib/appearance'
-import { cn } from '@/lib/utils'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
-type GlobalBackgroundProps = {
-  className?: string
-}
+import { DISABLED_ROW_MOBILE } from '../index'
 
-/** 渲染站点级背景；页面专属背景由页面自身决定是否覆盖它。 */
-export function GlobalBackground(props: GlobalBackgroundProps) {
-  const appearance = useAppearance()
-  if (!hasGlobalBackground(appearance)) return null
-
-  return (
-    <PageBackground
-      config={getGlobalBackground(appearance)}
-      className={cn('fixed inset-0', props.className)}
-      overlayOpacity={appearance.global_bg_overlay_opacity}
-    />
-  )
-}
+describe('毛玻璃表格状态', () => {
+  test('禁用卡片覆盖主玻璃背景并保持禁用底色', () => {
+    assert.match(
+      DISABLED_ROW_MOBILE,
+      /--appearance-glass-surface-background:var\(--table-disabled\)/
+    )
+  })
+})

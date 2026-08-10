@@ -17,7 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronRight, Copy } from 'lucide-react'
-import { memo, type ReactNode } from 'react'
+import {
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+} from 'motion/react'
+import {
+  memo,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  useRef,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -50,6 +61,13 @@ export interface ModelCardProps {
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const { t } = useTranslation()
   const { copyToClipboard } = useCopyToClipboard()
+  const shouldReduceMotion = useReducedMotion()
+  const tiltXTarget = useMotionValue(0)
+  const tiltYTarget = useMotionValue(0)
+  const tiltSpring = { stiffness: 260, damping: 24, mass: 0.6 }
+  const rotateX = useSpring(tiltXTarget, tiltSpring)
+  const rotateY = useSpring(tiltYTarget, tiltSpring)
+  const tiltBounds = useRef<DOMRect | null>(null)
   const tokenUnit = props.tokenUnit ?? DEFAULT_TOKEN_UNIT
   const priceRate = props.priceRate ?? 1
   const usdExchangeRate = props.usdExchangeRate ?? 1
@@ -89,6 +107,23 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
     copyToClipboard(props.model.model_name || '')
+  }
+
+  /** 根据指针在卡片内的位置计算轻微倾斜，离开后平滑回正。 */
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (shouldReduceMotion || event.pointerType === 'touch') return
+    const bounds =
+      tiltBounds.current ?? event.currentTarget.getBoundingClientRect()
+    const horizontal = (event.clientX - bounds.left) / bounds.width - 0.5
+    const vertical = (event.clientY - bounds.top) / bounds.height - 0.5
+    tiltXTarget.set(vertical * -6)
+    tiltYTarget.set(horizontal * 6)
+  }
+
+  const resetTilt = () => {
+    tiltBounds.current = null
+    tiltXTarget.set(0)
+    tiltYTarget.set(0)
   }
 
   let priceSummary: ReactNode
@@ -194,11 +229,26 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   return (
-    <div
+    <motion.div
       className={cn(
-        'group relative flex flex-col rounded-xl border p-3 transition-colors sm:p-5',
-        'hover:bg-muted/20'
+        'appearance-glass-surface group relative flex flex-col rounded-xl border p-3 transition-[border-color,box-shadow] sm:p-5',
+        'hover:border-foreground/20 hover:shadow-lg'
       )}
+      style={
+        shouldReduceMotion
+          ? undefined
+          : { rotateX, rotateY, transformPerspective: 900 }
+      }
+      whileHover={shouldReduceMotion ? undefined : { scale: 1.008, y: -2 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+      onPointerEnter={(event) => {
+        if (!shouldReduceMotion && event.pointerType !== 'touch') {
+          tiltBounds.current = event.currentTarget.getBoundingClientRect()
+        }
+      }}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={resetTilt}
+      onPointerCancel={resetTilt}
     >
       {/* Header: icon + name + price + actions */}
       <div className='flex items-start justify-between gap-2.5 sm:gap-3'>
@@ -259,20 +309,20 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
 
         <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
           {bottomTags.map((item) => (
-            <span key={item} className='text-muted-foreground/70 text-xs'>
+            <span key={item} className='text-muted-foreground text-xs'>
               {item}
             </span>
           ))}
-          <span className='text-muted-foreground/50 text-xs'>
+          <span className='text-muted-foreground text-xs'>
             {tokenUnitLabel}
           </span>
           {hiddenCount > 0 && (
-            <span className='text-muted-foreground/40 text-xs'>
+            <span className='text-muted-foreground text-xs'>
               +{hiddenCount}
             </span>
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 })

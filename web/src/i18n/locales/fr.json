@@ -5254,6 +5254,7 @@
     "Global background": "Arrière-plan global",
     "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.": "S'applique à tout le site, y compris aux pages publiques, aux pages de connexion et à la console d'administration. Les arrière-plans spécifiques sont prioritaires.",
     "Glass card appearance": "Apparence des cartes en verre",
+    "Glass effect strength": "Intensité de l'effet verre",
     "Adjust the transparency, blur, border and shadow of glass cards.": "Ajustez la transparence, le flou, la bordure et l'ombre des cartes en verre.",
     "Glass card opacity": "Opacité de la carte en verre",
     "Glass card blur": "Flou de la carte en verre",

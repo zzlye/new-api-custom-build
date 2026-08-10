@@ -101,10 +101,10 @@ function FilterChip(props: {
       type='button'
       onClick={props.onClick}
       className={cn(
-        'group inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-all',
+        'appearance-glass-control group inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-all',
         props.active
-          ? 'border-foreground/30 bg-foreground/5 text-foreground shadow-sm'
-          : 'border-border/70 bg-background text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground'
+          ? 'border-primary/45 text-foreground ring-1 ring-primary/20'
+          : 'border-border/70 text-muted-foreground hover:border-border hover:text-foreground'
       )}
       title={props.option.label}
     >
@@ -117,8 +117,8 @@ function FilterChip(props: {
           className={cn(
             'rounded-md px-1.5 py-0.5 text-[12px]',
             props.active
-              ? 'bg-background text-foreground'
-              : 'bg-muted text-muted-foreground'
+              ? 'bg-white/45 text-foreground dark:bg-white/10'
+              : 'bg-white/30 text-muted-foreground dark:bg-white/5'
           )}
         >
           {props.option.suffix ?? props.option.count}
@@ -246,7 +246,12 @@ export function PricingSidebar(props: PricingSidebarProps) {
   ]
 
   return (
-    <aside className={cn('rounded-xl border p-3', props.className)}>
+    <aside
+      className={cn(
+        'appearance-glass-surface rounded-xl border p-3',
+        props.className
+      )}
+    >
       <div className='mb-2.5 flex items-center justify-between gap-2'>
         <div>
           <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>

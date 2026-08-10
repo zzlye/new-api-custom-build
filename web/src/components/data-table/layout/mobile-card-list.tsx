@@ -142,7 +142,7 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
 
   if (!rows || rows.length === 0) {
     return (
-      <div className='rounded-lg border p-6'>
+      <div className='appearance-glass-surface rounded-lg border p-6'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -157,17 +157,11 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
   }
 
   return (
-    <div className='divide-y overflow-hidden rounded-lg border'>
+    <div className='appearance-glass-surface divide-y overflow-hidden rounded-lg border'>
       {rows.map((row) => {
         const key = getRowKey ? getRowKey(row) : row.id
         return (
-          <div
-            key={key}
-            className={cn(
-              '[background-color:var(--data-table-card-bg,var(--table-row))] px-3 py-2.5',
-              getRowClassName?.(row)
-            )}
-          >
+          <div key={key} className={cn('px-3 py-2.5', getRowClassName?.(row))}>
             <CardRowContent row={row} compact={hasCompactMeta} />
           </div>
         )

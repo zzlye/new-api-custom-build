@@ -46,10 +46,16 @@ import {
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { api } from '@/lib/api'
-import type { AppearanceConfig, BgType } from '@/lib/appearance'
+import {
+  getGlassProfile,
+  getGlassStrength,
+  type AppearanceConfig,
+  type BgType,
+} from '@/lib/appearance'
 import { THEME_PRESETS, type ThemePreset } from '@/lib/theme-customization'
 import { cn } from '@/lib/utils'
 
+import { updateSystemOption } from '../api'
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
 import {
@@ -60,7 +66,6 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
-import { useUpdateOption } from '../hooks/use-update-option'
 
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 
@@ -346,7 +351,6 @@ function BackgroundFields({
 
 export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
   const { t } = useTranslation()
-  const updateOption = useUpdateOption()
   const queryClient = useQueryClient()
   const [uploading, setUploading] = useState(false)
 
@@ -379,21 +383,38 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
       >,
       defaultValues: formDefaults,
       onSubmit: async (_data, changedFields) => {
-        for (const [field, value] of Object.entries(changedFields)) {
-          const key = OPTION_KEYS[field as keyof AppearanceFormValues]
-          if (!key) continue
-          await updateOption.mutateAsync({
-            key,
-            value: String(value ?? ''),
-          })
+        try {
+          // 同一表单保存完成后再统一刷新，避免三项玻璃参数中途回填旧值。
+          for (const [field, value] of Object.entries(changedFields)) {
+            const key = OPTION_KEYS[field as keyof AppearanceFormValues]
+            if (!key) continue
+            const result = await updateSystemOption(
+              {
+                key,
+                value: String(value ?? ''),
+              },
+              {
+                // 表单统一展示错误，避免请求拦截器重复弹出提示。
+                skipBusinessError: true,
+                skipErrorHandler: true,
+              }
+            )
+            if (!result.success) {
+              throw new Error(result.message || t('Failed to update setting'))
+            }
+          }
+          refreshStatus()
+          toast.success(t('Setting updated successfully'))
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : t('Failed to update setting')
+          toast.error(message)
+          throw error
         }
       },
     })
-
-  useEffect(() => {
-    form.reset(formDefaults)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随 defaultValues 同步
-  }, [defaultValues, form])
 
   const themePreset = form.watch('theme_preset') as ThemePreset
 
@@ -429,6 +450,9 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
         message?: string
         data?: { url: string; type: string }
       }>('/api/option/appearance/upload', body, {
+        // 上传结果由当前表单统一提示，避免全局拦截器重复弹出错误。
+        skipBusinessError: true,
+        skipErrorHandler: true,
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 10 * 60 * 1000,
       })
@@ -462,7 +486,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
             <SettingsPageFormActions
               onSave={handleSubmit}
               onReset={handleReset}
-              isSaving={isSubmitting || updateOption.isPending || uploading}
+              isSaving={isSubmitting || uploading}
               isResetDisabled={!isDirty}
             />
             <FormDirtyIndicator isDirty={isDirty} />
@@ -619,114 +643,118 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
   )
 }
 
-/** 卡片毛玻璃参数滑块，统一处理数值显示和范围更新。 */
+/** 毛玻璃保留强度与模糊度两个滑块，四个旧字段继续用于兼容存储。 */
 function GlassSettingsFields({
   form,
 }: {
   form: UseFormReturn<AppearanceFormValues>
 }) {
   const { t } = useTranslation()
+  const [glassOpacity, glassBorderOpacity, glassShadowOpacity] = form.watch([
+    'glass_opacity',
+    'glass_border_opacity',
+    'glass_shadow_opacity',
+  ])
+  const savedStrength = getGlassStrength({
+    glass_opacity: Number(glassOpacity),
+    glass_border_opacity: Number(glassBorderOpacity),
+    glass_shadow_opacity: Number(glassShadowOpacity),
+  })
+  const [draftStrength, setDraftStrength] = useState(savedStrength)
+
+  useEffect(() => {
+    // 查询刷新或表单重置时只同步滑块显示，不回写任何配置字段。
+    setDraftStrength(savedStrength)
+  }, [savedStrength])
 
   return (
     <div className='space-y-3'>
       <div>
         <h3 className='text-sm font-semibold'>{t('Glass card appearance')}</h3>
-        <p className='text-muted-foreground mt-1 text-xs'>
-          {t(
-            'Adjust the transparency, blur, border and shadow of glass cards.'
-          )}
-        </p>
       </div>
       <SettingsFormGrid>
-        <GlassSliderField
-          form={form}
+        <FormField
+          control={form.control}
           name='glass_opacity'
-          label={t('Glass card opacity')}
-          max={1}
-          step={0.01}
-          formatValue={(value) => `${Math.round(value * 100)}%`}
+          render={({ field }) => (
+            <FormItem>
+              <div className='flex items-center justify-between gap-3'>
+                <FormLabel>{t('Glass effect strength')}</FormLabel>
+                <span className='text-muted-foreground text-sm tabular-nums'>
+                  {draftStrength}%
+                </span>
+              </div>
+              <FormControl>
+                <Slider
+                  aria-label={t('Glass effect strength')}
+                  max={100}
+                  min={0}
+                  step={1}
+                  value={[draftStrength]}
+                  onValueChange={(nextValue) => {
+                    const next = Array.isArray(nextValue)
+                      ? Number(nextValue[0])
+                      : Number(nextValue)
+                    if (Number.isFinite(next)) setDraftStrength(next)
+                  }}
+                  onValueCommitted={(nextValue, details) => {
+                    // 仅提交真实交互，阻止组件初始化或表单重置误写配置。
+                    if (details.reason === 'none') return
+                    const next = Array.isArray(nextValue)
+                      ? Number(nextValue[0])
+                      : Number(nextValue)
+                    if (!Number.isFinite(next)) return
+
+                    const profile = getGlassProfile(next)
+                    field.onChange(profile.glass_opacity)
+                    form.setValue(
+                      'glass_border_opacity',
+                      profile.glass_border_opacity,
+                      { shouldDirty: true, shouldValidate: true }
+                    )
+                    form.setValue(
+                      'glass_shadow_opacity',
+                      profile.glass_shadow_opacity,
+                      { shouldDirty: true, shouldValidate: true }
+                    )
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        <GlassSliderField
-          form={form}
+        <FormField
+          control={form.control}
           name='glass_blur'
-          label={t('Glass card blur')}
-          max={40}
-          step={1}
-          formatValue={(value) => `${Math.round(value)}px`}
-        />
-        <GlassSliderField
-          form={form}
-          name='glass_border_opacity'
-          label={t('Glass card border opacity')}
-          max={1}
-          step={0.01}
-          formatValue={(value) => `${Math.round(value * 100)}%`}
-        />
-        <GlassSliderField
-          form={form}
-          name='glass_shadow_opacity'
-          label={t('Glass card shadow opacity')}
-          max={1}
-          step={0.01}
-          formatValue={(value) => `${Math.round(value * 100)}%`}
+          render={({ field }) => (
+            <FormItem>
+              <div className='flex items-center justify-between gap-3'>
+                <FormLabel>{t('Glass card blur')}</FormLabel>
+                <span className='text-muted-foreground text-sm tabular-nums'>
+                  {Math.round(Number(field.value))}px
+                </span>
+              </div>
+              <FormControl>
+                <Slider
+                  aria-label={t('Glass card blur')}
+                  max={40}
+                  min={0}
+                  step={1}
+                  value={[Number(field.value)]}
+                  onValueChange={(nextValue) => {
+                    const next = Array.isArray(nextValue)
+                      ? Number(nextValue[0])
+                      : Number(nextValue)
+                    if (Number.isFinite(next)) field.onChange(next)
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
       </SettingsFormGrid>
     </div>
-  )
-}
-
-type GlassSliderName =
-  | 'glass_opacity'
-  | 'glass_blur'
-  | 'glass_border_opacity'
-  | 'glass_shadow_opacity'
-
-/** 毛玻璃滑块字段的通用渲染器。 */
-function GlassSliderField({
-  form,
-  name,
-  label,
-  max,
-  step,
-  formatValue,
-}: {
-  form: UseFormReturn<AppearanceFormValues>
-  name: GlassSliderName
-  label: string
-  max: number
-  step: number
-  formatValue: (value: number) => string
-}) {
-  const value = form.watch(name)
-
-  return (
-    <FormField
-      control={form.control}
-      name={name}
-      render={({ field }) => (
-        <FormItem>
-          <div className='flex items-center justify-between gap-3'>
-            <FormLabel>{label}</FormLabel>
-            <span className='text-muted-foreground text-sm tabular-nums'>
-              {formatValue(Number(value))}
-            </span>
-          </div>
-          <FormControl>
-            <Slider
-              aria-label={label}
-              max={max}
-              min={0}
-              step={step}
-              value={[Number(value)]}
-              onValueChange={(nextValue) => {
-                const next = Array.isArray(nextValue) ? nextValue[0] : nextValue
-                field.onChange(Number(next))
-              }}
-            />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
   )
 }

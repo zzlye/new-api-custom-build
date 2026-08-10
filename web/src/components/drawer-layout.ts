@@ -21,15 +21,16 @@ import { createElement, type ReactNode } from 'react'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { cn } from '@/lib/utils'
 
+/** 抽屉外壳与头尾栏统一使用可调毛玻璃材质。 */
 export const sideDrawerContentClassName = (className?: string) =>
   cn(
-    'bg-background text-foreground flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 shadow-none',
+    'appearance-glass-surface text-foreground flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 shadow-none',
     className
   )
 
 export const sideDrawerHeaderClassName = (className?: string) =>
   cn(
-    'border-border/70 bg-background/95 border-b px-4 py-3 text-start backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6 sm:py-4',
+    'appearance-glass-control border-border/70 border-b px-4 py-3 text-start sm:px-6 sm:py-4',
     className
   )
 
@@ -41,7 +42,7 @@ export const sideDrawerFormClassName = (className?: string) =>
 
 export const sideDrawerFooterClassName = (className?: string) =>
   cn(
-    'border-border/70 bg-background/95 grid grid-cols-2 gap-2 border-t px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:flex sm:flex-row sm:justify-end sm:px-6 sm:py-4',
+    'appearance-glass-control border-border/70 grid grid-cols-2 gap-2 border-t px-4 py-3 sm:flex sm:flex-row sm:justify-end sm:px-6 sm:py-4',
     className
   )
 

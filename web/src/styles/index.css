@@ -93,6 +93,7 @@ For commercial licensing, please contact support@quantumnous.com
   }
   html {
     @apply overflow-x-hidden font-sans;
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar min-h-svh w-full;
@@ -272,8 +273,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* Launch UI Animations and Effects - Matching Template Exactly */
 @layer components {
-  /* 根用户可调的毛玻璃表面，变量由外观设置同步到 body。 */
-  .appearance-glass-surface,
+  /* 登录页与首页保留原有层级，避免覆盖它们各自的边框和阴影。 */
   .appearance-glass-card,
   .glass-morphism {
     background: color-mix(
@@ -296,21 +296,314 @@ For commercial licensing, please contact support@quantumnous.com
       blur(var(--appearance-glass-blur, 16px));
     backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
   }
+}
 
-  /* 全站输入框与 API 密钥页操作按钮使用更清晰的玻璃底色。 */
-  .appearance-glass-control {
-    background: color-mix(in oklch, white 24%, transparent);
-    border-color: color-mix(in oklch, white 48%, var(--border));
-    box-shadow: inset 0 1px 0 color-mix(in oklch, white 28%, transparent);
+@layer utilities {
+  /* 登录页和内部页面共用同一套可调毛玻璃材质。 */
+  .appearance-glass-surface,
+  .appearance-glass-scope [data-slot='card'],
+  .appearance-glass-scope [data-slot='static-data-table'],
+  .appearance-glass-scope [data-slot='sidebar-inner'] {
+    --muted-foreground: color-mix(in oklch, var(--foreground) 82%, var(--card));
+    --table-row: transparent;
+    --table-header: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-opacity, 24%),
+      transparent
+    );
+    --table-header-hover: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-hover-opacity, 32%),
+      transparent
+    );
+    background: var(
+      --appearance-glass-surface-background,
+      color-mix(
+        in oklch,
+        var(--card) calc(var(--appearance-glass-opacity, 0.72) * 100%),
+        transparent
+      )
+    );
+    border-color: color-mix(
+      in oklch,
+      var(--border) calc(var(--appearance-glass-border-opacity, 0.35) * 100%),
+      transparent
+    );
+    box-shadow: var(
+      --appearance-glass-surface-shadow,
+      0 24px 64px -28px
+        color-mix(
+          in oklch,
+          black calc(var(--appearance-glass-shadow-opacity, 0.35) * 100%),
+          transparent
+        )
+    );
     -webkit-backdrop-filter: saturate(1.15)
       blur(var(--appearance-glass-blur, 16px));
     backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
   }
 
-  .dark .appearance-glass-control {
-    background: color-mix(in oklch, white 10%, transparent);
-    border-color: color-mix(in oklch, white 24%, var(--border));
-    box-shadow: inset 0 1px 0 color-mix(in oklch, white 16%, transparent);
+  .dark .appearance-glass-surface,
+  .dark .appearance-glass-scope [data-slot='card'],
+  .dark .appearance-glass-scope [data-slot='static-data-table'],
+  .dark .appearance-glass-scope [data-slot='sidebar-inner'] {
+    --table-header: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-dark-opacity, 10%),
+      transparent
+    );
+    --table-header-hover: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-dark-hover-opacity, 18%),
+      transparent
+    );
+  }
+
+  /* 主玻璃内部只保留轻量填充，避免卡片、表格重复叠加白底和模糊。 */
+  .appearance-glass-surface .appearance-glass-surface,
+  .appearance-glass-surface [data-slot='card'],
+  .appearance-glass-surface [data-slot='static-data-table'],
+  .appearance-glass-scope [data-slot='card'] .appearance-glass-surface,
+  .appearance-glass-scope [data-slot='card'] [data-slot='card'],
+  .appearance-glass-scope [data-slot='card'] [data-slot='static-data-table'] {
+    background: var(
+      --appearance-glass-surface-background,
+      color-mix(
+        in oklch,
+        white var(--appearance-glass-control-opacity, 24%),
+        transparent
+      )
+    );
+    border-color: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-border-opacity, 48%),
+      var(--border)
+    );
+    box-shadow: var(
+      --appearance-glass-surface-shadow,
+      inset 0 1px 0
+        color-mix(
+          in oklch,
+          white var(--appearance-glass-control-highlight-opacity, 28%),
+          transparent
+        )
+    );
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .dark .appearance-glass-surface .appearance-glass-surface,
+  .dark .appearance-glass-surface [data-slot='card'],
+  .dark .appearance-glass-surface [data-slot='static-data-table'],
+  .dark .appearance-glass-scope [data-slot='card'] .appearance-glass-surface,
+  .dark .appearance-glass-scope [data-slot='card'] [data-slot='card'],
+  .dark
+    .appearance-glass-scope
+    [data-slot='card']
+    [data-slot='static-data-table'] {
+    background: var(
+      --appearance-glass-surface-background,
+      color-mix(
+        in oklch,
+        white var(--appearance-glass-control-dark-opacity, 10%),
+        transparent
+      )
+    );
+    border-color: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-dark-border-opacity, 24%),
+      var(--border)
+    );
+  }
+
+  /* 默认页签外壳使用轻玻璃，线形页签继续保持透明。 */
+  .appearance-glass-scope [data-slot='tabs-list'][data-variant='default'] {
+    background: color-mix(
+      in oklch,
+      white var(--appearance-glass-subtle-opacity, 14%),
+      transparent
+    );
+    border: 1px solid
+      color-mix(
+        in oklch,
+        white var(--appearance-glass-control-border-opacity, 48%),
+        var(--border)
+      );
+    -webkit-backdrop-filter: saturate(1.15)
+      blur(var(--appearance-glass-blur, 16px));
+    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+  }
+
+  .dark
+    .appearance-glass-scope
+    [data-slot='tabs-list'][data-variant='default'] {
+    background: color-mix(
+      in oklch,
+      white var(--appearance-glass-subtle-dark-opacity, 7%),
+      transparent
+    );
+    border-color: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-dark-border-opacity, 24%),
+      var(--border)
+    );
+  }
+
+  /* 菜单类浮层提高遮盖度，避免背景细节干扰选项文字。 */
+  .appearance-glass-popup {
+    background: color-mix(
+      in oklch,
+      var(--popover) var(--appearance-glass-popup-opacity, 88%),
+      transparent
+    );
+    border: 1px solid
+      color-mix(
+        in oklch,
+        var(--border) calc(var(--appearance-glass-border-opacity, 0.35) * 100%),
+        transparent
+      );
+    box-shadow: 0 18px 44px -22px
+      color-mix(
+        in oklch,
+        black calc(var(--appearance-glass-shadow-opacity, 0.35) * 100%),
+        transparent
+      );
+    -webkit-backdrop-filter: saturate(1.15)
+      blur(var(--appearance-glass-blur, 16px));
+    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+  }
+
+  .dark .appearance-glass-popup {
+    background: color-mix(
+      in oklch,
+      var(--popover) var(--appearance-glass-popup-dark-opacity, 84%),
+      transparent
+    );
+  }
+
+  .appearance-glass-popup [data-slot='select-scroll-up-button'],
+  .appearance-glass-popup [data-slot='select-scroll-down-button'] {
+    background: color-mix(
+      in oklch,
+      var(--popover) var(--appearance-glass-popup-opacity, 88%),
+      transparent
+    );
+  }
+
+  /* 命令列表沿用浮层外壳材质，避免内部实色背景盖住毛玻璃。 */
+  .appearance-glass-popup [data-slot='command'],
+  .appearance-glass-surface > [data-slot='command'] {
+    background: transparent;
+  }
+
+  /* 控件使用较轻的玻璃层，嵌入主面板后仍能保持文字清晰。 */
+  .appearance-glass-control,
+  .appearance-glass-scope [data-slot='alert'],
+  .appearance-glass-scope [data-slot='select-trigger'],
+  .appearance-glass-scope [data-slot='textarea'],
+  .appearance-glass-scope
+    [data-slot='tabs-list'][data-variant='default']
+    [data-slot='tabs-trigger'][data-active],
+  .appearance-glass-scope [data-slot='button'][data-variant='outline'] {
+    background: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-opacity, 24%),
+      transparent
+    );
+    border-color: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-border-opacity, 48%),
+      var(--border)
+    );
+    box-shadow: inset 0 1px 0
+      color-mix(
+        in oklch,
+        white var(--appearance-glass-control-highlight-opacity, 28%),
+        transparent
+      );
+    -webkit-backdrop-filter: saturate(1.15)
+      blur(var(--appearance-glass-blur, 16px));
+    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+  }
+
+  .dark .appearance-glass-control,
+  .dark .appearance-glass-scope [data-slot='alert'],
+  .dark .appearance-glass-scope [data-slot='select-trigger'],
+  .dark .appearance-glass-scope [data-slot='textarea'],
+  .dark
+    .appearance-glass-scope
+    [data-slot='tabs-list'][data-variant='default']
+    [data-slot='tabs-trigger'][data-active],
+  .dark .appearance-glass-scope [data-slot='button'][data-variant='outline'] {
+    background: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-dark-opacity, 10%),
+      transparent
+    );
+    border-color: color-mix(
+      in oklch,
+      white var(--appearance-glass-control-dark-border-opacity, 24%),
+      var(--border)
+    );
+    box-shadow: inset 0 1px 0
+      color-mix(
+        in oklch,
+        white var(--appearance-glass-control-dark-highlight-opacity, 16%),
+        transparent
+      );
+  }
+
+  /* 已有主玻璃时，控件只需要半透明填充，不再逐个重复模糊背景。 */
+  .appearance-glass-surface .appearance-glass-control,
+  .appearance-glass-surface [data-slot='alert'],
+  .appearance-glass-surface [data-slot='select-trigger'],
+  .appearance-glass-surface [data-slot='textarea'],
+  .appearance-glass-surface
+    [data-slot='tabs-list'][data-variant='default']
+    [data-slot='tabs-trigger'][data-active],
+  .appearance-glass-surface [data-slot='button'][data-variant='outline'] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .appearance-glass-scope
+    [data-slot='card']
+    [data-slot='tabs-list'][data-variant='default'],
+  .appearance-glass-scope [data-slot='card'] .appearance-glass-control,
+  .appearance-glass-scope [data-slot='card'] [data-slot='alert'],
+  .appearance-glass-scope [data-slot='card'] [data-slot='select-trigger'],
+  .appearance-glass-scope [data-slot='card'] [data-slot='textarea'] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  /* 组合输入只由外壳承担材质，内部输入保持透明。 */
+  .appearance-glass-control [data-slot='input-group-control'] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  /* 玻璃背景上仍需明确区分禁用状态，但不能让文字淡到不可读。 */
+  .appearance-glass-scope [data-slot='button']:disabled,
+  .appearance-glass-scope [data-slot='input']:disabled,
+  .appearance-glass-scope [data-slot='select-trigger']:disabled,
+  .appearance-glass-scope [data-slot='input-group']:has(:disabled) {
+    opacity: 0.7;
+  }
+
+  /* 固定列使用高遮盖玻璃，避免横向滚动时下层文字穿透。 */
+  .appearance-glass-fixed-cell {
+    background: var(
+      --appearance-glass-fixed-cell-background,
+      color-mix(
+        in oklch,
+        var(--card) var(--appearance-glass-fixed-cell-opacity, 98%),
+        transparent
+      )
+    );
   }
 }
 

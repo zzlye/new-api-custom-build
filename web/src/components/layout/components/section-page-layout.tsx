@@ -24,6 +24,8 @@ import {
   type ReactNode,
 } from 'react'
 
+import { cn } from '@/lib/utils'
+
 import { Main } from './main'
 import { PageFooterProvider } from './page-footer'
 
@@ -52,6 +54,8 @@ SectionPageLayoutBreadcrumb.displayName = 'SectionPageLayout.Breadcrumb'
 export type SectionPageLayoutProps = {
   children: ReactNode
   fixedContent?: boolean
+  /** 让标题与操作区形成独立的毛玻璃栏。 */
+  glassHeader?: boolean
 }
 
 export function SectionPageLayout(props: SectionPageLayoutProps) {
@@ -68,18 +72,26 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
     if (!isValidElement(node)) return
     const child = node as ReactElement<SlotProps>
     if (child.type === SectionPageLayoutTitle) title = child.props.children
-    else if (child.type === SectionPageLayoutActions)
+    else if (child.type === SectionPageLayoutActions) {
       actions = child.props.children
-    else if (child.type === SectionPageLayoutContent)
+    } else if (child.type === SectionPageLayoutContent) {
       content = child.props.children
-    else if (child.type === SectionPageLayoutBreadcrumb)
+    } else if (child.type === SectionPageLayoutBreadcrumb) {
       breadcrumb = child.props.children
+    }
   })
 
   return (
     <PageFooterProvider container={footerContainer}>
       <Main>
-        <div className='shrink-0 px-3 pt-3 pb-2.5 sm:px-4 sm:pt-5 sm:pb-3'>
+        <div
+          className={cn(
+            'shrink-0',
+            props.glassHeader
+              ? 'appearance-glass-surface mx-3 mt-3 rounded-xl border px-3 py-2.5 sm:mx-4 sm:mt-5 sm:px-4 sm:py-3'
+              : 'px-3 pt-3 pb-2.5 sm:px-4 sm:pt-5 sm:pb-3'
+          )}
+        >
           {breadcrumb != null && (
             <div className='mb-2 sm:mb-3'>{breadcrumb}</div>
           )}
@@ -109,7 +121,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
 
         <div
           ref={setFooterContainer}
-          className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
+          className='appearance-glass-surface shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
         />
       </Main>
     </PageFooterProvider>

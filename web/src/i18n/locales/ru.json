@@ -5254,6 +5254,7 @@
     "Global background": "Глобальный фон",
     "Applies site-wide, including public pages, sign-in pages and the admin console. Page-specific backgrounds take priority.": "Применяется ко всему сайту, включая публичные страницы, страницы входа и консоль администратора. Специальный фон страницы имеет приоритет.",
     "Glass card appearance": "Вид стеклянных карточек",
+    "Glass effect strength": "Интенсивность эффекта стекла",
     "Adjust the transparency, blur, border and shadow of glass cards.": "Настройте прозрачность, размытие, границу и тень стеклянных карточек.",
     "Glass card opacity": "Прозрачность стеклянной карточки",
     "Glass card blur": "Размытие стеклянной карточки",
