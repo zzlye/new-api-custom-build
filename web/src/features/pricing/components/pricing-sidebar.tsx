@@ -100,10 +100,11 @@ function FilterChip(props: {
     <button
       type='button'
       onClick={props.onClick}
+      aria-pressed={props.active}
       className={cn(
         'appearance-glass-control group inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-all',
         props.active
-          ? 'border-primary/45 text-foreground ring-1 ring-primary/20'
+          ? '!border-primary/80 !bg-primary/20 !text-primary !ring-2 !ring-primary/30'
           : 'border-border/70 text-muted-foreground hover:border-border hover:text-foreground'
       )}
       title={props.option.label}
@@ -117,7 +118,7 @@ function FilterChip(props: {
           className={cn(
             'rounded-md px-1.5 py-0.5 text-[12px]',
             props.active
-              ? 'bg-white/45 text-foreground dark:bg-white/10'
+              ? 'bg-white/65 text-primary dark:bg-black/15 dark:text-primary-foreground'
               : 'bg-white/30 text-muted-foreground dark:bg-white/5'
           )}
         >

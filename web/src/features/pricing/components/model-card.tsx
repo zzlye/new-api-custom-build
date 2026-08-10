@@ -64,7 +64,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const shouldReduceMotion = useReducedMotion()
   const tiltXTarget = useMotionValue(0)
   const tiltYTarget = useMotionValue(0)
-  const tiltSpring = { stiffness: 260, damping: 24, mass: 0.6 }
+  const tiltSpring = { stiffness: 180, damping: 16, mass: 0.65 }
   const rotateX = useSpring(tiltXTarget, tiltSpring)
   const rotateY = useSpring(tiltYTarget, tiltSpring)
   const tiltBounds = useRef<DOMRect | null>(null)
@@ -109,13 +109,13 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     copyToClipboard(props.model.model_name || '')
   }
 
-  /** 根据指针在卡片内的位置计算轻微倾斜，离开后平滑回正。 */
+  /** 根据指针位置计算最大六度的倾斜，离开后保留轻微回摆再归正。 */
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (shouldReduceMotion || event.pointerType === 'touch') return
     const bounds =
       tiltBounds.current ?? event.currentTarget.getBoundingClientRect()
-    const horizontal = (event.clientX - bounds.left) / bounds.width - 0.5
-    const vertical = (event.clientY - bounds.top) / bounds.height - 0.5
+    const horizontal = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2
+    const vertical = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2
     tiltXTarget.set(vertical * -6)
     tiltYTarget.set(horizontal * 6)
   }
@@ -237,10 +237,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       style={
         shouldReduceMotion
           ? undefined
-          : { rotateX, rotateY, transformPerspective: 900 }
+          : { rotateX, rotateY, transformPerspective: 720 }
       }
-      whileHover={shouldReduceMotion ? undefined : { scale: 1.008, y: -2 }}
-      transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+      whileHover={shouldReduceMotion ? undefined : { scale: 1.004, y: -1 }}
+      transition={{ type: 'spring', stiffness: 180, damping: 16 }}
       onPointerEnter={(event) => {
         if (!shouldReduceMotion && event.pointerType !== 'touch') {
           tiltBounds.current = event.currentTarget.getBoundingClientRect()
