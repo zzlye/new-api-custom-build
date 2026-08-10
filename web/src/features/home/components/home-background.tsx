@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useRouterState } from '@tanstack/react-router'
+
 import { PageBackground } from '@/components/page-background'
 import { useAppearance } from '@/hooks/use-appearance'
 import {
@@ -30,11 +32,17 @@ type HomeBackgroundProps = {
 /** 主页背景（读取 appearance.home_bg_*） */
 export function HomeBackground({ className }: HomeBackgroundProps) {
   const appearance = useAppearance()
+  const routeLoading = useRouterState({ select: (state) => state.isLoading })
+  const routePath = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   return (
     <PageBackground
       config={getEffectiveHomeBackground(appearance)}
       className={className}
       overlayOpacity={getEffectiveHomeBackgroundOverlayOpacity(appearance)}
+      suspendVideo={routeLoading}
+      videoPlaybackKey={routePath}
     />
   )
 }

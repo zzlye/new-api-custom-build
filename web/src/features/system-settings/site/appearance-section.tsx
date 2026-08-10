@@ -316,9 +316,9 @@ function BackgroundFields({
                         src={mediaUrl}
                         className='max-h-48 w-full object-cover'
                         muted
-                        loop
-                        autoPlay
                         playsInline
+                        controls
+                        preload='metadata'
                       />
                     ) : (
                       <img

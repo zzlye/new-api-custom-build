@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useRouterState } from '@tanstack/react-router'
+
 import { PageBackground } from '@/components/page-background'
 import { useAppearance } from '@/hooks/use-appearance'
 import { getGlobalBackground, hasGlobalBackground } from '@/lib/appearance'
@@ -28,6 +30,10 @@ type GlobalBackgroundProps = {
 /** 渲染站点级背景；页面专属背景由页面自身决定是否覆盖它。 */
 export function GlobalBackground(props: GlobalBackgroundProps) {
   const appearance = useAppearance()
+  const routeLoading = useRouterState({ select: (state) => state.isLoading })
+  const routePath = useRouterState({
+    select: (state) => state.location.pathname,
+  })
   if (!hasGlobalBackground(appearance)) return null
 
   return (
@@ -35,6 +41,8 @@ export function GlobalBackground(props: GlobalBackgroundProps) {
       config={getGlobalBackground(appearance)}
       className={cn('fixed inset-0', props.className)}
       overlayOpacity={appearance.global_bg_overlay_opacity}
+      suspendVideo={routeLoading}
+      videoPlaybackKey={routePath}
     />
   )
 }

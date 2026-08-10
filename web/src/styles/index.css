@@ -273,6 +273,18 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* Launch UI Animations and Effects - Matching Template Exactly */
 @layer components {
+  /* 将动态背景限制在独立绘制层，避免切页时重复扩大重绘区域。 */
+  .page-background-layer {
+    contain: paint;
+    isolation: isolate;
+  }
+
+  .page-background-video {
+    backface-visibility: hidden;
+    transform: translateZ(0);
+    will-change: transform;
+  }
+
   /* 登录页与首页保留原有层级，避免覆盖它们各自的边框和阴影。 */
   .appearance-glass-card,
   .glass-morphism {

@@ -72,6 +72,16 @@ type ReactNode = import('react').ReactNode
 mock.module('@tanstack/react-router', () => ({
   Link: (props: { to: string; children?: ReactNode }) =>
     createElement('a', { href: props.to }, props.children),
+  useRouterState: (options: {
+    select: (state: {
+      isLoading: boolean
+      location: { pathname: string }
+    }) => unknown
+  }) =>
+    options.select({
+      isLoading: false,
+      location: { pathname: '/' },
+    }),
 }))
 mock.module('lucide-react', () => ({
   ArrowRight: () => createElement('span'),

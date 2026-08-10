@@ -52,7 +52,12 @@ func UploadAppearanceMedia(c *gin.Context) {
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	name := fmt.Sprintf("%s_%d%s", strings.ReplaceAll(uuid.NewString(), "-", ""), time.Now().Unix(), ext)
+	kind := appearance_setting.MediaKindFromExt(file.Filename)
+	baseName := fmt.Sprintf("%s_%d", strings.ReplaceAll(uuid.NewString(), "-", ""), time.Now().Unix())
+	name := baseName + ext
+	if kind == appearance_setting.BgTypeVideo {
+		name = baseName + ".source" + ext
+	}
 	destPath := filepath.Join(appearance_setting.UploadDir, name)
 
 	src, err := file.Open()
@@ -67,10 +72,10 @@ func UploadAppearanceMedia(c *gin.Context) {
 		common.ApiErrorMsg(c, "保存文件失败")
 		return
 	}
-	defer dst.Close()
 
-	written, err := io.Copy(dst, io.LimitReader(src, appearance_setting.MaxUploadBytes+1))
-	if err != nil {
+	written, copyErr := io.Copy(dst, io.LimitReader(src, appearance_setting.MaxUploadBytes+1))
+	closeErr := dst.Close()
+	if copyErr != nil {
 		_ = os.Remove(destPath)
 		common.ApiErrorMsg(c, "写入文件失败")
 		return
@@ -80,8 +85,36 @@ func UploadAppearanceMedia(c *gin.Context) {
 		common.ApiErrorMsg(c, "文件不能超过 200MB")
 		return
 	}
+	if closeErr != nil {
+		_ = os.Remove(destPath)
+		common.ApiErrorMsg(c, "保存文件失败")
+		return
+	}
 
-	kind := appearance_setting.MediaKindFromExt(file.Filename)
+	originalSize := written
+	optimized := false
+	if kind == appearance_setting.BgTypeVideo {
+		// 视频统一压缩为网页背景规格，避免高帧率素材持续占用解码资源。
+		optimizedName := baseName + ".mp4"
+		optimizedPath := filepath.Join(appearance_setting.UploadDir, optimizedName)
+		optimizedSize, optimizeErr := appearance_setting.OptimizeBackgroundVideo(
+			c.Request.Context(),
+			destPath,
+			optimizedPath,
+		)
+		_ = os.Remove(destPath)
+		if optimizeErr != nil {
+			_ = os.Remove(optimizedPath)
+			common.SysError("optimize appearance video failed: " + optimizeErr.Error())
+			common.ApiErrorMsg(c, "视频优化失败，请检查服务器 FFmpeg 配置")
+			return
+		}
+		name = optimizedName
+		destPath = optimizedPath
+		written = optimizedSize
+		optimized = true
+	}
+
 	url := appearance_setting.UploadURLPrefix + "/" + name
 
 	bgTypeKey := "appearance_setting.home_bg_type"
@@ -98,14 +131,19 @@ func UploadAppearanceMedia(c *gin.Context) {
 		bgTypeKey: kind,
 		mediaKey:  url,
 	}); err != nil {
+		_ = os.Remove(destPath)
 		common.SysError("update appearance after upload failed: " + err.Error())
+		common.ApiErrorMsg(c, "更新外观设置失败")
+		return
 	}
 
 	common.ApiSuccess(c, gin.H{
-		"url":    url,
-		"type":   kind,
-		"size":   written,
-		"name":   name,
-		"target": target,
+		"url":           url,
+		"type":          kind,
+		"size":          written,
+		"original_size": originalSize,
+		"optimized":     optimized,
+		"name":          name,
+		"target":        target,
 	})
 }

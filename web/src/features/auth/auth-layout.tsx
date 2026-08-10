@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { PageBackground } from '@/components/page-background'
@@ -40,6 +40,10 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   const appearance = useAppearance()
   const loginBg = getEffectiveLoginBackground(appearance)
   const withBg = hasEffectiveLoginBackground(appearance)
+  const routeLoading = useRouterState({ select: (state) => state.isLoading })
+  const routePath = useRouterState({
+    select: (state) => state.location.pathname,
+  })
 
   return (
     <div
@@ -52,6 +56,8 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       <PageBackground
         config={loginBg}
         overlayOpacity={getEffectiveLoginBackgroundOverlayOpacity(appearance)}
+        suspendVideo={routeLoading}
+        videoPlaybackKey={routePath}
       />
 
       <Link
