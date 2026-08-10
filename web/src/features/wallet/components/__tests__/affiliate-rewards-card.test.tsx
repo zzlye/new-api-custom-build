@@ -103,6 +103,7 @@ await i18n.use(initReactI18next).init({
         'Referral Program': 'Referral Program',
         'Earn rewards when your referrals add funds. Rewards are added to your balance automatically.':
           'Earn rewards when your referrals add funds. Rewards are added to your balance automatically.',
+        'Total Earned': 'Total Earned',
         'Commission Rate': 'Commission Rate',
         Invites: 'Invites',
         'Copy referral link': 'Copy referral link',
@@ -116,7 +117,7 @@ const { AffiliateRewardsCard } = await import('../affiliate-rewards-card')
 describe('推荐计划卡片', () => {
   after(() => domWindow.close())
 
-  test('将返佣比例显示为百分比并保留邀请数与链接', async () => {
+  test('保留总收入并将返佣比例显示为百分比', async () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -147,7 +148,7 @@ describe('推荐计划卡片', () => {
     assert.equal(container.textContent?.includes('15%'), true)
     assert.equal(container.textContent?.includes('Invites'), true)
     assert.equal(container.textContent?.includes('3'), true)
-    assert.equal(container.textContent?.includes('Total Earned'), false)
+    assert.equal(container.textContent?.includes('Total Earned'), true)
     assert.equal(
       container.querySelector('input')?.value,
       'https://example.test/sign-up?aff=CODE'

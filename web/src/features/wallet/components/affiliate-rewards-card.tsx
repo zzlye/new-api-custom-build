@@ -24,7 +24,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatPercent } from '@/lib/format'
+import { formatPercent, formatQuota } from '@/lib/format'
 
 import type { UserWalletData } from '../types'
 
@@ -59,7 +59,7 @@ export function AffiliateRewardsCard({
 
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
-      <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
+      <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(190px,0.9fr)_minmax(270px,0.85fr)_minmax(280px,1fr)] lg:items-center'>
         <div className='flex min-w-0 items-center gap-2.5'>
           <IconBadge tone='chart-3'>
             <Share2 />
@@ -76,8 +76,9 @@ export function AffiliateRewardsCard({
           </div>
         </div>
 
-        <div className='grid grid-cols-2 gap-1.5 text-center'>
+        <div className='grid grid-cols-3 gap-1.5 text-center'>
           {[
+            [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
             [
               t('Commission Rate'),
               formatPercent(
