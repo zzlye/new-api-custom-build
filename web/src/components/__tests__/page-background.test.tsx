@@ -86,7 +86,7 @@ Object.defineProperty(domWindow.HTMLMediaElement.prototype, 'load', {
   },
 })
 
-const { act } = await import('react')
+const { act, StrictMode } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { PageBackground } = await import('../page-background')
 
@@ -100,6 +100,8 @@ describe('视频页面背景', () => {
     playbackCalls.pause = 0
     playbackCalls.play = 0
     pendingTimers.clear()
+    delete document.documentElement.dataset.videoBackground
+    delete document.documentElement.dataset.videoBackgroundCount
   })
 
   after(() => {
@@ -156,6 +158,75 @@ describe('视频页面背景', () => {
     assert.ok(playbackCalls.pause > pauseCountBeforeUnmount)
     assert.equal(playbackCalls.load, 1)
     assert.equal(video.getAttribute('src'), null)
+    assert.equal(document.documentElement.dataset.videoBackground, undefined)
+    assert.equal(
+      document.documentElement.dataset.videoBackgroundCount,
+      undefined
+    )
+    container.remove()
+  })
+
+  test('多个视频背景同时存在时按实例维护动态背景标记', async () => {
+    const firstContainer = document.createElement('div')
+    const secondContainer = document.createElement('div')
+    document.body.append(firstContainer, secondContainer)
+    const firstRoot = createRoot(firstContainer)
+    const secondRoot = createRoot(secondContainer)
+    const config = {
+      type: 'video' as const,
+      color: '#000000',
+      media: '/background.mp4',
+    }
+
+    await act(async () => {
+      firstRoot.render(<PageBackground config={config} suspendVideo />)
+      secondRoot.render(<PageBackground config={config} suspendVideo />)
+    })
+
+    assert.equal(document.documentElement.dataset.videoBackground, 'true')
+    assert.equal(document.documentElement.dataset.videoBackgroundCount, '2')
+
+    await act(async () => firstRoot.unmount())
+    assert.equal(document.documentElement.dataset.videoBackground, 'true')
+    assert.equal(document.documentElement.dataset.videoBackgroundCount, '1')
+
+    await act(async () => secondRoot.unmount())
+    assert.equal(document.documentElement.dataset.videoBackground, undefined)
+    assert.equal(
+      document.documentElement.dataset.videoBackgroundCount,
+      undefined
+    )
+    firstContainer.remove()
+    secondContainer.remove()
+  })
+
+  test('StrictMode 重复执行 effect 后仍保留一个动态背景实例', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const config = {
+      type: 'video' as const,
+      color: '#000000',
+      media: '/background.mp4',
+    }
+
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <PageBackground config={config} suspendVideo />
+        </StrictMode>
+      )
+    })
+
+    assert.equal(document.documentElement.dataset.videoBackground, 'true')
+    assert.equal(document.documentElement.dataset.videoBackgroundCount, '1')
+
+    await act(async () => root.unmount())
+    assert.equal(document.documentElement.dataset.videoBackground, undefined)
+    assert.equal(
+      document.documentElement.dataset.videoBackgroundCount,
+      undefined
+    )
     container.remove()
   })
 })

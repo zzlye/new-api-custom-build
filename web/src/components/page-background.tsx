@@ -46,23 +46,64 @@ export function PageBackground({
   videoPlaybackKey,
 }: PageBackgroundProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const hasVideoBackground = config.type === 'video' && Boolean(config.media)
+
+  useLayoutEffect(() => {
+    if (!hasVideoBackground || typeof document === 'undefined') return
+
+    const root = document.documentElement
+    const currentCount = Number.parseInt(
+      root.dataset.videoBackgroundCount ?? '0',
+      10
+    )
+    const nextCount =
+      Number.isFinite(currentCount) && currentCount > 0 ? currentCount + 1 : 1
+
+    // 用计数维护动态背景状态，避免多个页面背景卸载时误清理标记。
+    root.dataset.videoBackgroundCount = String(nextCount)
+    root.dataset.videoBackground = 'true'
+
+    return () => {
+      const activeCount = Number.parseInt(
+        root.dataset.videoBackgroundCount ?? '0',
+        10
+      )
+      const remainingCount = Number.isFinite(activeCount)
+        ? Math.max(0, activeCount - 1)
+        : 0
+
+      if (remainingCount === 0) {
+        delete root.dataset.videoBackgroundCount
+        delete root.dataset.videoBackground
+        return
+      }
+
+      root.dataset.videoBackgroundCount = String(remainingCount)
+    }
+  }, [hasVideoBackground])
 
   useLayoutEffect(() => {
     const video = videoRef.current
-    if (!video || config.type !== 'video' || !config.media) return
+    if (!video || !hasVideoBackground || !config.media) return
 
-    // 每次挂载时重新绑定媒体源，卸载时主动终止下载与解码。
-    video.setAttribute('src', config.media)
+    const media = config.media
+    // JSX 已经提供媒体源，仅在源不一致时补绑定，避免重复触发加载。
+    if (video.getAttribute('src') !== media) {
+      video.setAttribute('src', media)
+    }
+
     return () => {
+      // 媒体源已由后续渲染替换时，交给浏览器处理新源，避免误清理。
+      if (video.getAttribute('src') !== media) return
       video.pause()
       video.removeAttribute('src')
       video.load()
     }
-  }, [config.media, config.type])
+  }, [config.media, hasVideoBackground])
 
   useLayoutEffect(() => {
     const video = videoRef.current
-    if (!video || config.type !== 'video') return
+    if (!video || !hasVideoBackground) return
 
     let resumeTimer: number | undefined
     const syncPlayback = () => {
@@ -88,7 +129,7 @@ export function PageBackground({
       }
       document.removeEventListener('visibilitychange', syncPlayback)
     }
-  }, [config.media, config.type, suspendVideo, videoPlaybackKey])
+  }, [config.media, hasVideoBackground, suspendVideo, videoPlaybackKey])
 
   if (!hasPageBackground(config)) {
     return null

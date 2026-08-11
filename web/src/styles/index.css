@@ -273,6 +273,17 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* Launch UI Animations and Effects - Matching Template Exactly */
 @layer components {
+  :root[data-video-background='true'] body {
+    /* 视频每帧变化时限制模糊半径，保留轻微毛玻璃同时降低重复合成开销。 */
+    --appearance-glass-video-blur: clamp(
+      0px,
+      var(--appearance-glass-blur, 16px),
+      4px
+    );
+    --appearance-glass-backdrop-filter: saturate(1.05)
+      blur(var(--appearance-glass-video-blur));
+  }
+
   /* 将动态背景限制在独立绘制层，避免切页时重复扩大重绘区域。 */
   .page-background-layer {
     contain: paint;
@@ -281,8 +292,6 @@ For commercial licensing, please contact support@quantumnous.com
 
   .page-background-video {
     backface-visibility: hidden;
-    transform: translateZ(0);
-    will-change: transform;
   }
 
   /* 登录页与首页保留原有层级，避免覆盖它们各自的边框和阴影。 */
@@ -304,13 +313,23 @@ For commercial licensing, please contact support@quantumnous.com
         black calc(var(--appearance-glass-shadow-opacity, 0.35) * 100%),
         transparent
       );
-    -webkit-backdrop-filter: saturate(1.15)
-      blur(var(--appearance-glass-blur, 16px));
-    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+    -webkit-backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
+    backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
   }
 }
 
 @layer utilities {
+  :root[data-video-background='true'] [class*='backdrop-blur'] {
+    /* Tailwind 的模糊变量不继承，需要直接覆盖到使用它的元素。 */
+    --tw-backdrop-blur: blur(var(--appearance-glass-video-blur, 4px));
+  }
+
   /* 登录页和内部页面共用同一套可调毛玻璃材质。 */
   .appearance-glass-surface,
   .appearance-glass-scope [data-slot='card'],
@@ -350,9 +369,14 @@ For commercial licensing, please contact support@quantumnous.com
           transparent
         )
     );
-    -webkit-backdrop-filter: saturate(1.15)
-      blur(var(--appearance-glass-blur, 16px));
-    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+    -webkit-backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
+    backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
   }
 
   .dark .appearance-glass-surface,
@@ -441,9 +465,14 @@ For commercial licensing, please contact support@quantumnous.com
         white var(--appearance-glass-control-border-opacity, 48%),
         var(--border)
       );
-    -webkit-backdrop-filter: saturate(1.15)
-      blur(var(--appearance-glass-blur, 16px));
-    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+    -webkit-backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
+    backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
   }
 
   .dark
@@ -480,9 +509,14 @@ For commercial licensing, please contact support@quantumnous.com
         black calc(var(--appearance-glass-shadow-opacity, 0.35) * 100%),
         transparent
       );
-    -webkit-backdrop-filter: saturate(1.15)
-      blur(var(--appearance-glass-blur, 16px));
-    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+    -webkit-backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
+    backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
   }
 
   .dark .appearance-glass-popup {
@@ -533,9 +567,14 @@ For commercial licensing, please contact support@quantumnous.com
         white var(--appearance-glass-control-highlight-opacity, 28%),
         transparent
       );
-    -webkit-backdrop-filter: saturate(1.15)
-      blur(var(--appearance-glass-blur, 16px));
-    backdrop-filter: saturate(1.15) blur(var(--appearance-glass-blur, 16px));
+    -webkit-backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
+    backdrop-filter: var(
+      --appearance-glass-backdrop-filter,
+      saturate(1.15) blur(var(--appearance-glass-blur, 16px))
+    );
   }
 
   .dark .appearance-glass-control,
