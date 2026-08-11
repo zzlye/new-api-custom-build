@@ -73,6 +73,7 @@ type ThemeCustomizationContextType = {
   setRadius: (radius: ThemeRadius) => void
   setScale: (scale: ThemeScale) => void
   setContentLayout: (contentLayout: ContentLayout) => void
+  setBackgroundVisible: (visible: boolean) => void
   resetCustomization: () => void
 }
 
@@ -88,6 +89,7 @@ const FALLBACK_CONTEXT: ThemeCustomizationContextType = {
   setRadius: () => {},
   setScale: () => {},
   setContentLayout: () => {},
+  setBackgroundVisible: () => {},
   resetCustomization: () => {},
 }
 
@@ -131,6 +133,10 @@ export function ThemeCustomizationProvider(props: {
       CONTENT_LAYOUT_VALUES,
       DEFAULT_THEME_CUSTOMIZATION.contentLayout
     )
+  )
+  // 个人开关只控制当前浏览器的后台背景，不修改管理员保存的站点外观。
+  const [backgroundVisible, _setBackgroundVisible] = useState(
+    () => getCookie(THEME_COOKIE_KEYS.backgroundVisible) !== 'false'
   )
 
   // Mirror state to the <body> via data-* attributes so theme-presets.css can
@@ -215,23 +221,52 @@ export function ThemeCustomizationProvider(props: {
     }
   }, [])
 
+  const setBackgroundVisible = useCallback((visible: boolean) => {
+    _setBackgroundVisible(visible)
+    if (visible === DEFAULT_THEME_CUSTOMIZATION.backgroundVisible) {
+      removeCookie(THEME_COOKIE_KEYS.backgroundVisible)
+    } else {
+      setCookie(
+        THEME_COOKIE_KEYS.backgroundVisible,
+        String(visible),
+        COOKIE_MAX_AGE
+      )
+    }
+  }, [])
+
   const resetCustomization = useCallback(() => {
     setPreset(DEFAULT_THEME_CUSTOMIZATION.preset)
     setFont(DEFAULT_THEME_CUSTOMIZATION.font)
     setRadius(DEFAULT_THEME_CUSTOMIZATION.radius)
     setScale(DEFAULT_THEME_CUSTOMIZATION.scale)
     setContentLayout(DEFAULT_THEME_CUSTOMIZATION.contentLayout)
-  }, [setPreset, setFont, setRadius, setScale, setContentLayout])
+    setBackgroundVisible(DEFAULT_THEME_CUSTOMIZATION.backgroundVisible)
+  }, [
+    setPreset,
+    setFont,
+    setRadius,
+    setScale,
+    setContentLayout,
+    setBackgroundVisible,
+  ])
 
   const value = useMemo<ThemeCustomizationContextType>(
     () => ({
       defaults: DEFAULT_THEME_CUSTOMIZATION,
-      customization: { preset, font, radius, scale, contentLayout },
+      customization: {
+        preset,
+        font,
+        radius,
+        scale,
+        contentLayout,
+        backgroundVisible,
+      },
       setPreset,
       setFont,
       setRadius,
       setScale,
       setContentLayout,
+      setBackgroundVisible,
       resetCustomization,
     }),
     [
@@ -240,11 +275,13 @@ export function ThemeCustomizationProvider(props: {
       radius,
       scale,
       contentLayout,
+      backgroundVisible,
       setPreset,
       setFont,
       setRadius,
       setScale,
       setContentLayout,
+      setBackgroundVisible,
       resetCustomization,
     ]
   )

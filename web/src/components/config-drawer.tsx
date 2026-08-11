@@ -48,6 +48,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { useDirection } from '@/context/direction-provider'
 import { type Collapsible, useLayout } from '@/context/layout-provider'
 import { useThemeCustomization } from '@/context/theme-customization-provider'
@@ -106,6 +107,7 @@ export function ConfigDrawer() {
         </SheetHeader>
         <div className={sideDrawerFormClassName()}>
           <ThemeConfig />
+          <BackgroundConfig />
           <PresetConfig />
           <FontConfig />
           <RadiusConfig />
@@ -126,6 +128,28 @@ export function ConfigDrawer() {
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function BackgroundConfig() {
+  const { t } = useTranslation()
+  const { customization, setBackgroundVisible } = useThemeCustomization()
+
+  return (
+    <div className='flex items-center justify-between gap-4 py-1'>
+      <label
+        htmlFor='theme-background-visible'
+        className='text-muted-foreground text-sm font-semibold'
+      >
+        {t('Show background')}
+      </label>
+      <Switch
+        id='theme-background-visible'
+        checked={customization.backgroundVisible}
+        onCheckedChange={setBackgroundVisible}
+        aria-label={t('Show background')}
+      />
+    </div>
   )
 }
 

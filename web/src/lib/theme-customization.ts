@@ -113,6 +113,7 @@ export type ThemeCustomization = {
   radius: ThemeRadius
   scale: ThemeScale
   contentLayout: ContentLayout
+  backgroundVisible: boolean
 }
 
 export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
@@ -121,6 +122,7 @@ export const DEFAULT_THEME_CUSTOMIZATION: ThemeCustomization = {
   radius: 'default',
   scale: 'default',
   contentLayout: 'full',
+  backgroundVisible: true,
 }
 
 export const THEME_PRESET_VALUES = new Set(
@@ -160,6 +162,7 @@ export const THEME_COOKIE_KEYS = {
   radius: 'theme_radius',
   scale: 'theme_scale',
   contentLayout: 'theme_content_layout',
+  backgroundVisible: 'theme_background_visible',
 } as const
 
 /**

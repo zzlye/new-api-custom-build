@@ -49,6 +49,19 @@ export function PageBackground({
 
   useLayoutEffect(() => {
     const video = videoRef.current
+    if (!video || config.type !== 'video' || !config.media) return
+
+    // 每次挂载时重新绑定媒体源，卸载时主动终止下载与解码。
+    video.setAttribute('src', config.media)
+    return () => {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+  }, [config.media, config.type])
+
+  useLayoutEffect(() => {
+    const video = videoRef.current
     if (!video || config.type !== 'video') return
 
     let resumeTimer: number | undefined

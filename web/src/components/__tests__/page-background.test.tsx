@@ -47,7 +47,7 @@ Object.defineProperty(domWindow.document, 'hidden', {
   value: false,
 })
 
-const playbackCalls = { pause: 0, play: 0 }
+const playbackCalls = { load: 0, pause: 0, play: 0 }
 let timerId = 0
 const pendingTimers = new Map<number, () => void>()
 const originalSetTimeout = domWindow.setTimeout.bind(domWindow)
@@ -79,6 +79,12 @@ Object.defineProperty(domWindow.HTMLMediaElement.prototype, 'play', {
     return Promise.resolve()
   },
 })
+Object.defineProperty(domWindow.HTMLMediaElement.prototype, 'load', {
+  configurable: true,
+  value: () => {
+    playbackCalls.load += 1
+  },
+})
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -90,6 +96,7 @@ const { PageBackground } = await import('../page-background')
 
 describe('视频页面背景', () => {
   beforeEach(() => {
+    playbackCalls.load = 0
     playbackCalls.pause = 0
     playbackCalls.play = 0
     pendingTimers.clear()
@@ -143,7 +150,12 @@ describe('视频页面背景', () => {
 
     assert.ok(playbackCalls.play > 0)
 
+    const pauseCountBeforeUnmount = playbackCalls.pause
     await act(async () => root.unmount())
+
+    assert.ok(playbackCalls.pause > pauseCountBeforeUnmount)
+    assert.equal(playbackCalls.load, 1)
+    assert.equal(video.getAttribute('src'), null)
     container.remove()
   })
 })

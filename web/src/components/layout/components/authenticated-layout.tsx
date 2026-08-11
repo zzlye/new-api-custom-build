@@ -22,6 +22,7 @@ import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
+import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
 
@@ -34,10 +35,16 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const { customization } = useThemeCustomization()
 
   return (
-    <div className='relative min-h-svh overflow-hidden'>
-      <GlobalBackground />
+    <div
+      className={cn(
+        'relative min-h-svh overflow-hidden',
+        !customization.backgroundVisible && 'bg-background'
+      )}
+    >
+      {customization.backgroundVisible && <GlobalBackground />}
       <div className='appearance-glass-scope relative z-10 min-h-svh'>
         <LayoutProvider>
           <SearchProvider>
