@@ -213,28 +213,10 @@ func GetTokenStatus(c *gin.Context) {
 }
 
 func GetTokenUsage(c *gin.Context) {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "No Authorization header",
-		})
-		return
-	}
-
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid Bearer token",
-		})
-		return
-	}
-	tokenKey := parts[1]
-
-	token, err := model.GetTokenByKey(strings.TrimPrefix(tokenKey, "sk-"), false)
+	// 鉴权中间件已经验证 Key 并写入令牌 ID，这里复用结果，避免重复解析请求头。
+	token, err := model.GetTokenById(c.GetInt("token_id"))
 	if err != nil {
-		common.SysError("failed to get token by key: " + err.Error())
+		common.SysError("failed to get token by id: " + err.Error())
 		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
 		return
 	}
@@ -242,6 +224,18 @@ func GetTokenUsage(c *gin.Context) {
 	expiredAt := token.ExpiredTime
 	if expiredAt == -1 {
 		expiredAt = 0
+	}
+	accountQuota, err := model.GetUserQuota(token.UserId, false)
+	if err != nil {
+		common.SysError("failed to get token owner quota: " + err.Error())
+		common.ApiError(c, err)
+		return
+	}
+	accountUsedQuota, err := model.GetUserUsedQuota(token.UserId)
+	if err != nil {
+		common.SysError("failed to get token owner used quota: " + err.Error())
+		common.ApiError(c, err)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -257,6 +251,11 @@ func GetTokenUsage(c *gin.Context) {
 			"model_limits":         token.GetModelLimitsMap(),
 			"model_limits_enabled": token.ModelLimitsEnabled,
 			"expires_at":           expiredAt,
+			// 账号管理令牌过期后，客户端仍可用所属 API Key 只读查询钱包余额。
+			"account": gin.H{
+				"quota":      accountQuota,
+				"used_quota": accountUsedQuota,
+			},
 		},
 	})
 }
