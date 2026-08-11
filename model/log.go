@@ -2,10 +2,12 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -54,6 +56,60 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 		return "", err
 	}
 	return input, nil
+}
+
+const logDetailFilterMaxRunes = 256
+
+func escapeLogLikeLiteral(value string) string {
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		value = strings.ReplaceAll(value, `\`, `\\`)
+		value = strings.ReplaceAll(value, `%`, `\%`)
+		return strings.ReplaceAll(value, `_`, `\_`)
+	}
+
+	value = strings.ReplaceAll(value, "!", "!!")
+	value = strings.ReplaceAll(value, "%", "!%")
+	return strings.ReplaceAll(value, "_", "!_")
+}
+
+func buildLogContainsCondition(column string, value string) (string, string) {
+	condition := column + " LIKE ? ESCAPE '!'"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		condition = column + " LIKE ?"
+	}
+	return condition, "%" + escapeLogLikeLiteral(value) + "%"
+}
+
+func buildLogJSONFieldEqualsCondition(column string, field string, value string) (string, string) {
+	condition := column + " LIKE ? ESCAPE '!'"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		condition = column + " LIKE ?"
+	}
+
+	// 字段和值均按日志相同的 JSON 规则编码，完整片段匹配不会跨入后续的管理员字段。
+	encodedField, _ := json.Marshal(field)
+	encodedValue, _ := json.Marshal(value)
+	literal := string(encodedField) + ":" + string(encodedValue)
+	return condition, "%" + escapeLogLikeLiteral(literal) + "%"
+}
+
+func applyLogDetailFilter(tx *gorm.DB, value string, includeFullOther bool) (*gorm.DB, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return tx, nil
+	}
+	if utf8.RuneCountInString(value) > logDetailFilterMaxRunes {
+		return nil, fmt.Errorf("详情筛选关键词不能超过 %d 个字符", logDetailFilterMaxRunes)
+	}
+
+	// 管理员可检索完整详情；个人查询检索正文与公开错误码，避免匹配管理员专用字段。
+	contentCondition, contentPattern := buildLogContainsCondition("logs.content", value)
+	if !includeFullOther {
+		errorCodeCondition, errorCodePattern := buildLogJSONFieldEqualsCondition("logs.other", "error_code", value)
+		return tx.Where("("+contentCondition+" OR "+errorCodeCondition+")", contentPattern, errorCodePattern), nil
+	}
+	otherCondition, otherPattern := buildLogContainsCondition("logs.other", value)
+	return tx.Where("("+contentCondition+" OR "+otherCondition+")", contentPattern, otherPattern), nil
 }
 
 type Log struct {
@@ -465,7 +521,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, detail string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -487,6 +543,9 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 	if upstreamRequestId != "" {
 		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
+	}
+	if tx, err = applyLogDetailFilter(tx, detail, true); err != nil {
+		return nil, 0, err
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -561,7 +620,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, detail string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -580,6 +639,9 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 	if upstreamRequestId != "" {
 		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
+	}
+	if tx, err = applyLogDetailFilter(tx, detail, false); err != nil {
+		return nil, 0, err
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
@@ -615,7 +677,7 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, detail string, includeFullOther bool) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -625,6 +687,12 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		return stat, err
 	}
 	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
+		return stat, err
+	}
+	if tx, err = applyLogDetailFilter(tx, detail, includeFullOther); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyLogDetailFilter(rpmTpmQuery, detail, includeFullOther); err != nil {
 		return stat, err
 	}
 	if tokenName != "" {

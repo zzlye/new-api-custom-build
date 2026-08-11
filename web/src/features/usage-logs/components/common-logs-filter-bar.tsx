@@ -85,6 +85,7 @@ function buildSearchSourceKey(values: {
   token?: unknown
   group?: unknown
   username?: unknown
+  detail?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
   type?: unknown
@@ -97,6 +98,7 @@ function buildSearchSourceKey(values: {
     values.token,
     values.group,
     values.username,
+    values.detail,
     values.requestId,
     values.upstreamRequestId,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
@@ -130,6 +132,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token,
       group: searchParams.group,
       username: searchParams.username,
+      detail: searchParams.detail,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
       type: searchParams.type,
@@ -144,6 +147,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
       username: searchParams.username || undefined,
+      detail: searchParams.detail || undefined,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
     }
@@ -160,6 +164,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.token,
     searchParams.group,
     searchParams.username,
+    searchParams.detail,
     searchParams.requestId,
     searchParams.upstreamRequestId,
     searchParams.type,
@@ -237,6 +242,7 @@ export function CommonLogsFilterBar<TData>(
     !!filters.token ||
     !!filters.username ||
     !!filters.channel ||
+    !!filters.detail?.trim() ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
 
@@ -248,6 +254,7 @@ export function CommonLogsFilterBar<TData>(
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
+    filters.detail?.trim(),
     filters.requestId,
     filters.upstreamRequestId,
   ].filter(Boolean).length
@@ -390,6 +397,15 @@ export function CommonLogsFilterBar<TData>(
           />
         </LogsFilterField>
       )}
+      <LogsFilterField>
+        <LogsFilterInput
+          placeholder={t('Details / error code')}
+          value={filters.detail || ''}
+          maxLength={256}
+          onChange={(e) => handleChange('detail', e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Request ID')}
