@@ -111,7 +111,9 @@ export function PageBackground({
         window.clearTimeout(resumeTimer)
       }
       video.pause()
-      if (suspendVideo || document.hidden) return
+      const windowBlurred =
+        typeof document.hasFocus === 'function' && !document.hasFocus()
+      if (suspendVideo || document.hidden || windowBlurred) return
 
       const delay = videoPlaybackKey ? VIDEO_RESUME_DELAY_MS : 0
       resumeTimer = window.setTimeout(() => {
@@ -122,12 +124,16 @@ export function PageBackground({
     }
 
     document.addEventListener('visibilitychange', syncPlayback)
+    window.addEventListener('blur', syncPlayback)
+    window.addEventListener('focus', syncPlayback)
     syncPlayback()
     return () => {
       if (resumeTimer !== undefined) {
         window.clearTimeout(resumeTimer)
       }
       document.removeEventListener('visibilitychange', syncPlayback)
+      window.removeEventListener('blur', syncPlayback)
+      window.removeEventListener('focus', syncPlayback)
     }
   }, [config.media, hasVideoBackground, suspendVideo, videoPlaybackKey])
 

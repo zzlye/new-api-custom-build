@@ -46,6 +46,11 @@ Object.defineProperty(domWindow.document, 'hidden', {
   configurable: true,
   value: false,
 })
+let pageFocused = true
+Object.defineProperty(domWindow.document, 'hasFocus', {
+  configurable: true,
+  value: () => pageFocused,
+})
 
 const playbackCalls = { load: 0, pause: 0, play: 0 }
 let timerId = 0
@@ -99,6 +104,7 @@ describe('视频页面背景', () => {
     playbackCalls.load = 0
     playbackCalls.pause = 0
     playbackCalls.play = 0
+    pageFocused = true
     pendingTimers.clear()
     delete document.documentElement.dataset.videoBackground
     delete document.documentElement.dataset.videoBackgroundCount
@@ -198,6 +204,43 @@ describe('视频页面背景', () => {
     )
     firstContainer.remove()
     secondContainer.remove()
+  })
+
+  test('窗口失去焦点时暂停并在重新聚焦后恢复播放', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const config = {
+      type: 'video' as const,
+      color: '#000000',
+      media: '/background.mp4',
+    }
+
+    await act(async () => {
+      root.render(<PageBackground config={config} videoPlaybackKey='/wallet' />)
+    })
+    await act(async () => {
+      for (const callback of pendingTimers.values()) callback()
+      pendingTimers.clear()
+    })
+    const playCountBeforeBlur = playbackCalls.play
+
+    pageFocused = false
+    await act(async () => window.dispatchEvent(new Event('blur')))
+    assert.ok(playbackCalls.pause > 0)
+    assert.equal(pendingTimers.size, 0)
+
+    pageFocused = true
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    assert.equal(pendingTimers.size, 1)
+    await act(async () => {
+      for (const callback of pendingTimers.values()) callback()
+      pendingTimers.clear()
+    })
+    assert.equal(playbackCalls.play, playCountBeforeBlur + 1)
+
+    await act(async () => root.unmount())
+    container.remove()
   })
 
   test('StrictMode 重复执行 effect 后仍保留一个动态背景实例', async () => {
