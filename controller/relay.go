@@ -71,6 +71,32 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
+	// 图片和 Gemini 生图请求可以显式切换为后台任务，默认仍保持同步响应。
+	if shouldQueue, asyncErr := ShouldQueueAsyncRelay(c, relayFormat); asyncErr != nil {
+		statusCode := http.StatusBadRequest
+		if common.IsRequestBodyTooLargeError(asyncErr) || errors.Is(asyncErr, common.ErrRequestBodyTooLarge) {
+			statusCode = http.StatusRequestEntityTooLarge
+		}
+		c.JSON(statusCode, gin.H{
+			"error": gin.H{
+				"message": asyncErr.Error(),
+				"type":    "invalid_request_error",
+				"code":    "async_request_not_supported",
+			},
+		})
+		return
+	} else if shouldQueue {
+		if err := EnqueueAsyncRelayRequest(c, relayFormat); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": gin.H{
+					"message": err.Error(),
+					"type":    "server_error",
+					"code":    "async_task_create_failed",
+				},
+			})
+		}
+		return
+	}
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 

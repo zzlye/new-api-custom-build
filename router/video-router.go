@@ -13,6 +13,7 @@ func SetVideoRouter(router *gin.Engine) {
 	videoProxyRouter.Use(middleware.RouteTag("relay"))
 	videoProxyRouter.Use(middleware.TokenOrUserAuth())
 	{
+		videoProxyRouter.GET("/video/:task_id/content", controller.VideoProxy)
 		videoProxyRouter.GET("/videos/:task_id/content", controller.VideoProxy)
 	}
 
@@ -20,6 +21,9 @@ func SetVideoRouter(router *gin.Engine) {
 	videoV1Router.Use(middleware.RouteTag("relay"))
 	videoV1Router.Use(middleware.TokenAuth(), middleware.Distribute())
 	{
+		// 兼容简写视频接口，内部沿用统一的视频任务提交和查询流程。
+		videoV1Router.POST("/video", controller.RelayTask)
+		videoV1Router.GET("/video/:task_id", controller.RelayTaskFetch)
 		videoV1Router.POST("/video/generations", controller.RelayTask)
 		videoV1Router.GET("/video/generations/:task_id", controller.RelayTaskFetch)
 		videoV1Router.POST("/videos/:video_id/remix", controller.RelayTask)
