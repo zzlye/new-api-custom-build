@@ -717,7 +717,7 @@ function PriceSection(props: {
         <SectionTitle>{t('Base Price')}</SectionTitle>
         <div className='flex items-baseline justify-between'>
           <span className='text-muted-foreground text-sm'>
-            {t('Per-second')}
+            {t('Per-second billing')}
           </span>
           <span className='text-foreground font-mono text-sm font-semibold tabular-nums'>
             {formatGroupPerSecondPrice(

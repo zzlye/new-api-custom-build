@@ -38,7 +38,7 @@ export function ModelBillingModeBadge(props: ModelBillingModeBadgeProps) {
     label = t('Dynamic Pricing')
     variant = 'warning'
   } else if (isPerSecondModel(props.model)) {
-    label = t('Per-second')
+    label = t('Per-second billing')
     variant = 'info'
   } else if (isTokenBasedModel(props.model)) {
     label = t('Token-based')

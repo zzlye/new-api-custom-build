@@ -37,7 +37,7 @@ import {
   getEndpointTypeLabels,
   getQuotaTypeLabels,
 } from '../constants'
-import { parseTags } from '../lib/filters'
+import { getVisibleQuotaTypes, parseTags } from '../lib/filters'
 import { isPerSecondModel } from '../lib/model-helpers'
 import type { PricingModel, PricingVendor } from '../types'
 
@@ -194,34 +194,25 @@ export function PricingSidebar(props: PricingSidebarProps) {
     })),
   ]
 
-  const quotaOptions: FilterOption[] = [
-    {
-      value: QUOTA_TYPES.ALL,
-      label: quotaTypeLabels[QUOTA_TYPES.ALL],
-      count: props.models.length,
-    },
-    {
-      value: QUOTA_TYPES.TOKEN,
-      label: quotaTypeLabels[QUOTA_TYPES.TOKEN],
-      count: countBy(
-        props.models,
-        (model) => model.quota_type === 0 && !isPerSecondModel(model)
-      ),
-    },
-    {
-      value: QUOTA_TYPES.REQUEST,
-      label: quotaTypeLabels[QUOTA_TYPES.REQUEST],
-      count: countBy(
-        props.models,
-        (model) => model.quota_type === 1 && !isPerSecondModel(model)
-      ),
-    },
-    {
-      value: QUOTA_TYPES.SECOND,
-      label: quotaTypeLabels[QUOTA_TYPES.SECOND],
-      count: countBy(props.models, isPerSecondModel),
-    },
-  ]
+  const quotaTypeCounts = {
+    [QUOTA_TYPES.ALL]: props.models.length,
+    [QUOTA_TYPES.TOKEN]: countBy(
+      props.models,
+      (model) => model.quota_type === 0 && !isPerSecondModel(model)
+    ),
+    [QUOTA_TYPES.REQUEST]: countBy(
+      props.models,
+      (model) => model.quota_type === 1 && !isPerSecondModel(model)
+    ),
+    [QUOTA_TYPES.SECOND]: countBy(props.models, isPerSecondModel),
+  }
+  const quotaOptions: FilterOption[] = getVisibleQuotaTypes(props.models).map(
+    (quotaType) => ({
+      value: quotaType,
+      label: quotaTypeLabels[quotaType],
+      count: quotaTypeCounts[quotaType],
+    })
+  )
 
   const tagOptions: FilterOption[] = [
     {

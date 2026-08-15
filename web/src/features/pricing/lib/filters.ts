@@ -22,6 +22,7 @@ import {
   QUOTA_TYPES,
   QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
+  type QuotaTypeOption,
 } from '../constants'
 import type { PricingModel } from '../types'
 import { isPerSecondModel } from './model-helpers'
@@ -93,6 +94,38 @@ export function filterByQuotaType(
     (model) =>
       model.quota_type === QUOTA_TYPE_VALUES.TOKEN && !isPerSecondModel(model)
   )
+}
+
+/** 根据当前模型列表返回应展示的计费类型筛选。 */
+export function getVisibleQuotaTypes(
+  models: PricingModel[]
+): QuotaTypeOption[] {
+  const quotaTypes: QuotaTypeOption[] = [
+    QUOTA_TYPES.ALL,
+    QUOTA_TYPES.TOKEN,
+    QUOTA_TYPES.REQUEST,
+  ]
+
+  if (models.some(isPerSecondModel)) {
+    quotaTypes.push(QUOTA_TYPES.SECOND)
+  }
+
+  return quotaTypes
+}
+
+/** 将不可见或无效的计费类型筛选规范化为全部模型。 */
+export function normalizeQuotaTypeFilter(
+  models: PricingModel[],
+  quotaType: string | undefined
+): QuotaTypeOption {
+  const requestedQuotaType = quotaType || QUOTA_TYPES.ALL
+  const visibleQuotaTypes = getVisibleQuotaTypes(models)
+
+  return visibleQuotaTypes.some(
+    (visibleType) => visibleType === requestedQuotaType
+  )
+    ? (requestedQuotaType as QuotaTypeOption)
+    : QUOTA_TYPES.ALL
 }
 
 /**

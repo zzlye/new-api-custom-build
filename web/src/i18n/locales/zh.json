@@ -5319,6 +5319,7 @@
     "Unique identifier for this target.": "该目标的唯一标识。",
     "e.g., gpt-4o, claude-sonnet": "例如：gpt-4o、claude-sonnet",
     "Per-second": "按秒",
+    "Per-second billing": "按秒计费",
     "per second": "秒",
     "Cost in USD per second.": "每秒美元价格。",
     "second": "秒",

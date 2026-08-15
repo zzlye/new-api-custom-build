@@ -62,7 +62,7 @@ export function getQuotaTypeLabels(
     [QUOTA_TYPES.ALL]: t('All Models'),
     [QUOTA_TYPES.TOKEN]: t('Token-based'),
     [QUOTA_TYPES.REQUEST]: t('Per Request'),
-    [QUOTA_TYPES.SECOND]: t('Per-second'),
+    [QUOTA_TYPES.SECOND]: t('Per-second billing'),
   }
 }
 

@@ -63,6 +63,7 @@ import {
 import { AnnouncementsPanel } from './announcements-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
 import { SummaryCards } from './summary-cards'
+import { SystemNoticePanel } from './system-notice-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
   'dashboard_overview_setup_guide_expanded'
@@ -601,8 +602,6 @@ export function OverviewDashboard() {
   const setupStatusReady = apiKeysQuery.isFetched && Boolean(user)
   const setupGuideExpanded =
     manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
-  const showContentPanels = isAdmin || showAnnouncementsPanel
-
   const handleSetupGuideToggle = () => {
     const nextExpanded = !setupGuideExpanded
     setManualSetupGuideExpanded(nextExpanded)
@@ -743,20 +742,28 @@ export function OverviewDashboard() {
 
       <SummaryCards />
 
-      {showContentPanels && (
-        <CardStaggerContainer className='grid grid-cols-1 gap-4'>
-          {isAdmin && (
-            <CardStaggerItem>
-              <PerformanceHealthPanel />
-            </CardStaggerItem>
-          )}
-          {showAnnouncementsPanel && (
-            <CardStaggerItem>
-              <AnnouncementsPanel />
-            </CardStaggerItem>
-          )}
-        </CardStaggerContainer>
-      )}
+      <CardStaggerContainer
+        className={cn(
+          'grid grid-cols-1 gap-4',
+          showAnnouncementsPanel && 'lg:grid-cols-2'
+        )}
+      >
+        {isAdmin && (
+          <CardStaggerItem
+            className={showAnnouncementsPanel ? 'lg:col-span-2' : undefined}
+          >
+            <PerformanceHealthPanel />
+          </CardStaggerItem>
+        )}
+        <CardStaggerItem>
+          <SystemNoticePanel />
+        </CardStaggerItem>
+        {showAnnouncementsPanel && (
+          <CardStaggerItem>
+            <AnnouncementsPanel />
+          </CardStaggerItem>
+        )}
+      </CardStaggerContainer>
     </div>
   )
 }
