@@ -22,7 +22,9 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
+import { cn } from '@/lib/utils'
 
+import { useHeroParallax } from '../../hooks/use-hero-parallax'
 import { HeroTerminalDemo } from '../hero-terminal-demo'
 import { HomeBackground } from '../home-background'
 
@@ -34,6 +36,7 @@ interface HeroProps {
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const parallaxSurfaceRef = useHeroParallax()
   const docsUrl =
     (status?.docs_link as string | undefined) || 'https://docs.newapi.pro'
 
@@ -66,9 +69,15 @@ export function Hero(props: HeroProps) {
   }
 
   return (
-    <section className='relative z-10 flex min-h-svh items-center overflow-hidden px-6 pt-20 pb-12 md:px-8 md:pt-24 md:pb-16 lg:pt-20 lg:pb-20'>
+    <section
+      ref={parallaxSurfaceRef}
+      className={cn(
+        'home-hero-depth-surface relative z-10 flex min-h-svh items-center overflow-hidden px-6 pt-20 pb-12 md:px-8 md:pt-24 md:pb-16 lg:pt-20 lg:pb-20',
+        props.className
+      )}
+    >
       {/* 默认背景只覆盖首屏，避免视频延伸到整张主页。 */}
-      <HomeBackground />
+      <HomeBackground className='home-hero-depth-background' />
 
       {/* 柔和光晕背景 */}
       <div
@@ -88,7 +97,7 @@ export function Hero(props: HeroProps) {
         className='absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_30%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]'
       />
 
-      <div className='relative z-10 mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-8'>
+      <div className='home-hero-depth-foreground relative z-10 mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-10 lg:grid-cols-12 lg:gap-8'>
         {/* 左侧保留标题和主要操作，减少无关介绍。 */}
         <div className='flex flex-col items-start text-left lg:col-span-6'>
           <h1

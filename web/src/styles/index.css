@@ -910,6 +910,49 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 
+/* 默认主页首屏通过背景偏转和前景反向位移形成轻量景深。 */
+.home-hero-depth-surface {
+  --home-view-rotate-x: 0deg;
+  --home-view-rotate-y: 0deg;
+  --home-view-background-x: 0px;
+  --home-view-background-y: 0px;
+  --home-view-foreground-x: 0px;
+  --home-view-foreground-y: 0px;
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .home-hero-depth-background {
+    inset: -7%;
+    backface-visibility: hidden;
+    transform: perspective(1200px)
+      translate3d(
+        var(--home-view-background-x),
+        var(--home-view-background-y),
+        0
+      )
+      rotateX(var(--home-view-rotate-x)) rotateY(var(--home-view-rotate-y))
+      scale(1.06);
+    transform-origin: center;
+    transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .home-hero-depth-foreground {
+    transform: translate3d(
+      var(--home-view-foreground-x),
+      var(--home-view-foreground-y),
+      0
+    );
+    transition: transform 190ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .home-hero-depth-surface[data-home-parallax-active='true']
+    .home-hero-depth-background,
+  .home-hero-depth-surface[data-home-parallax-active='true']
+    .home-hero-depth-foreground {
+    will-change: transform;
+  }
+}
+
 /* Micro-interactions — Vercel-style subtle hover/active feedback */
 @media (prefers-reduced-motion: no-preference) {
   [data-slot='card']:not([data-card-hover='false']) {

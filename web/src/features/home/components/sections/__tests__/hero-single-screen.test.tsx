@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
-import { after, describe, test } from 'node:test'
+import { after, beforeEach, describe, test } from 'node:test'
 
 import { Window } from 'happy-dom'
 
@@ -31,6 +31,8 @@ const domGlobals = [
   'Node',
   'Element',
   'Event',
+  'MouseEvent',
+  'PointerEvent',
   'CustomEvent',
   'MutationObserver',
   'requestAnimationFrame',
@@ -45,14 +47,37 @@ for (const key of domGlobals) {
   })
 }
 
+let parallaxEnabled = true
+let animationFrameId = 0
+const pendingAnimationFrames = new Map<number, FrameRequestCallback>()
+
 Object.defineProperty(domWindow, 'matchMedia', {
   configurable: true,
   value: () => ({
-    matches: true,
+    matches: parallaxEnabled,
     addEventListener() {},
     removeEventListener() {},
   }),
 })
+Object.defineProperty(domWindow, 'requestAnimationFrame', {
+  configurable: true,
+  value: (callback: FrameRequestCallback) => {
+    animationFrameId += 1
+    pendingAnimationFrames.set(animationFrameId, callback)
+    return animationFrameId
+  },
+})
+Object.defineProperty(domWindow, 'cancelAnimationFrame', {
+  configurable: true,
+  value: (id: number) => pendingAnimationFrames.delete(id),
+})
+
+function flushAnimationFrames() {
+  for (const callback of pendingAnimationFrames.values()) {
+    callback(performance.now())
+  }
+  pendingAnimationFrames.clear()
+}
 
 const { act, createElement } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -126,8 +151,11 @@ mock.module('@/lib/appearance', () => ({
   getEffectiveHomeBackgroundOverlayOpacity: () => 0,
 }))
 mock.module('@/components/page-background', () => ({
-  PageBackground: () =>
-    createElement('div', { 'data-testid': 'home-background' }),
+  PageBackground: (props: { className?: string }) =>
+    createElement('div', {
+      className: props.className,
+      'data-testid': 'home-background',
+    }),
 }))
 mock.module('@/features/home/components/hero-terminal-demo', () => ({
   HeroTerminalDemo: () => createElement('div', { 'data-testid': 'hero-demo' }),
@@ -153,6 +181,12 @@ await i18n.use(initReactI18next).init({
 const { Hero } = await import('../hero')
 
 describe('单屏主页 Hero', () => {
+  beforeEach(() => {
+    parallaxEnabled = true
+    pendingAnimationFrames.clear()
+    document.body.replaceChildren()
+  })
+
   after(() => domWindow.close())
 
   test('保留主要操作和 API 演示，并移除冗余介绍', async () => {
@@ -189,6 +223,109 @@ describe('单屏主页 Hero', () => {
         ?.textContent?.includes('Start'),
       true
     )
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  test('桌面鼠标移动时背景与前景按相反方向产生透视景深', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Hero />
+        </I18nextProvider>
+      )
+    })
+
+    const hero = container.querySelector<HTMLElement>('section')
+    assert.ok(hero)
+    hero.getBoundingClientRect = () => ({
+      bottom: 800,
+      height: 800,
+      left: 0,
+      right: 1000,
+      top: 0,
+      width: 1000,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+
+    await act(async () => {
+      hero.dispatchEvent(
+        new domWindow.PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 1000,
+          clientY: 0,
+        }) as unknown as Event
+      )
+      flushAnimationFrames()
+    })
+
+    assert.equal(hero.dataset.homeParallaxActive, 'true')
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-x'), '3.20deg')
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-y'), '4.20deg')
+    assert.equal(
+      hero.style.getPropertyValue('--home-view-background-x'),
+      '-16.00px'
+    )
+    assert.equal(
+      hero.style.getPropertyValue('--home-view-foreground-x'),
+      '7.00px'
+    )
+    assert.equal(
+      container
+        .querySelector('[data-testid="home-background"]')
+        ?.classList.contains('home-hero-depth-background'),
+      true
+    )
+    assert.ok(container.querySelector('.home-hero-depth-foreground'))
+
+    await act(async () => {
+      hero.dispatchEvent(
+        new domWindow.PointerEvent('pointerleave') as unknown as Event
+      )
+    })
+    assert.equal(hero.dataset.homeParallaxActive, undefined)
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-x'), '')
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  test('触控设备不启用鼠标视角效果', async () => {
+    parallaxEnabled = false
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <Hero />
+        </I18nextProvider>
+      )
+    })
+
+    const hero = container.querySelector<HTMLElement>('section')
+    assert.ok(hero)
+    await act(async () => {
+      hero.dispatchEvent(
+        new domWindow.PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 500,
+          clientY: 300,
+        }) as unknown as Event
+      )
+      flushAnimationFrames()
+    })
+
+    assert.equal(hero.dataset.homeParallaxActive, undefined)
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-y'), '')
 
     await act(async () => root.unmount())
     container.remove()
