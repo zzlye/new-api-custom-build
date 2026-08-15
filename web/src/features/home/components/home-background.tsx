@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useRouterState } from '@tanstack/react-router'
+import { lazy, Suspense, useCallback, useState } from 'react'
 
 import { PageBackground } from '@/components/page-background'
 import { useAppearance } from '@/hooks/use-appearance'
@@ -26,7 +27,12 @@ import {
 } from '@/lib/appearance'
 
 import { HomeSakura } from './home-sakura'
-import { WebGLPanoramaCanvas } from './webgl-panorama-canvas'
+
+// 仅在主页使用媒体背景时加载 3D 渲染模块，避免普通主页承担额外资源开销。
+const WebGLPanoramaCanvas = lazy(async () => {
+  const panoramaModule = await import('./webgl-panorama-canvas')
+  return { default: panoramaModule.WebGLPanoramaCanvas }
+})
 
 type HomeBackgroundProps = {
   className?: string
@@ -42,17 +48,44 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
   const routePath = useRouterState({
     select: (state) => state.location.pathname,
   })
+  const background = getEffectiveHomeBackground(appearance)
+  const overlayOpacity = getEffectiveHomeBackgroundOverlayOpacity(appearance)
+  const panoramaKey = `${background.type}:${background.media}`
+  const [unavailablePanoramaKey, setUnavailablePanoramaKey] = useState<
+    string | null
+  >(null)
+  const panoramaEnabled =
+    (background.type === 'image' || background.type === 'video') &&
+    Boolean(background.media) &&
+    unavailablePanoramaKey !== panoramaKey
+  const handlePanoramaUnavailable = useCallback(() => {
+    setUnavailablePanoramaKey(panoramaKey)
+  }, [panoramaKey])
 
   return (
     <>
-      <PageBackground
-        config={getEffectiveHomeBackground(appearance)}
-        className={className}
-        overlayOpacity={getEffectiveHomeBackgroundOverlayOpacity(appearance)}
-        suspendVideo={routeLoading}
-        videoPlaybackKey={routePath}
-      />
-      <WebGLPanoramaCanvas className={className} />
+      {/* 图片与视频只保留一份球面纹理，初始化失败时再启用平面回退。 */}
+      {!panoramaEnabled ? (
+        <PageBackground
+          config={background}
+          className={className}
+          overlayOpacity={overlayOpacity}
+          suspendVideo={routeLoading}
+          videoPlaybackKey={routePath}
+        />
+      ) : null}
+      {panoramaEnabled ? (
+        <Suspense fallback={null}>
+          <WebGLPanoramaCanvas
+            key={panoramaKey}
+            media={background.media}
+            mediaType={background.type as 'image' | 'video'}
+            onUnavailable={handlePanoramaUnavailable}
+            overlayOpacity={overlayOpacity}
+            suspendVideo={routeLoading}
+          />
+        </Suspense>
+      ) : null}
       <HomeSakura className={className} />
     </>
   )

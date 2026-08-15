@@ -127,6 +127,7 @@ export type SiteSettings = {
   'appearance_setting.home_bg_color': string
   'appearance_setting.home_bg_media': string
   'appearance_setting.home_bg_overlay_opacity': number
+  'appearance_setting.home_sakura': boolean
   'appearance_setting.login_bg_type': string
   'appearance_setting.login_bg_color': string
   'appearance_setting.login_bg_media': string

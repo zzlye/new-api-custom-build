@@ -79,6 +79,9 @@ function buildAppearanceDefaults(settings: SiteSettings): AppearanceConfig {
     home_bg_overlay_opacity: parseOverlayOpacity(
       settings['appearance_setting.home_bg_overlay_opacity']
     ),
+    home_sakura:
+      settings['appearance_setting.home_sakura'] ??
+      DEFAULT_APPEARANCE.home_sakura,
     login_bg_type: parseBgType(
       settings['appearance_setting.login_bg_type'],
       DEFAULT_APPEARANCE.login_bg_type

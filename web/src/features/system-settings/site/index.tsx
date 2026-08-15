@@ -45,6 +45,7 @@ const defaultSiteSettings: SiteSettings = {
   'appearance_setting.home_bg_color': '#0f172a',
   'appearance_setting.home_bg_media': '',
   'appearance_setting.home_bg_overlay_opacity': 0,
+  'appearance_setting.home_sakura': true,
   'appearance_setting.login_bg_type': 'none',
   'appearance_setting.login_bg_color': '#0f172a',
   'appearance_setting.login_bg_media': '',
