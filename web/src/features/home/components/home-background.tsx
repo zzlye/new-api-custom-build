@@ -26,18 +26,23 @@ import {
 } from '@/lib/appearance'
 
 import { HomeSakura } from './home-sakura'
+import { WebGLPanoramaCanvas } from './webgl-panorama-canvas'
 
 type HomeBackgroundProps = {
   className?: string
 }
 
-/** 主页背景（读取 appearance.home_bg_* 并融合落樱花瓣粒子） */
+/**
+ * 主页 3D 全景球体/图腾柱背景组件
+ * 融合 WebGL 3D 曲面环绕与落樱花瓣粒子，实现真实第一人称转动感
+ */
 export function HomeBackground({ className }: HomeBackgroundProps) {
   const appearance = useAppearance()
   const routeLoading = useRouterState({ select: (state) => state.isLoading })
   const routePath = useRouterState({
     select: (state) => state.location.pathname,
   })
+
   return (
     <>
       <PageBackground
@@ -47,6 +52,7 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
         suspendVideo={routeLoading}
         videoPlaybackKey={routePath}
       />
+      <WebGLPanoramaCanvas className={className} />
       <HomeSakura className={className} />
     </>
   )
