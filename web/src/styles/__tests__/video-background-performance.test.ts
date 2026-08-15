@@ -25,19 +25,27 @@ const stylesheet = readFileSync(
   'utf8'
 )
 
-describe('视频背景渲染性能', () => {
-  test('动态背景关闭多层实时模糊并只为登录表单保留轻量模糊', () => {
-    assert.match(
+describe('视频背景毛玻璃', () => {
+  test('动态背景不会覆盖外观设置的模糊效果', () => {
+    assert.doesNotMatch(
       stylesheet,
       /:root\[data-video-background='true'\] body\s*{[^}]*--appearance-glass-backdrop-filter:\s*none;/s
     )
-    assert.match(
+    assert.doesNotMatch(
       stylesheet,
-      /:root\[data-video-background='true'\] \[data-slot='auth-surface'\]\s*{[^}]*-webkit-backdrop-filter:\s*saturate\(1\.05\)\s*blur\(var\(--appearance-glass-video-blur\)\);[^}]*backdrop-filter:\s*saturate\(1\.05\)\s*blur\(var\(--appearance-glass-video-blur\)\);/s
+      /:root\[data-video-background='true'\] \[data-slot='auth-surface'\]\s*{[^}]*(?:-webkit-)?backdrop-filter\s*:/s
+    )
+    assert.doesNotMatch(
+      stylesheet,
+      /:root\[data-video-background='true'\] \[class\*='backdrop-blur'\]\s*{[^}]*(?:-webkit-)?backdrop-filter:\s*none\s*!important;/s
     )
     assert.match(
       stylesheet,
-      /:root\[data-video-background='true'\] \[class\*='backdrop-blur'\]\s*{[^}]*-webkit-backdrop-filter:\s*none !important;[^}]*backdrop-filter:\s*none !important;/s
+      /\.appearance-glass-card,[^{]+{[^}]*backdrop-filter:\s*var\(\s*--appearance-glass-backdrop-filter,\s*saturate\(1\.15\) blur\(var\(--appearance-glass-blur, 16px\)\)\s*\);/s
+    )
+    assert.match(
+      stylesheet,
+      /\.appearance-glass-surface,[^{]+{[^}]*backdrop-filter:\s*var\(\s*--appearance-glass-backdrop-filter,\s*saturate\(1\.15\) blur\(var\(--appearance-glass-blur, 16px\)\)\s*\);/s
     )
     assert.doesNotMatch(
       stylesheet,

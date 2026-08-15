@@ -273,27 +273,10 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* Launch UI Animations and Effects - Matching Template Exactly */
 @layer components {
-  :root[data-video-background='true'] body {
-    /* 动态背景只在登录卡片保留一次轻量模糊，其余玻璃改用半透明材质避免逐帧重复合成。 */
-    --appearance-glass-video-blur: clamp(
-      0px,
-      var(--appearance-glass-blur, 16px),
-      4px
-    );
-    --appearance-glass-backdrop-filter: none;
-  }
-
   /* 将动态背景限制在独立绘制层，避免切页时重复扩大重绘区域。 */
   .page-background-layer {
     contain: paint;
     isolation: isolate;
-  }
-
-  :root[data-video-background='true'] [data-slot='auth-surface'] {
-    /* 登录页只有一个主卡片，保留轻量真实毛玻璃不会造成多区域重复取样。 */
-    -webkit-backdrop-filter: saturate(1.05)
-      blur(var(--appearance-glass-video-blur));
-    backdrop-filter: saturate(1.05) blur(var(--appearance-glass-video-blur));
   }
 
   /* 登录页与首页保留原有层级，避免覆盖它们各自的边框和阴影。 */
@@ -327,12 +310,6 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 @layer utilities {
-  :root[data-video-background='true'] [class*='backdrop-blur'] {
-    /* Tailwind 会直接生成滤镜声明，需要显式关闭才能停止动态背景的逐帧取样。 */
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-  }
-
   /* 登录页和内部页面共用同一套可调毛玻璃材质。 */
   .appearance-glass-surface,
   .appearance-glass-scope [data-slot='card'],
