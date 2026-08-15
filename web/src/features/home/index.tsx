@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
@@ -27,7 +27,7 @@ import { hasEffectiveHomeBackground } from '@/lib/appearance'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { Hero } from './components'
+import { GameHomeView, Hero } from './components'
 import { HomeBackground } from './components/home-background'
 import { useHomePageContent } from './hooks'
 
@@ -39,6 +39,25 @@ export function Home() {
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
   const appearance = useAppearance()
+
+  // 主页展示模式：默认沉浸式第一人称游戏主页 ('immersive')，可切换为经典工作台 ('classic')
+  const [viewMode, setViewMode] = useState<'immersive' | 'classic'>(() => {
+    try {
+      const saved = localStorage.getItem('newapi_home_view_mode')
+      return saved === 'classic' ? 'classic' : 'immersive'
+    } catch {
+      return 'immersive'
+    }
+  })
+
+  const toggleViewMode = () => {
+    const next = viewMode === 'immersive' ? 'classic' : 'immersive'
+    setViewMode(next)
+    try {
+      localStorage.setItem('newapi_home_view_mode', next)
+    } catch {}
+  }
+
   // 有页面或全局背景时布局必须透明，否则不透明底色会盖住背景媒体
   const transparentBg = hasEffectiveHomeBackground(appearance)
 
@@ -133,14 +152,24 @@ export function Home() {
     )
   }
 
+  // 沉浸式第一人称视角模式（默认展示）
+  if (viewMode === 'immersive') {
+    return <GameHomeView onToggleClassicMode={toggleViewMode} />
+  }
+
+  // 经典工作台模式
   return (
     <PublicLayout
       showMainContainer={false}
       transparentBg={transparentBg}
       disableGlobalBackground
     >
-      {/* 默认主页只保留首屏工作台，详细功能通过独立导航进入。 */}
-      <Hero isAuthenticated={isAuthenticated} />
+      <Hero
+        isAuthenticated={isAuthenticated}
+        onToggleImmersiveMode={toggleViewMode}
+      />
     </PublicLayout>
   )
 }
+
+

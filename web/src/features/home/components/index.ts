@@ -21,3 +21,5 @@ export { Features } from './sections/features'
 export { Hero } from './sections/hero'
 export { HowItWorks } from './sections/how-it-works'
 export { Stats } from './sections/stats'
+export { GameHomeView } from './game-home'
+
