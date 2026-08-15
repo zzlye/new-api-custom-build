@@ -228,7 +228,7 @@ describe('单屏主页 Hero', () => {
     container.remove()
   })
 
-  test('桌面鼠标移动时背景与前景按相反方向产生透视景深', async () => {
+  test('桌面鼠标移动时背景按半球弧线覆盖大范围视角', async () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -267,15 +267,15 @@ describe('单屏主页 Hero', () => {
     })
 
     assert.equal(hero.dataset.homeParallaxActive, 'true')
-    assert.equal(hero.style.getPropertyValue('--home-view-rotate-x'), '3.20deg')
-    assert.equal(hero.style.getPropertyValue('--home-view-rotate-y'), '4.20deg')
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-x'), '6.00deg')
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-y'), '8.00deg')
     assert.equal(
       hero.style.getPropertyValue('--home-view-background-x'),
-      '-16.00px'
+      '-32.00px'
     )
     assert.equal(
-      hero.style.getPropertyValue('--home-view-foreground-x'),
-      '7.00px'
+      hero.style.getPropertyValue('--home-view-background-y'),
+      '20.00px'
     )
     assert.equal(
       container
@@ -283,7 +283,23 @@ describe('单屏主页 Hero', () => {
         ?.classList.contains('home-hero-depth-background'),
       true
     )
-    assert.ok(container.querySelector('.home-hero-depth-foreground'))
+    assert.equal(container.querySelector('.home-hero-depth-foreground'), null)
+
+    await act(async () => {
+      hero.dispatchEvent(
+        new domWindow.PointerEvent('pointermove', {
+          bubbles: true,
+          clientX: 750,
+          clientY: 400,
+        }) as unknown as Event
+      )
+      flushAnimationFrames()
+    })
+    assert.equal(hero.style.getPropertyValue('--home-view-rotate-y'), '2.67deg')
+    assert.equal(
+      hero.style.getPropertyValue('--home-view-background-x'),
+      '-10.67px'
+    )
 
     await act(async () => {
       hero.dispatchEvent(
