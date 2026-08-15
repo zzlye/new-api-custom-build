@@ -269,6 +269,21 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return "jimeng"
 }
 
+// EstimateBilling 按最终帧数换算即梦视频时长；即梦视频按 24fps 且首尾帧均计数。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	payload, err := a.convertToRequestPayload(&req, info)
+	if err != nil {
+		return nil
+	}
+
+	duration := taskcommon.VideoDurationSecondsFromFrames(payload.Frames, 24, 5)
+	return map[string]float64{"seconds": float64(duration)}
+}
+
 func (a *TaskAdaptor) signRequest(req *http.Request, accessKey, secretKey string) error {
 	var bodyBytes []byte
 	var err error
@@ -403,6 +418,7 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	r.Frames = taskcommon.NormalizeVideoFrames(r.Frames, 24, 5)
 
 	// 即梦视频3.0 ReqKey转换
 	// https://www.volcengine.com/docs/85621/1792707

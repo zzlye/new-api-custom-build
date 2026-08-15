@@ -143,6 +143,25 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
 }
 
+// EstimateBilling 从最终海螺请求体读取时长，确保默认值和 metadata 覆盖参与按秒计费。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	payload, err := a.convertToRequestPayload(&req, info)
+	if err != nil {
+		return nil
+	}
+
+	duration := 0
+	if payload.Duration != nil {
+		duration = *payload.Duration
+	}
+	duration = taskcommon.NormalizeVideoDurationSeconds(duration, DefaultDuration)
+	return map[string]float64{"seconds": float64(duration)}
+}
+
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, info *relaycommon.RelayInfo) (*VideoRequest, error) {
 	modelConfig := GetModelConfig(info.UpstreamModelName)
 	duration := DefaultDuration
@@ -163,6 +182,12 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	if err := req.UnmarshalMetadata(&videoRequest); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata to video request failed")
 	}
+	effectiveDuration := DefaultDuration
+	if videoRequest.Duration != nil {
+		effectiveDuration = *videoRequest.Duration
+	}
+	effectiveDuration = taskcommon.NormalizeVideoDurationSeconds(effectiveDuration, DefaultDuration)
+	videoRequest.Duration = &effectiveDuration
 
 	return videoRequest, nil
 }

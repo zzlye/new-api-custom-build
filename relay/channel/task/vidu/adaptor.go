@@ -221,6 +221,21 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return "vidu"
 }
 
+// EstimateBilling 从最终 Vidu 请求体读取时长，确保默认五秒也会进入按秒计费。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	payload, err := a.convertToRequestPayload(&req, info)
+	if err != nil {
+		return nil
+	}
+
+	duration := taskcommon.NormalizeVideoDurationSeconds(payload.Duration, 5)
+	return map[string]float64{"seconds": float64(duration)}
+}
+
 // ============================
 // helpers
 // ============================
@@ -238,6 +253,7 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	r.Duration = taskcommon.NormalizeVideoDurationSeconds(r.Duration, 5)
 	return &r, nil
 }
 

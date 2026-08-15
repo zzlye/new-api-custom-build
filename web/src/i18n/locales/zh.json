@@ -5317,6 +5317,11 @@
     "Target-specific rate limits": "按目标设置速率限制",
     "This target already has a rate limit.": "该目标已配置速率限制。",
     "Unique identifier for this target.": "该目标的唯一标识。",
-    "e.g., gpt-4o, claude-sonnet": "例如：gpt-4o、claude-sonnet"
+    "e.g., gpt-4o, claude-sonnet": "例如：gpt-4o、claude-sonnet",
+    "Per-second": "按秒",
+    "per second": "秒",
+    "Cost in USD per second.": "每秒美元价格。",
+    "second": "秒",
+    "Per-second price is required.": "请填写每秒价格。"
   }
 }

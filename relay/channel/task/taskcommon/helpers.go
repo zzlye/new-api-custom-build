@@ -3,6 +3,9 @@ package taskcommon
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -43,6 +46,131 @@ func DefaultInt(val, fallback int) int {
 		return fallback
 	}
 	return val
+}
+
+// ResolveVideoDurationSeconds 解析视频请求的有效计费时长。
+//
+// 不同视频渠道使用 duration、seconds 或 durationSeconds 三种字段，且
+// metadata 可能覆盖顶层字段。统一在计费前解析并限制上限，避免绕过标准
+// 请求校验的 metadata 造成超大倍率。
+func ResolveVideoDurationSeconds(req relaycommon.TaskSubmitReq, fallback int) int {
+	duration := req.Duration
+	if duration <= 0 {
+		duration = parsePositiveDuration(req.Seconds)
+	}
+
+	// 上游适配器允许 metadata 覆盖时长，计费解析必须使用同一有效值。
+	for _, key := range []string{"durationSeconds", "duration", "seconds"} {
+		if value, ok := req.Metadata[key]; ok {
+			if parsed := parseDurationValue(value); parsed > 0 {
+				duration = parsed
+				break
+			}
+		}
+	}
+
+	return NormalizeVideoDurationSeconds(duration, fallback)
+}
+
+// NormalizeVideoDurationSeconds 为视频计费提供统一的默认值和上限处理。
+func NormalizeVideoDurationSeconds(duration, fallback int) int {
+	if duration <= 0 {
+		duration = fallback
+	}
+	if duration <= 0 {
+		duration = 1
+	}
+	if duration > relaycommon.MaxTaskDurationSeconds {
+		duration = relaycommon.MaxTaskDurationSeconds
+	}
+	return duration
+}
+
+// VideoDurationSecondsFromFrames 将首尾均计数的帧数向上换算为计费秒数。
+func VideoDurationSecondsFromFrames(frames, framesPerSecond, fallback int) int {
+	if frames <= 1 || framesPerSecond <= 0 {
+		return NormalizeVideoDurationSeconds(0, fallback)
+	}
+
+	duration := (int64(frames) - 1 + int64(framesPerSecond) - 1) / int64(framesPerSecond)
+	if duration > int64(relaycommon.MaxTaskDurationSeconds) {
+		return relaycommon.MaxTaskDurationSeconds
+	}
+	return NormalizeVideoDurationSeconds(int(duration), fallback)
+}
+
+// NormalizeVideoFrames 为帧数协议补齐默认帧数，并限制其对应的视频时长上限。
+func NormalizeVideoFrames(frames, framesPerSecond, fallbackSeconds int) int {
+	if framesPerSecond <= 0 {
+		return frames
+	}
+	if frames <= 1 {
+		return NormalizeVideoDurationSeconds(0, fallbackSeconds)*framesPerSecond + 1
+	}
+	maxFrames := relaycommon.MaxTaskDurationSeconds*framesPerSecond + 1
+	if frames > maxFrames {
+		return maxFrames
+	}
+	return frames
+}
+
+func parseDurationValue(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int8:
+		return int(v)
+	case int16:
+		return int(v)
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case uint:
+		if uint64(v) > uint64(relaycommon.MaxTaskDurationSeconds) {
+			return relaycommon.MaxTaskDurationSeconds
+		}
+		return int(v)
+	case uint8:
+		return int(v)
+	case uint16:
+		return int(v)
+	case uint32:
+		return int(v)
+	case uint64:
+		if v > uint64(relaycommon.MaxTaskDurationSeconds) {
+			return relaycommon.MaxTaskDurationSeconds
+		}
+		return int(v)
+	case float32:
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) || v <= 0 {
+			return 0
+		}
+		if v > float32(relaycommon.MaxTaskDurationSeconds) {
+			return relaycommon.MaxTaskDurationSeconds
+		}
+		return int(v)
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
+			return 0
+		}
+		if v > float64(relaycommon.MaxTaskDurationSeconds) {
+			return relaycommon.MaxTaskDurationSeconds
+		}
+		return int(v)
+	case string:
+		return parsePositiveDuration(v)
+	default:
+		return 0
+	}
+}
+
+func parsePositiveDuration(value string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // EncodeLocalTaskID encodes an upstream operation name to a URL-safe base64 string.

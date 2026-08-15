@@ -321,6 +321,51 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.Empty(t, missingExprPricing.BillingExpr)
 }
 
+func TestListModelsPerSecondRequiresFixedPrice(t *testing.T) {
+	withSelfUseModeDisabled(t)
+	withTieredBillingConfig(t, map[string]string{
+		"zz-per-second-priced":  "per_second",
+		"zz-per-second-missing": "per_second",
+	}, nil)
+
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	savedRatios := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios))
+		model.InvalidatePricingCache()
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"zz-per-second-priced":0.35}`))
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"zz-per-second-missing":2}`))
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1004,
+		Username: "per-second-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "zz-per-second-priced", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-per-second-missing", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1004)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.Contains(t, ids, "zz-per-second-priced")
+	require.NotContains(t, ids, "zz-per-second-missing")
+
+	pricingByName := pricingByModelName(model.GetPricing())
+	require.Equal(t, "per_second", pricingByName["zz-per-second-priced"].BillingMode)
+	require.Empty(t, pricingByName["zz-per-second-missing"].BillingMode)
+}
+
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {
 	withSelfUseModeEnabled(t)
 	db := setupModelListControllerTestDB(t)

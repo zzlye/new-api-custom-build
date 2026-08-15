@@ -20,7 +20,11 @@ import { formatCurrencyFromUSD } from '@/lib/currency'
 
 import { QUOTA_TYPE_VALUES, TOKEN_UNIT_DIVISORS } from '../constants'
 import type { PricingModel, TokenUnit, PriceType } from '../types'
-import { getConfiguredGroupRatio, getDisplayGroupRatio } from './model-helpers'
+import {
+  getConfiguredGroupRatio,
+  getDisplayGroupRatio,
+  isPerSecondModel,
+} from './model-helpers'
 
 // ----------------------------------------------------------------------------
 // Price Calculation Utilities
@@ -257,6 +261,59 @@ export function formatRequestPrice(
 
   let priceInUSD = (model.model_price || 0) * displayGroupRatio
 
+  priceInUSD = applyRechargeRate(
+    priceInUSD,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
+
+  return formatCurrencyFromUSD(priceInUSD, {
+    digitsLarge: 4,
+    digitsSmall: 4,
+    abbreviate: false,
+  })
+}
+
+/** 格式化按秒计费价格，分组倍率与按次计费保持一致。 */
+export function formatPerSecondPrice(
+  model: PricingModel,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  selectedGroup?: string
+): string {
+  if (!isPerSecondModel(model)) return '-'
+
+  const displayGroupRatio = getDisplayGroupRatio(model, selectedGroup)
+  let priceInUSD = (model.model_price || 0) * displayGroupRatio
+  priceInUSD = applyRechargeRate(
+    priceInUSD,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
+
+  return formatCurrencyFromUSD(priceInUSD, {
+    digitsLarge: 4,
+    digitsSmall: 4,
+    abbreviate: false,
+  })
+}
+
+/** 格式化指定分组的按秒计费价格。 */
+export function formatGroupPerSecondPrice(
+  model: PricingModel,
+  group: string,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  groupRatio: Record<string, number>
+): string {
+  if (!isPerSecondModel(model)) return '-'
+
+  const ratio = getConfiguredGroupRatio(groupRatio, group)
+  let priceInUSD = (model.model_price || 0) * ratio
   priceInUSD = applyRechargeRate(
     priceInUSD,
     showWithRecharge,

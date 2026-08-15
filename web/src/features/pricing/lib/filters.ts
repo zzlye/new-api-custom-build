@@ -24,6 +24,7 @@ import {
   ENDPOINT_TYPES,
 } from '../constants'
 import type { PricingModel } from '../types'
+import { isPerSecondModel } from './model-helpers'
 
 // ----------------------------------------------------------------------------
 // Filter Utilities
@@ -78,11 +79,20 @@ export function filterByQuotaType(
   quotaType: string
 ): PricingModel[] {
   if (quotaType === QUOTA_TYPES.ALL) return models
-  const targetType =
-    quotaType === QUOTA_TYPES.TOKEN
-      ? QUOTA_TYPE_VALUES.TOKEN
-      : QUOTA_TYPE_VALUES.REQUEST
-  return models.filter((m) => m.quota_type === targetType)
+  if (quotaType === QUOTA_TYPES.SECOND) {
+    return models.filter(isPerSecondModel)
+  }
+  if (quotaType === QUOTA_TYPES.REQUEST) {
+    return models.filter(
+      (model) =>
+        model.quota_type === QUOTA_TYPE_VALUES.REQUEST &&
+        !isPerSecondModel(model)
+    )
+  }
+  return models.filter(
+    (model) =>
+      model.quota_type === QUOTA_TYPE_VALUES.TOKEN && !isPerSecondModel(model)
+  )
 }
 
 /**
@@ -102,6 +112,7 @@ export function filterByEndpointType(
  * Get model price for sorting
  */
 function getModelPrice(model: PricingModel): number {
+  if (isPerSecondModel(model)) return model.model_price || 0
   return model.quota_type === 0 ? model.model_ratio : model.model_price || 0
 }
 
@@ -183,7 +194,7 @@ export function extractAllTags(models: PricingModel[]): string[] {
     }
   })
 
-  return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  return [...tagSet].sort((a, b) => a.localeCompare(b))
 }
 
 /**

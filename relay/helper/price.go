@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -186,12 +187,20 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
+	// 任务适配器会在价格计算前写入时长、分辨率等倍率。保留这些倍率，
+	// 这样按秒模式可以在同一轮预扣中使用有效时长，普通按次模式也保持原有行为。
+	preservedRatios := info.PriceData.OtherRatios()
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	usePrice := success
 	var modelRatio float64
+	billingMode := billing_setting.GetBillingMode(info.OriginModelName)
 
 	if !success {
+		// 按秒模式必须显式配置当前模型价格，禁止把内置按次默认价误当成每秒价格。
+		if billingMode == billing_setting.BillingModePerSecond {
+			return hosttypes.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
+		}
 		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
 		if ok {
 			modelPrice = defaultPrice
@@ -209,13 +218,22 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 			}
 		}
 	}
+	perSecondBilling := billingMode == billing_setting.BillingModePerSecond && usePrice
 
 	var quota int
 	freeModel := false
 
 	if usePrice {
 		var err error
-		quota, err = common.QuotaFromFloatStrict(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
+		billingUnits := 1.0
+		if perSecondBilling {
+			// 缺少时长时按 1 秒计费，避免无效输入导致免费请求；标准任务
+			// 校验会为视频请求补齐默认时长并写入 seconds 倍率。
+			if seconds, ok := preservedRatios["seconds"]; ok && seconds > 0 && !math.IsInf(seconds, 0) && !math.IsNaN(seconds) {
+				billingUnits = seconds
+			}
+		}
+		quota, err = common.QuotaFromFloatStrict(modelPrice * common.QuotaPerUnit * groupRatioInfo.GroupRatio * billingUnits)
 		if err != nil {
 			return hosttypes.PriceData{}, err
 		}
@@ -242,17 +260,25 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	}
 
 	priceData := hosttypes.PriceData{
-		FreeModel:      freeModel,
-		ModelPrice:     modelPrice,
-		ModelRatio:     modelRatio,
-		UsePrice:       usePrice,
-		Quota:          quota,
-		GroupRatioInfo: groupRatioInfo,
+		FreeModel:        freeModel,
+		ModelPrice:       modelPrice,
+		ModelRatio:       modelRatio,
+		UsePrice:         usePrice,
+		PerSecondBilling: perSecondBilling,
+		Quota:            quota,
+		GroupRatioInfo:   groupRatioInfo,
+	}
+	for name, ratio := range preservedRatios {
+		priceData.AddOtherRatio(name, ratio)
 	}
 	return priceData, nil
 }
 
 func HasModelBillingConfig(modelName string) bool {
+	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModePerSecond {
+		_, ok := ratio_setting.GetModelPrice(modelName, false)
+		return ok
+	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
 		return true
 	}

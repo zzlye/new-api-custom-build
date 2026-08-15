@@ -272,3 +272,107 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
 }
+
+func TestModelPriceHelperPerCallPerSecondUsesSecondsOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+
+	prices, err := common.Marshal(map[string]float64{"video-per-second": 0.35})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(prices)))
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"video-per-second":"per_second"}`,
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "video-per-second",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	info.PriceData.AddOtherRatio("seconds", 8)
+	info.PriceData.AddOtherRatio("resolution", 1.5)
+
+	priceData, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	require.True(t, priceData.PerSecondBilling)
+	// 0.35 USD/秒 × 8 秒 × 500000 quota/USD × 1.5 分辨率倍率。
+	require.Equal(t, float64(2_100_000), priceData.ApplyOtherRatiosToFloat(float64(priceData.Quota)))
+	require.Equal(t, 1_400_000, priceData.Quota)
+	require.Equal(t, float64(8), priceData.OtherRatios()["seconds"])
+}
+
+func TestModelPriceHelperPerCallPerSecondRejectsDefaultPriceFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"sora-2":"per_second"}`,
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "sora-2",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	info.PriceData.AddOtherRatio("seconds", 8)
+
+	_, err := ModelPriceHelperPerCall(ctx, info)
+	require.Error(t, err)
+}
+
+func TestModelPriceHelperPerSecondRequiresModelPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	savedRatios := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"video-missing-price":2}`))
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"video-missing-price":"per_second"}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{OriginModelName: "video-missing-price"}
+	info.PriceData.AddOtherRatio("seconds", 8)
+
+	_, err := ModelPriceHelperPerCall(ctx, info)
+	require.Error(t, err)
+	require.False(t, HasModelBillingConfig("video-missing-price"))
+}

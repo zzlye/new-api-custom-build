@@ -11,8 +11,10 @@ import (
 const (
 	BillingModeRatio      = "ratio"
 	BillingModeTieredExpr = "tiered_expr"
-	BillingModeField      = "billing_mode"
-	BillingExprField      = "billing_expr"
+	// BillingModePerSecond 表示视频等异步媒体任务按实际秒数计费。
+	BillingModePerSecond = "per_second"
+	BillingModeField     = "billing_mode"
+	BillingExprField     = "billing_expr"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.

@@ -260,6 +260,22 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return "kling"
 }
 
+// EstimateBilling 从最终可灵请求体读取时长，避免默认值或 metadata 覆盖与计费不一致。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	payload, err := a.convertToRequestPayload(&req, info)
+	if err != nil {
+		return nil
+	}
+
+	duration, _ := strconv.Atoi(strings.TrimSpace(payload.Duration))
+	duration = taskcommon.NormalizeVideoDurationSeconds(duration, 5)
+	return map[string]float64{"seconds": float64(duration)}
+}
+
 // ============================
 // helpers
 // ============================
@@ -287,6 +303,8 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	duration, _ := strconv.Atoi(strings.TrimSpace(r.Duration))
+	r.Duration = strconv.Itoa(taskcommon.NormalizeVideoDurationSeconds(duration, 5))
 	return &r, nil
 }
 

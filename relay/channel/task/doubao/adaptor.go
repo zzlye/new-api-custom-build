@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -135,19 +134,33 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling 根据请求 metadata 中的输出分辨率与是否包含视频输入，返回相对基准价的计费 OtherRatio。
+// EstimateBilling 从最终豆包请求体读取时长，并保留视频输入附加倍率。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
 	}
+	payload, err := a.convertToRequestPayload(&req)
+	if err != nil {
+		return nil
+	}
+
+	duration := 0
+	if payload.Duration != nil {
+		duration = int(*payload.Duration)
+	} else if payload.Frames != nil {
+		duration = taskcommon.VideoDurationSecondsFromFrames(int(*payload.Frames), 24, 5)
+	}
+	duration = taskcommon.NormalizeVideoDurationSeconds(duration, 5)
+	ratios := map[string]float64{"seconds": float64(duration)}
+
 	hasVideo := hasVideoInMetadata(req.Metadata)
 	resolution, _ := req.Metadata["resolution"].(string)
 	ratio, ok := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
-	if !ok || ratio == 1.0 {
-		return nil
+	if ok && ratio != 1.0 {
+		ratios["video_input"] = ratio
 	}
-	return map[string]float64{"video_input": ratio}
+	return ratios
 }
 
 // hasVideoInMetadata 直接检查 metadata 的 content 数组是否包含 video_url 条目，
@@ -294,8 +307,17 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 
-	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
-		r.Duration = lo.ToPtr(dto.IntValue(sec))
+	if req.Duration > 0 {
+		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+		r.Frames = nil
+	}
+	if r.Duration != nil {
+		duration := taskcommon.NormalizeVideoDurationSeconds(int(*r.Duration), 5)
+		r.Duration = lo.ToPtr(dto.IntValue(duration))
+		r.Frames = nil
+	} else if r.Frames != nil {
+		frames := taskcommon.NormalizeVideoFrames(int(*r.Frames), 24, 5)
+		r.Frames = lo.ToPtr(dto.IntValue(frames))
 	}
 
 	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })

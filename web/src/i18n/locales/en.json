@@ -5317,6 +5317,11 @@
     "Target-specific rate limits": "Target-specific rate limits",
     "This target already has a rate limit.": "This target already has a rate limit.",
     "Unique identifier for this target.": "Unique identifier for this target.",
-    "e.g., gpt-4o, claude-sonnet": "e.g., gpt-4o, claude-sonnet"
+    "e.g., gpt-4o, claude-sonnet": "e.g., gpt-4o, claude-sonnet",
+    "Per-second": "Per-second",
+    "per second": "per second",
+    "Cost in USD per second.": "Cost in USD per second.",
+    "second": "second",
+    "Per-second price is required.": "Per-second price is required."
   }
 }

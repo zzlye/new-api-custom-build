@@ -39,7 +39,11 @@ export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'per-second'
+  | 'tiered_expr'
 
 export type LaneKey =
   | 'completion'
@@ -236,6 +240,16 @@ export function buildPreviewRows(
         key: 'price',
         label: 'ModelPrice',
         value: values.price || t('Empty'),
+      },
+    ]
+  }
+
+  if (mode === 'per-second') {
+    return [
+      {
+        key: 'price',
+        label: 'ModelPrice',
+        value: values.price ? `$${values.price} / ${t('second')}` : t('Empty'),
       },
     ]
   }

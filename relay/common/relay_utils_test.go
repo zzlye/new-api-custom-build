@@ -140,3 +140,18 @@ func TestTaskDurationBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateBasicTaskRequestNormalizesSecondsToDuration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	request := httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{"model":"video-test","prompt":"test","seconds":"8"}`))
+	request.Header.Set("Content-Type", "application/json")
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = request
+	info := &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+
+	require.Nil(t, ValidateBasicTaskRequest(context, info, constant.TaskActionGenerate))
+	storedReq, err := GetTaskRequest(context)
+	require.NoError(t, err)
+	require.Equal(t, 8, storedReq.Duration)
+	require.Equal(t, "8", storedReq.Seconds)
+}

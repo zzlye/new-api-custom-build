@@ -34,8 +34,9 @@ import {
   getDynamicPricingSummary,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import { isPerSecondModel, isTokenBasedModel } from '../lib/model-helpers'
 import {
+  formatPerSecondPrice,
   formatPrice,
   formatRequestPrice,
   stripTrailingZeros,
@@ -174,6 +175,27 @@ export function usePricingColumns(
           )
         }
 
+        if (isPerSecondModel(model)) {
+          const price = stripTrailingZeros(
+            formatPerSecondPrice(
+              model,
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              selectedGroup
+            )
+          )
+
+          return (
+            <div className='max-w-full min-w-0'>
+              <span className='font-mono text-sm tabular-nums'>{price}</span>
+              <div className='text-muted-foreground/50 text-[10px]'>
+                / {t('second')}
+              </div>
+            </div>
+          )
+        }
+
         const isTokenBased = isTokenBasedModel(model)
 
         if (isTokenBased) {
@@ -284,7 +306,11 @@ export function usePricingColumns(
 
         const isTokenBased = isTokenBasedModel(model)
 
-        if (!isTokenBased || model.cache_ratio == null) {
+        if (
+          !isTokenBased ||
+          isPerSecondModel(model) ||
+          model.cache_ratio == null
+        ) {
           return <span className='text-muted-foreground/30 text-xs'>—</span>
         }
 

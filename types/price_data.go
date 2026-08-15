@@ -14,9 +14,12 @@ type GroupRatioInfo struct {
 }
 
 type PriceData struct {
-	FreeModel            bool
-	ModelPrice           float64
-	ModelRatio           float64
+	FreeModel  bool
+	ModelPrice float64
+	ModelRatio float64
+	// PerSecondBilling 表示 ModelPrice 是每秒单价，而不是每次任务单价。
+	// seconds 仍会保留在 OtherRatios 中用于日志与任务快照，但不会再次乘入额度。
+	PerSecondBilling     bool
 	CompletionRatio      float64
 	CacheRatio           float64
 	CacheCreationRatio   float64
@@ -73,7 +76,10 @@ func (p *PriceData) OtherRatios() map[string]float64 {
 
 func (p *PriceData) OtherRatioMultiplier() float64 {
 	multiplier := 1.0
-	for _, ratio := range p.otherRatios {
+	for key, ratio := range p.otherRatios {
+		if p.PerSecondBilling && key == "seconds" {
+			continue
+		}
 		if isValidOtherRatio(ratio) && ratio != 1.0 {
 			multiplier *= ratio
 		}
@@ -86,7 +92,10 @@ func (p *PriceData) ApplyOtherRatiosToFloat(value float64) float64 {
 }
 
 func (p *PriceData) ApplyOtherRatiosToDecimal(value decimal.Decimal) decimal.Decimal {
-	for _, ratio := range p.otherRatios {
+	for key, ratio := range p.otherRatios {
+		if p.PerSecondBilling && key == "seconds" {
+			continue
+		}
 		if isValidOtherRatio(ratio) && ratio != 1.0 {
 			value = value.Mul(decimal.NewFromFloat(ratio))
 		}
@@ -95,7 +104,10 @@ func (p *PriceData) ApplyOtherRatiosToDecimal(value decimal.Decimal) decimal.Dec
 }
 
 func (p *PriceData) RemoveOtherRatiosFromFloat(value float64) float64 {
-	for _, ratio := range p.otherRatios {
+	for key, ratio := range p.otherRatios {
+		if p.PerSecondBilling && key == "seconds" {
+			continue
+		}
 		if isValidOtherRatio(ratio) && ratio != 1.0 {
 			value /= ratio
 		}

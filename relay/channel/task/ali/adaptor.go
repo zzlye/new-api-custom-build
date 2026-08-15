@@ -432,6 +432,7 @@ func (a *TaskAdaptor) convertToAliRequest(info *relaycommon.RelayInfo, req relay
 			return nil, errors.Wrap(err, "marshal metadata failed")
 		}
 	}
+	aliReq.Parameters.Duration = taskcommon.NormalizeVideoDurationSeconds(aliReq.Parameters.Duration, 5)
 
 	if aliReq.Model != upstreamModel {
 		return nil, errors.New("can't change model with metadata")
@@ -457,10 +458,8 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
-	// metadata can override Duration past standard request validation;
-	// cap it because it is used as a billing multiplier.
 	otherRatios := map[string]float64{
-		"seconds": float64(min(aliReq.Parameters.Duration, relaycommon.MaxTaskDurationSeconds)),
+		"seconds": float64(aliReq.Parameters.Duration),
 	}
 	ratios, err := ProcessAliOtherRatios(aliReq)
 	if err != nil {

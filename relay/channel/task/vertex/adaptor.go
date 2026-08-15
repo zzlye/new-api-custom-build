@@ -162,9 +162,8 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, params); err != nil {
 		return nil, fmt.Errorf("unmarshal metadata failed: %w", err)
 	}
-	if params.DurationSeconds == 0 && req.Duration > 0 {
-		params.DurationSeconds = req.Duration
-	}
+	// 与 EstimateBilling 共用同一解析规则，seconds、duration 和 metadata 最终只产生一个有效时长。
+	params.DurationSeconds = geminitask.ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
 	if params.Resolution == "" && req.Size != "" {
 		params.Resolution = geminitask.SizeToVeoResolution(req.Size)
 	}

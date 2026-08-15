@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -177,7 +178,24 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		info.PublicTaskID = model.GenerateTaskID()
 	}
 
-	// 4. 价格计算：基础模型价格
+	// 4. 计费估算：先提取时长、分辨率等倍率，再计算基础价格。
+	//    这样按秒模式可以把实际 seconds 纳入预扣；ResolveOriginTask
+	//    可能已在 remix 路径中预设倍率，此处会在同一份 PriceData 上合并。
+	estimatedRatios := adaptor.EstimateBilling(c, info)
+	for k, v := range estimatedRatios {
+		info.PriceData.AddOtherRatio(k, v)
+	}
+	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModePerSecond &&
+		!info.PriceData.HasOtherRatio("seconds") {
+		// 未提供专用时长倍率的渠道仍统一按请求中的有效时长计费。
+		// 解析函数会处理顶层字段、字符串字段和 metadata，并限制最大秒数。
+		if req, requestErr := relaycommon.GetTaskRequest(c); requestErr == nil {
+			seconds := taskcommon.ResolveVideoDurationSeconds(req, 1)
+			info.PriceData.AddOtherRatio("seconds", float64(seconds))
+		}
+	}
+
+	// 5. 价格计算：基础模型价格
 	info.OriginModelName = modelName
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {
@@ -185,17 +203,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	info.PriceData = priceData
 
-	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
-	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
-	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
-		for k, v := range estimatedRatios {
-			info.PriceData.AddOtherRatio(k, v)
-		}
-	}
-
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
+	if !common.StringsContains(constant.TaskPricePatches, modelName) || info.PriceData.PerSecondBilling {
 		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
 		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
 		info.PriceData.Quota = quota

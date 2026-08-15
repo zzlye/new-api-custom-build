@@ -106,13 +106,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
-	seconds, _ := strconv.Atoi(req.Seconds)
-	if seconds == 0 {
-		seconds = req.Duration
-	}
-	if seconds <= 0 {
-		seconds = 4
-	}
+	seconds := taskcommon.NormalizeVideoDurationSeconds(req.Duration, 4)
 
 	size := req.Size
 	if size == "" {
@@ -153,11 +147,18 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, errors.Wrap(err, "read_body_bytes_failed")
 	}
 	contentType := c.GetHeader("Content-Type")
+	taskReq, _ := relaycommon.GetTaskRequest(c)
+	effectiveSeconds := taskcommon.NormalizeVideoDurationSeconds(taskReq.Duration, 4)
 
 	if strings.HasPrefix(contentType, "application/json") {
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if info.Action != constant.TaskActionRemix {
+				// Sora 上游使用 seconds；写入计费采用的规范时长并移除歧义字段。
+				bodyMap["seconds"] = strconv.Itoa(effectiveSeconds)
+				delete(bodyMap, "duration")
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -173,8 +174,11 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
 		writer.WriteField("model", info.UpstreamModelName)
+		if info.Action != constant.TaskActionRemix {
+			writer.WriteField("seconds", strconv.Itoa(effectiveSeconds))
+		}
 		for key, values := range formData.Value {
-			if key == "model" {
+			if key == "model" || (info.Action != constant.TaskActionRemix && (key == "seconds" || key == "duration")) {
 				continue
 			}
 			for _, v := range values {

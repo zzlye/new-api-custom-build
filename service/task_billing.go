@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,27 +20,14 @@ import (
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
 func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	tokenName := c.GetString("token_name")
-	logContent := fmt.Sprintf("操作 %s", info.Action)
-	// 支持任务仅按次计费
-	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
-		logContent = fmt.Sprintf("%s，按次计费", logContent)
-	} else {
-		if otherRatios := info.PriceData.OtherRatios(); len(otherRatios) > 0 {
-			var contents []string
-			for key, ra := range otherRatios {
-				if 1.0 != ra {
-					contents = append(contents, fmt.Sprintf("%s: %.2f", key, ra))
-				}
-			}
-			if len(contents) > 0 {
-				logContent = fmt.Sprintf("%s, 计算参数：%s", logContent, strings.Join(contents, ", "))
-			}
-		}
-	}
+	logContent := taskConsumptionLogContent(info)
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
+	if info.PriceData.PerSecondBilling {
+		other["billing_mode"] = "per_second"
+	}
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
@@ -64,6 +52,30 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	})
 	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
 	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
+}
+
+// taskConsumptionLogContent 生成任务计费摘要，按秒模式优先于历史按次补丁。
+func taskConsumptionLogContent(info *relaycommon.RelayInfo) string {
+	logContent := fmt.Sprintf("操作 %s", info.Action)
+	if info.PriceData.PerSecondBilling {
+		logContent = fmt.Sprintf("%s，按秒计费", logContent)
+	} else if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+		return fmt.Sprintf("%s，按次计费", logContent)
+	}
+
+	if otherRatios := info.PriceData.OtherRatios(); len(otherRatios) > 0 {
+		contents := make([]string, 0, len(otherRatios))
+		for key, ratio := range otherRatios {
+			if ratio != 1.0 || (info.PriceData.PerSecondBilling && key == "seconds") {
+				contents = append(contents, fmt.Sprintf("%s: %.2f", key, ratio))
+			}
+		}
+		sort.Strings(contents)
+		if len(contents) > 0 {
+			logContent = fmt.Sprintf("%s, 计算参数：%s", logContent, strings.Join(contents, ", "))
+		}
+	}
+	return logContent
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +139,9 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		if bc.PerSecondBilling {
+			other["billing_mode"] = "per_second"
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				other[k] = v
@@ -146,6 +161,7 @@ func taskBillingContextPriceData(bc *model.TaskBillingContext) *types.PriceData 
 		return nil
 	}
 	priceData := &types.PriceData{}
+	priceData.PerSecondBilling = bc.PerSecondBilling
 	if !priceData.ReplaceOtherRatios(bc.OtherRatios) {
 		return nil
 	}

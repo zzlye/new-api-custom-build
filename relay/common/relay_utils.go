@@ -118,6 +118,13 @@ func createTaskError(err error, code string, statusCode int, localError bool) *d
 }
 
 func storeTaskRequest(c *gin.Context, info *RelayInfo, action string, requestObj TaskSubmitReq) {
+	// OpenAI 视频接口使用 seconds，其他视频接口通常使用 duration。
+	// 在进入适配器前统一到 Duration，确保上游请求和计费读取同一个有效时长。
+	if requestObj.Duration <= 0 && requestObj.Seconds != "" {
+		if seconds, err := strconv.Atoi(strings.TrimSpace(requestObj.Seconds)); err == nil && seconds > 0 {
+			requestObj.Duration = seconds
+		}
+	}
 	info.Action = action
 	c.Set("task_request", requestObj)
 }
