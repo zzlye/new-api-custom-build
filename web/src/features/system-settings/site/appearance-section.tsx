@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
 import {
   getGlassProfile,
@@ -81,6 +82,7 @@ const appearanceSchema = z.object({
   home_bg_color: z.string(),
   home_bg_media: z.string(),
   home_bg_overlay_opacity: z.number().min(0).max(1),
+  home_sakura: z.boolean(),
   login_bg_type: bgTypeEnum,
   login_bg_color: z.string(),
   login_bg_media: z.string(),
@@ -107,6 +109,7 @@ const OPTION_KEYS: Record<keyof AppearanceFormValues, string> = {
   home_bg_color: 'appearance_setting.home_bg_color',
   home_bg_media: 'appearance_setting.home_bg_media',
   home_bg_overlay_opacity: 'appearance_setting.home_bg_overlay_opacity',
+  home_sakura: 'appearance_setting.home_sakura',
   login_bg_type: 'appearance_setting.login_bg_type',
   login_bg_color: 'appearance_setting.login_bg_color',
   login_bg_media: 'appearance_setting.login_bg_media',
@@ -364,6 +367,7 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
     home_bg_color: defaultValues.home_bg_color,
     home_bg_media: defaultValues.home_bg_media,
     home_bg_overlay_opacity: defaultValues.home_bg_overlay_opacity,
+    home_sakura: defaultValues.home_sakura,
     login_bg_type: defaultValues.login_bg_type,
     login_bg_color: defaultValues.login_bg_color,
     login_bg_media: defaultValues.login_bg_media,
@@ -607,6 +611,30 @@ export function AppearanceSection({ defaultValues }: AppearanceSectionProps) {
                 prefix='home'
                 uploading={uploading}
                 onUpload={handleUpload}
+              />
+              <FormField
+                control={form.control}
+                name='home_sakura'
+                render={({ field }) => (
+                  <FormItem className='border-border/60 bg-muted/20 flex flex-row items-center justify-between rounded-xl border p-3.5 shadow-xs'>
+                    <div className='space-y-0.5'>
+                      <FormLabel className='text-sm font-medium'>
+                        {t('Homepage sakura petals effect')}
+                      </FormLabel>
+                      <FormDescription className='text-xs'>
+                        {t(
+                          'Render floating sakura petals in the first-person perspective on the homepage.'
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
               />
             </div>
 

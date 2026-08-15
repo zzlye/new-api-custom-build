@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, BookOpen, Sparkles } from 'lucide-react'
+import { ArrowRight, BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -31,9 +31,7 @@ import { HomeBackground } from '../home-background'
 interface HeroProps {
   className?: string
   isAuthenticated?: boolean
-  onToggleImmersiveMode?: () => void
 }
-
 
 export function Hero(props: HeroProps) {
   const { t } = useTranslation()
@@ -127,16 +125,6 @@ export function Hero(props: HeroProps) {
                   <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
                 </Button>
                 {renderDocsButton()}
-                {props.onToggleImmersiveMode && (
-                  <Button
-                    variant='outline'
-                    onClick={props.onToggleImmersiveMode}
-                    className='border-rose-500/40 hover:border-rose-400 hover:bg-rose-500/10 text-rose-400 h-11 rounded-lg px-4 text-sm font-medium transition-colors'
-                  >
-                    <Sparkles className='size-4 mr-1.5' />
-                    <span>{t('沉浸 3D 视角')}</span>
-                  </Button>
-                )}
               </>
             ) : (
               <>
@@ -155,16 +143,6 @@ export function Hero(props: HeroProps) {
                   {t('View Pricing')}
                 </Button>
                 {renderDocsButton()}
-                {props.onToggleImmersiveMode && (
-                  <Button
-                    variant='outline'
-                    onClick={props.onToggleImmersiveMode}
-                    className='border-rose-500/40 hover:border-rose-400 hover:bg-rose-500/10 text-rose-400 h-11 rounded-lg px-4 text-sm font-medium transition-colors'
-                  >
-                    <Sparkles className='size-4 mr-1.5' />
-                    <span>{t('沉浸 3D 视角')}</span>
-                  </Button>
-                )}
               </>
             )}
           </div>

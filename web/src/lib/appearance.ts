@@ -45,6 +45,7 @@ export type AppearanceConfig = {
   home_bg_color: string
   home_bg_media: string
   home_bg_overlay_opacity: number
+  home_sakura: boolean
   login_bg_type: BgType
   login_bg_color: string
   login_bg_media: string
@@ -72,6 +73,7 @@ export const DEFAULT_APPEARANCE: AppearanceConfig = {
   home_bg_color: '#0f172a',
   home_bg_media: '',
   home_bg_overlay_opacity: 0,
+  home_sakura: true,
   login_bg_type: 'none',
   login_bg_color: '#0f172a',
   login_bg_media: '',
@@ -494,6 +496,10 @@ export function normalizeAppearance(
       raw?.home_bg_overlay_opacity,
       DEFAULT_APPEARANCE.home_bg_overlay_opacity
     ),
+    home_sakura:
+      raw?.home_sakura !== undefined
+        ? Boolean(raw.home_sakura && String(raw.home_sakura) !== 'false')
+        : DEFAULT_APPEARANCE.home_sakura,
     login_bg_type: normalizeBgType(raw?.login_bg_type),
     login_bg_color:
       raw?.login_bg_color?.trim() || DEFAULT_APPEARANCE.login_bg_color,

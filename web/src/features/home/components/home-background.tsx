@@ -25,11 +25,13 @@ import {
   getEffectiveHomeBackgroundOverlayOpacity,
 } from '@/lib/appearance'
 
+import { HomeSakura } from './home-sakura'
+
 type HomeBackgroundProps = {
   className?: string
 }
 
-/** 主页背景（读取 appearance.home_bg_*） */
+/** 主页背景（读取 appearance.home_bg_* 并融合落樱花瓣粒子） */
 export function HomeBackground({ className }: HomeBackgroundProps) {
   const appearance = useAppearance()
   const routeLoading = useRouterState({ select: (state) => state.isLoading })
@@ -37,12 +39,15 @@ export function HomeBackground({ className }: HomeBackgroundProps) {
     select: (state) => state.location.pathname,
   })
   return (
-    <PageBackground
-      config={getEffectiveHomeBackground(appearance)}
-      className={className}
-      overlayOpacity={getEffectiveHomeBackgroundOverlayOpacity(appearance)}
-      suspendVideo={routeLoading}
-      videoPlaybackKey={routePath}
-    />
+    <>
+      <PageBackground
+        config={getEffectiveHomeBackground(appearance)}
+        className={className}
+        overlayOpacity={getEffectiveHomeBackgroundOverlayOpacity(appearance)}
+        suspendVideo={routeLoading}
+        videoPlaybackKey={routePath}
+      />
+      <HomeSakura className={className} />
+    </>
   )
 }
