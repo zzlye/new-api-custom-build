@@ -55,7 +55,7 @@ func TestOptimizeBackgroundVideoProducesWebPlaybackProfile(t *testing.T) {
 	videoInfo := string(videoOutput)
 	require.Contains(t, videoInfo, "width=1920")
 	require.Contains(t, videoInfo, "height=1080")
-	require.Contains(t, videoInfo, "r_frame_rate=30/1")
+	require.Contains(t, videoInfo, "r_frame_rate=15/1")
 	require.Contains(t, videoInfo, "sample_aspect_ratio=1:1")
 
 	audioProbe := exec.Command(

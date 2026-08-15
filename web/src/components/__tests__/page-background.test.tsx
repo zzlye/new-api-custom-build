@@ -106,6 +106,10 @@ describe('视频页面背景', () => {
     playbackCalls.play = 0
     pageFocused = true
     pendingTimers.clear()
+    Object.defineProperty(domWindow.document, 'hidden', {
+      configurable: true,
+      value: false,
+    })
     delete document.documentElement.dataset.videoBackground
     delete document.documentElement.dataset.videoBackgroundCount
   })
@@ -144,7 +148,7 @@ describe('视频页面背景', () => {
 
     const video = container.querySelector('video')
     assert.ok(video)
-    assert.equal(video.getAttribute('preload'), 'metadata')
+    assert.equal(video.getAttribute('preload'), 'none')
     assert.ok(playbackCalls.pause > 0)
     assert.equal(playbackCalls.play, 0)
 
@@ -223,21 +227,77 @@ describe('视频页面背景', () => {
       for (const callback of pendingTimers.values()) callback()
       pendingTimers.clear()
     })
+    const video = container.querySelector('video')
+    assert.ok(video)
     const playCountBeforeBlur = playbackCalls.play
 
     pageFocused = false
     await act(async () => window.dispatchEvent(new Event('blur')))
     assert.ok(playbackCalls.pause > 0)
+    assert.equal(video.getAttribute('src'), null)
+    assert.ok(playbackCalls.load > 0)
     assert.equal(pendingTimers.size, 0)
 
     pageFocused = true
     await act(async () => window.dispatchEvent(new Event('focus')))
+    assert.equal(video.getAttribute('src'), '/background.mp4')
     assert.equal(pendingTimers.size, 1)
     await act(async () => {
       for (const callback of pendingTimers.values()) callback()
       pendingTimers.clear()
     })
     assert.equal(playbackCalls.play, playCountBeforeBlur + 1)
+
+    await act(async () => root.unmount())
+    container.remove()
+  })
+
+  test('标签页隐藏时释放视频源，恢复可见后重新加载播放', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const config = {
+      type: 'video' as const,
+      color: '#000000',
+      media: '/background.mp4',
+    }
+
+    await act(async () => {
+      root.render(<PageBackground config={config} />)
+    })
+    await act(async () => {
+      for (const callback of pendingTimers.values()) callback()
+      pendingTimers.clear()
+    })
+
+    const video = container.querySelector('video')
+    assert.ok(video)
+    const loadCountBeforeHidden = playbackCalls.load
+
+    Object.defineProperty(domWindow.document, 'hidden', {
+      configurable: true,
+      value: true,
+    })
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+
+    assert.equal(video.getAttribute('src'), null)
+    assert.ok(playbackCalls.pause > 0)
+    assert.ok(playbackCalls.load > loadCountBeforeHidden)
+    assert.equal(pendingTimers.size, 0)
+
+    Object.defineProperty(domWindow.document, 'hidden', {
+      configurable: true,
+      value: false,
+    })
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+
+    assert.equal(video.getAttribute('src'), '/background.mp4')
+    assert.equal(pendingTimers.size, 1)
+    await act(async () => {
+      for (const callback of pendingTimers.values()) callback()
+      pendingTimers.clear()
+    })
+    assert.ok(playbackCalls.play > 0)
 
     await act(async () => root.unmount())
     container.remove()

@@ -106,14 +106,37 @@ export function PageBackground({
     if (!video || !hasVideoBackground) return
 
     let resumeTimer: number | undefined
+    const media = config.media
+
+    // 标签页隐藏或窗口失焦时释放视频源，避免浏览器继续保留网络和解码资源。
+    const releaseMediaSource = () => {
+      video.pause()
+      if (!video.hasAttribute('src')) return
+      video.removeAttribute('src')
+      video.load()
+    }
+
+    // 页面重新可见时恢复视频源，播放请求会触发浏览器重新加载媒体。
+    const restoreMediaSource = () => {
+      if (!media || video.getAttribute('src') === media) return
+      video.setAttribute('src', media)
+      video.load()
+    }
+
     const syncPlayback = () => {
       if (resumeTimer !== undefined) {
         window.clearTimeout(resumeTimer)
       }
-      video.pause()
       const windowBlurred =
         typeof document.hasFocus === 'function' && !document.hasFocus()
-      if (suspendVideo || document.hidden || windowBlurred) return
+      if (document.hidden || windowBlurred) {
+        releaseMediaSource()
+        return
+      }
+
+      video.pause()
+      if (suspendVideo) return
+      restoreMediaSource()
 
       const delay = videoPlaybackKey ? VIDEO_RESUME_DELAY_MS : 0
       resumeTimer = window.setTimeout(() => {
@@ -185,7 +208,7 @@ export function PageBackground({
           muted
           loop
           playsInline
-          preload='metadata'
+          preload='none'
           disablePictureInPicture
           disableRemotePlayback
         />

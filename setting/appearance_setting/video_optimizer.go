@@ -13,7 +13,7 @@ import (
 const (
 	BackgroundVideoWidth  = 1920
 	BackgroundVideoHeight = 1080
-	BackgroundVideoFPS    = 30
+	BackgroundVideoFPS    = 15
 
 	backgroundVideoOptimizationTimeout = 10 * time.Minute
 	backgroundVideoErrorOutputLimit    = 800
