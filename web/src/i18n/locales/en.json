@@ -5392,6 +5392,15 @@
     "Open the local preview link in your browser after signing in. The media API requires authentication.": "Open the local preview link in your browser after signing in. The media API requires authentication.",
     "No upstream URL recorded. The provider may have returned image data directly; use the local preview link.": "No upstream URL recorded. The provider may have returned image data directly; use the local preview link.",
     "Upstream links may expire earlier and are controlled by the provider.": "Upstream links may expire earlier and are controlled by the provider.",
-    "Media preview": "Media preview"
+    "Media preview": "Media preview",
+    "Clean logs and tasks": "Clean logs and tasks",
+    "Delete logs and tasks": "Delete logs and tasks",
+    "Clean history logs and tasks": "Clean history logs and tasks",
+    "Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.": "Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.",
+    "This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.": "This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.",
+    "Removed {{logs}} usage logs and {{tasks}} task logs.": "Removed {{logs}} usage logs and {{tasks}} task logs.",
+    "{{count}} task logs were kept because they are still running or their files belong to another node.": "{{count}} task logs were kept because they are still running or their files belong to another node.",
+    "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "Expiration removes generated and reference files only. Task logs remain until you clean them here.",
+    "{{processed}} of {{total}} records processed.": "{{processed}} of {{total}} records processed."
   }
 }

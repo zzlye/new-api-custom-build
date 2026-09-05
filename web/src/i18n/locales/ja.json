@@ -5392,6 +5392,15 @@
     "Open the local preview link in your browser after signing in. The media API requires authentication.": "ローカルプレビューはログイン後に開けます。メディアAPIには認証が必要です。",
     "No upstream URL recorded. The provider may have returned image data directly; use the local preview link.": "提供元URLの記録はありません。画像データが直接返された場合も、ローカルプレビューを利用できます。",
     "Upstream links may expire earlier and are controlled by the provider.": "提供元のリンクは提供元が管理しており、先に期限切れになる場合があります。",
-    "Media preview": "メディアプレビュー"
+    "Media preview": "メディアプレビュー",
+    "Clean logs and tasks": "ログとタスクを整理",
+    "Delete logs and tasks": "ログとタスクを削除",
+    "Clean history logs and tasks": "過去のログとタスクを整理",
+    "Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.": "指定時刻より前の使用ログ、完了済みタスクのログ、保存されたメディアを削除します。実行中のタスクは保持されます。",
+    "This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.": "{{date}} より前の使用ログ、{{date}} より前に完了したタスクのログ、保存されたメディアを削除します。実行中のタスクは保持されます。",
+    "Removed {{logs}} usage logs and {{tasks}} task logs.": "使用ログ {{logs}} 件とタスクログ {{tasks}} 件を削除しました。",
+    "{{count}} task logs were kept because they are still running or their files belong to another node.": "実行中、またはファイルが別のノードにあるため、タスクログ {{count}} 件を保持しました。",
+    "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "期限切れでは生成ファイルと参照ファイルのみ削除されます。タスクログは、ここで整理するまで保持されます。",
+    "{{processed}} of {{total}} records processed.": "{{total}} 件中 {{processed}} 件を処理しました。"
   }
 }

@@ -12,6 +12,11 @@ import (
 )
 
 func CreateLogCleanupSystemTask(c *gin.Context) {
+	// 联合清理包含生成文件，接口本身也校验根用户身份。
+	if c.GetInt("role") != common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以清理日志和生成文件"})
+		return
+	}
 	targetTimestamp, _ := strconv.ParseInt(c.Query("target_timestamp"), 10, 64)
 	if targetTimestamp == 0 {
 		c.JSON(http.StatusOK, gin.H{
@@ -21,7 +26,13 @@ func CreateLogCleanupSystemTask(c *gin.Context) {
 		return
 	}
 
-	task, err := service.StartLogCleanupTask(targetTimestamp)
+	// 只有新版确认框明确选择联合清理时才扩大范围，旧页面仍按原范围清理。
+	includeTasks, err := strconv.ParseBool(c.DefaultQuery("include_task_logs", "false"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "日志清理范围参数有误"})
+		return
+	}
+	task, err := service.StartLogCleanupTask(targetTimestamp, includeTasks)
 	if err != nil {
 		common.ApiError(c, err)
 		return

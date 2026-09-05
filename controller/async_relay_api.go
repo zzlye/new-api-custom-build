@@ -147,57 +147,16 @@ func DeleteTaskLog(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "任务日志编号有误"})
 		return
 	}
-	var log model.Task
-	err = model.DB.First(&log, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "任务日志不存在"})
-		return
-	}
+	err = model.DeleteTaskLogAndMedia(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取任务日志失败"})
-		return
-	}
-	if log.AsyncParentID != "" {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "请删除对应的主任务日志"})
-		return
-	}
-	if log.Status != model.TaskStatusSuccess && log.Status != model.TaskStatusFailure {
-		c.JSON(http.StatusConflict, gin.H{"success": false, "message": "请等待任务结束后再删除日志"})
-		return
-	}
-	task, err := model.GetAsyncRelayTaskByTaskID(log.TaskID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "读取后台任务失败"})
-		return
-	}
-	if task != nil {
-		if !task.Status.IsTerminal() {
-			c.JSON(http.StatusConflict, gin.H{"success": false, "message": "请等待任务结束后再删除日志"})
-			return
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "任务日志不存在"})
+		case errors.Is(err, model.ErrTaskLogRunning), errors.Is(err, model.ErrTaskLogChild), errors.Is(err, model.ErrTaskLogOtherNode):
+			c.JSON(http.StatusConflict, gin.H{"success": false, "message": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "清理任务文件或日志失败，记录已保留，请重试"})
 		}
-		if err := model.ExpireAsyncRelayTaskFiles(task); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "清理生成文件失败，请在文件所属节点重试"})
-			return
-		}
-	}
-	err = model.DB.Transaction(func(tx *gorm.DB) error {
-		if task != nil {
-			if err := tx.Where("async_parent_id = ?", task.TaskID).Delete(&model.Task{}).Error; err != nil {
-				return err
-			}
-			if task.RequestFormat == string(relaytypes.RelayFormatMjProxy) && task.LinkedTaskID != "" {
-				if err := tx.Where("user_id = ? AND async_parent_id = ?", task.UserID, task.TaskID).Delete(&model.Midjourney{}).Error; err != nil {
-					return err
-				}
-			}
-			if err := tx.Delete(&model.AsyncRelayTask{}, task.ID).Error; err != nil {
-				return err
-			}
-		}
-		return tx.Where("id = ? AND status IN ?", log.ID, []model.TaskStatus{model.TaskStatusSuccess, model.TaskStatusFailure}).Delete(&model.Task{}).Error
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "删除任务日志失败"})
 		return
 	}
 	common.ApiSuccess(c, nil)

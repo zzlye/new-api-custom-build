@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -532,6 +534,21 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	resp, err := relayClient.Do(req)
 	if err != nil {
 		logger.LogError(c, "do request failed: "+err.Error())
+		if c.GetString(model.AsyncRelayContextKey) != "" {
+			// 向外保留兼容错误结构，但给出结果未知及潜在上游计费的提示，不暴露地址和凭据。
+			message := "上游连接失败，生成结果未确认"
+			var networkError net.Error
+			switch {
+			case errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, io.EOF):
+				message = "上游连接提前中断，未收到完整响应"
+			case errors.As(err, &networkError) && networkError.Timeout():
+				message = "上游连接等待超时，生成结果未确认"
+			case errors.Is(err, context.Canceled):
+				message = "后台与上游连接已结束，生成结果未确认"
+			}
+			message += "；上游可能已计费，本任务未自动重发，请先核对上游记录再决定是否重试。"
+			return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg(message), types.ErrOptionWithSkipRetry())
+		}
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {

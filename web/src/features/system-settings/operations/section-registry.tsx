@@ -21,22 +21,12 @@ import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
-import { MediaRetentionSection } from '../maintenance/media-retention-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
 const OPERATIONS_SECTIONS = [
-  {
-    id: 'media',
-    titleKey: 'Generated media retention',
-    build: (settings: OperationsSettings) => (
-      <MediaRetentionSection
-        defaultHours={settings.AsyncMediaRetentionHours ?? 2}
-      />
-    ),
-  },
   {
     id: 'behavior',
     titleKey: 'System Behavior',
@@ -108,6 +98,7 @@ const OPERATIONS_SECTIONS = [
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
         defaultEnabled={Boolean(settings.LogConsumeEnabled)}
+        defaultRetentionHours={settings.AsyncMediaRetentionHours ?? 2}
       />
     ),
   },

@@ -28,6 +28,13 @@ export const Route = createFileRoute(
   '/_authenticated/system-settings/operations/$section'
 )({
   beforeLoad: ({ params }) => {
+    // 文件保存设置已合并到日志维护，旧书签继续带到新的位置。
+    if (params.section === 'media') {
+      throw redirect({
+        to: '/system-settings/operations/$section',
+        params: { section: 'logs' },
+      })
+    }
     if (params.section === 'monitoring') {
       throw redirect({
         to: '/system-settings/models/$section',

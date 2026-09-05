@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -42,6 +43,7 @@ import {
   FormControl,
   FormDescription,
   FormField,
+  FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
@@ -61,6 +63,8 @@ import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
 import dayjs from '@/lib/dayjs'
 import { formatTimestampToDate } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getCurrentLogCleanupTask,
@@ -76,9 +80,10 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { mediaRetentionSchema } from '../lib/media-retention'
 import type { LogCleanupTask } from '../types'
 
-const logSettingsSchema = z.object({
+const logSettingsSchema = mediaRetentionSchema.extend({
   LogConsumeEnabled: z.boolean(),
 })
 
@@ -86,6 +91,7 @@ type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultRetentionHours?: number
 }
 
 type ServerLogInfo = {
@@ -139,15 +145,18 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
   return task?.status === 'pending' || task?.status === 'running'
 }
 
-export function LogSettingsSection({
-  defaultEnabled,
-}: LogSettingsSectionProps) {
+export function LogSettingsSection(props: LogSettingsSectionProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const role = useAuthStore((state) => state.auth.user?.role)
+  const isRoot = role === ROLE.SUPER_ADMIN
+  const defaultRetentionHours = props.defaultRetentionHours ?? 2
   const updateOption = useUpdateOption()
   const form = useForm<LogSettingsFormValues>({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
-      LogConsumeEnabled: defaultEnabled,
+      LogConsumeEnabled: props.defaultEnabled,
+      hours: defaultRetentionHours,
     },
   })
 
@@ -174,8 +183,11 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: props.defaultEnabled,
+      hours: defaultRetentionHours,
+    })
+  }, [props.defaultEnabled, defaultRetentionHours, form])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -256,15 +268,39 @@ export function LogSettingsSection({
     }
   }, [logCleanupActive, logCleanupTaskId, t])
 
+  useEffect(() => {
+    if (
+      !logCleanupTaskId ||
+      (logCleanupTask?.status !== 'succeeded' &&
+        logCleanupTask?.status !== 'failed')
+    ) {
+      return
+    }
+    // 清理结束后同时刷新调用日志、任务列表和正在查看的任务详情。
+    void queryClient.invalidateQueries({ queryKey: ['logs'] })
+    void queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
+    void queryClient.invalidateQueries({ queryKey: ['async-task-details'] })
+  }, [logCleanupTaskId, logCleanupTask?.status, queryClient])
+
+  // 保存时长和日志选项共用保存按钮，避免合并页面后表单操作互相覆盖。
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    if (!isRoot) return
+    if (values.hours !== defaultRetentionHours) {
+      await updateOption.mutateAsync({
+        key: 'AsyncMediaRetentionHours',
+        value: values.hours,
+      })
+    }
+    if (values.LogConsumeEnabled !== props.defaultEnabled) {
+      await updateOption.mutateAsync({
+        key: 'LogConsumeEnabled',
+        value: values.LogConsumeEnabled,
+      })
+    }
   }
 
   const handleRequestCleanLogs = () => {
+    if (!isRoot) return
     if (!purgeTimestamp) {
       toast.error(t('Select a timestamp before clearing logs.'))
       return
@@ -274,6 +310,7 @@ export function LogSettingsSection({
   }
 
   const handleCleanLogs = async () => {
+    if (!isRoot) return
     if (!purgeTimestamp) {
       toast.error(t('Select a timestamp before clearing logs.'))
       return
@@ -342,6 +379,7 @@ export function LogSettingsSection({
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
             saveLabel='Save log settings'
+            isSaveDisabled={!isRoot}
           />
           <FormField
             control={form.control}
@@ -367,12 +405,54 @@ export function LogSettingsSection({
             )}
           />
 
+          {isRoot && (
+            <SettingsControlGroup className='space-y-3'>
+              <h4 className='text-sm font-medium'>
+                {t('Generated media retention')}
+              </h4>
+              <FormField
+                control={form.control}
+                name='hours'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Retention period (hours)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        min={1}
+                        max={168}
+                        step={1}
+                        onChange={(event) =>
+                          field.onChange(event.target.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Default: 2 hours after completion. Enter 1 to 168 whole hours. Changes apply to files that have not been removed. Only root users can change this setting or delete task logs.'
+                      )}
+                    </FormDescription>
+                    <FormDescription>
+                      {t(
+                        'Expiration removes generated and reference files only. Task logs remain until you clean them here.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </SettingsControlGroup>
+          )}
+
           <SettingsControlGroup className='space-y-3'>
             <div>
-              <h4 className='text-sm font-medium'>{t('Clean history logs')}</h4>
+              <h4 className='text-sm font-medium'>
+                {t('Clean history logs and tasks')}
+              </h4>
               <p className='text-muted-foreground text-sm'>
                 {t(
-                  'Remove all log entries created before the selected timestamp.'
+                  'Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.'
                 )}
               </p>
             </div>
@@ -392,11 +472,11 @@ export function LogSettingsSection({
                 type='button'
                 variant='destructive'
                 onClick={handleRequestCleanLogs}
-                disabled={isStartingLogCleanup || logCleanupActive}
+                disabled={!isRoot || isStartingLogCleanup || logCleanupActive}
               >
                 {isStartingLogCleanup || logCleanupActive
                   ? t('Cleaning...')
-                  : t('Clean logs')}
+                  : t('Clean logs and tasks')}
               </Button>
             </div>
             {logCleanupTask && (
@@ -411,11 +491,44 @@ export function LogSettingsSection({
                 </div>
                 <Progress value={logCleanupProgress} />
                 <div className='text-muted-foreground mt-2 text-xs'>
-                  {t('{{processed}} of {{total}} log entries processed.', {
+                  {t('{{processed}} of {{total}} records processed.', {
                     processed: logCleanupProcessed,
                     total: logCleanupTotal,
                   })}
                 </div>
+                {logCleanupTask.state?.deleted_tasks !== undefined ||
+                logCleanupTask.result?.deleted_tasks !== undefined ? (
+                  <p className='text-muted-foreground mt-2 text-xs'>
+                    {t('Removed {{logs}} usage logs and {{tasks}} task logs.', {
+                      logs:
+                        logCleanupTask.result?.deleted_logs ??
+                        logCleanupTask.state?.deleted_logs ??
+                        0,
+                      tasks:
+                        logCleanupTask.result?.deleted_tasks ??
+                        logCleanupTask.state?.deleted_tasks ??
+                        0,
+                    })}
+                  </p>
+                ) : null}
+                {(logCleanupTask.result?.skipped_tasks ??
+                  logCleanupTask.state?.skipped_tasks ??
+                  0) > 0 && (
+                  <p
+                    className='text-muted-foreground mt-2 text-xs'
+                    role='status'
+                  >
+                    {t(
+                      '{{count}} task logs were kept because they are still running or their files belong to another node.',
+                      {
+                        count:
+                          logCleanupTask.result?.skipped_tasks ??
+                          logCleanupTask.state?.skipped_tasks ??
+                          0,
+                      }
+                    )}
+                  </p>
+                )}
                 {logCleanupTask.status === 'failed' && logCleanupTask.error && (
                   <div className='text-destructive mt-2 text-xs'>
                     {logCleanupTask.error}
@@ -586,14 +699,10 @@ export function LogSettingsSection({
           <AlertDialogHeader>
             <AlertDialogTitle>{t('Confirm log cleanup')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {formattedPurgeDate
-                ? t(
-                    'This will permanently remove all log entries created before {{date}}.',
-                    { date: formattedPurgeDate }
-                  )
-                : t(
-                    'This will permanently remove log entries before the selected timestamp.'
-                  )}{' '}
+              {t(
+                'This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.',
+                { date: formattedPurgeDate }
+              )}{' '}
               {t('This action cannot be undone.')}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -604,9 +713,11 @@ export function LogSettingsSection({
             <AlertDialogAction
               variant='destructive'
               onClick={handleCleanLogs}
-              disabled={isStartingLogCleanup}
+              disabled={!isRoot || isStartingLogCleanup}
             >
-              {isStartingLogCleanup ? t('Cleaning...') : t('Delete logs')}
+              {isStartingLogCleanup
+                ? t('Cleaning...')
+                : t('Delete logs and tasks')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

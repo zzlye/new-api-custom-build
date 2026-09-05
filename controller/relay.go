@@ -355,6 +355,10 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	// 媒体任务结果未知时不重发生成请求，避免上游已经计费后再次生成。
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		return false
+	}
 	if openaiErr == nil {
 		return false
 	}
@@ -691,6 +695,10 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
+	// 原生视频也只提交一次；后续仅轮询已拿到的任务编号或重试保存文件。
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		return false
+	}
 	if taskErr == nil {
 		return false
 	}

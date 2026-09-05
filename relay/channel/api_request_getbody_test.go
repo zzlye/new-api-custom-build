@@ -380,7 +380,22 @@ func runResetOnFirstStreamServer(ln net.Listener, expectRetry bool) <-chan h2Ser
 					return
 				}
 				if !expectRetry {
-					break attempts
+					// 等客户端确认已读到流重置帧再关闭连接，避免 Windows 的 TCP 重置掩盖测试目标。
+					ping := [8]byte{'r', 's', 't', '-', 'r', 'e', 'a', 'd'}
+					if err := framer.WritePing(false, ping); err != nil {
+						res.err = err
+						return
+					}
+					for {
+						frame, err := framer.ReadFrame()
+						if err != nil {
+							res.err = err
+							return
+						}
+						if ack, ok := frame.(*http2.PingFrame); ok && ack.IsAck() && ack.Data == ping {
+							break attempts
+						}
+					}
 				}
 				continue
 			}
@@ -392,6 +407,15 @@ func runResetOnFirstStreamServer(ln net.Listener, expectRetry bool) <-chan h2Ser
 		}
 	}()
 	return resCh
+}
+
+// closeH2TestConnection 先结束写入并接收剩余控制帧，确保已发出的响应不会被 TCP 重置覆盖。
+func closeH2TestConnection(conn net.Conn) {
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.CloseWrite()
+		_, _ = io.Copy(io.Discard, tcp)
+	}
+	_ = conn.Close()
 }
 
 func runGoAwayAfterFirstRequestServer(ln net.Listener) <-chan h2ServerResult {
@@ -417,7 +441,7 @@ func runGoAwayAfterFirstRequestServer(ln net.Listener) <-chan h2ServerResult {
 
 			if attempt == 0 {
 				err = framer.WriteGoAway(0, http2.ErrCodeNo, nil)
-				conn.Close()
+				closeH2TestConnection(conn)
 				if err != nil {
 					res.err = err
 					return
@@ -426,7 +450,7 @@ func runGoAwayAfterFirstRequestServer(ln net.Listener) <-chan h2ServerResult {
 			}
 
 			err = writeH2TestResponse(framer, streamID)
-			conn.Close()
+			closeH2TestConnection(conn)
 			if err != nil {
 				res.err = err
 			}

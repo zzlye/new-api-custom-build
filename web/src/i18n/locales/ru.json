@@ -5392,6 +5392,15 @@
     "Open the local preview link in your browser after signing in. The media API requires authentication.": "Войдите, чтобы открыть локальную ссылку. API файла требует авторизации.",
     "No upstream URL recorded. The provider may have returned image data directly; use the local preview link.": "Исходный URL не записан. Провайдер мог вернуть данные изображения напрямую; используйте локальную ссылку.",
     "Upstream links may expire earlier and are controlled by the provider.": "Срок действия исходных ссылок определяет провайдер; они могут истечь раньше.",
-    "Media preview": "Просмотр медиа"
+    "Media preview": "Просмотр медиа",
+    "Clean logs and tasks": "Очистить журналы и задачи",
+    "Delete logs and tasks": "Удалить журналы и задачи",
+    "Clean history logs and tasks": "Очистка старых журналов и задач",
+    "Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.": "Удаляются журналы использования и завершённых до выбранного времени задач вместе с сохранёнными медиафайлами. Выполняемые задачи сохраняются.",
+    "This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.": "Будут удалены журналы использования, созданные до {{date}}, журналы задач, завершённых до {{date}}, и их сохранённые медиафайлы. Выполняемые задачи сохраняются.",
+    "Removed {{logs}} usage logs and {{tasks}} task logs.": "Удалено журналов использования: {{logs}}, журналов задач: {{tasks}}.",
+    "{{count}} task logs were kept because they are still running or their files belong to another node.": "Сохранено журналов задач: {{count}}. Задачи ещё выполняются или файлы находятся на другом узле.",
+    "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "По истечении срока удаляются только созданные и исходные файлы. Журналы задач сохраняются до очистки здесь.",
+    "{{processed}} of {{total}} records processed.": "Обработано записей: {{processed}} из {{total}}."
   }
 }

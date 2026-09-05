@@ -38,7 +38,11 @@ func prepareAsyncMediaController(t *testing.T) {
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
 	previousRedis, previousMemory, previousBatch := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled
-	common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled = false, false, false
+	// Redis 开关未变化时保持只读，避免后台统计采样与测试准备发生无意义的同值写入竞争。
+	if common.RedisEnabled {
+		common.RedisEnabled = false
+	}
+	common.MemoryCacheEnabled, common.BatchUpdateEnabled = false, false
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -57,7 +61,10 @@ func prepareAsyncMediaController(t *testing.T) {
 	t.Cleanup(func() {
 		model.DB, model.LOG_DB = previousDB, previousLogDB
 		common.SetDatabaseTypes(previousMainType, previousLogType)
-		common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled = previousRedis, previousMemory, previousBatch
+		if common.RedisEnabled != previousRedis {
+			common.RedisEnabled = previousRedis
+		}
+		common.MemoryCacheEnabled, common.BatchUpdateEnabled = previousMemory, previousBatch
 		common.OptionMapRWMutex.Lock()
 		common.OptionMap = previousOptions
 		common.OptionMapRWMutex.Unlock()

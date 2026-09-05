@@ -88,18 +88,27 @@ func init() {
 }
 
 type LogCleanupPayload struct {
+	// 新提交的清理包含任务日志；已有清理任务继续沿用提交时的范围。
+	IncludeTaskLogs bool  `json:"include_task_logs,omitempty"`
 	TargetTimestamp int64 `json:"target_timestamp"`
 	BatchSize       int   `json:"batch_size"`
 }
 
 type LogCleanupState struct {
-	Total     int64 `json:"total"`
-	Processed int64 `json:"processed"`
-	Progress  int   `json:"progress"`
-	Remaining int64 `json:"remaining"`
+	DeletedLogs  int64 `json:"deleted_logs"`
+	DeletedTasks int64 `json:"deleted_tasks"`
+	SkippedTasks int64 `json:"skipped_tasks"`
+	TaskCursor   int64 `json:"task_cursor"`
+	Total        int64 `json:"total"`
+	Processed    int64 `json:"processed"`
+	Progress     int   `json:"progress"`
+	Remaining    int64 `json:"remaining"`
 }
 
 type LogCleanupResult struct {
+	DeletedLogs  int64 `json:"deleted_logs"`
+	DeletedTasks int64 `json:"deleted_tasks"`
+	SkippedTasks int64 `json:"skipped_tasks"`
 	DeletedCount int64 `json:"deleted_count"`
 }
 
@@ -165,7 +174,7 @@ func StartSystemTaskRunner() {
 	})
 }
 
-func StartLogCleanupTask(targetTimestamp int64) (*model.SystemTask, error) {
+func StartLogCleanupTask(targetTimestamp int64, includeTaskLogs bool) (*model.SystemTask, error) {
 	if targetTimestamp <= 0 {
 		return nil, errors.New("target timestamp is required")
 	}
@@ -179,6 +188,7 @@ func StartLogCleanupTask(targetTimestamp int64) (*model.SystemTask, error) {
 	}
 
 	payload := LogCleanupPayload{
+		IncludeTaskLogs: includeTaskLogs,
 		TargetTimestamp: targetTimestamp,
 		BatchSize:       logCleanupBatchSize,
 	}
@@ -355,13 +365,25 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 		return
 	}
 
+	// 旧版任务在重启后继续累计普通日志数量，不扩大原先确认的删除范围。
+	if !payload.IncludeTaskLogs && state.DeletedLogs < state.Processed {
+		state.DeletedLogs = state.Processed
+	}
 	for {
-		remaining, err := model.CountOldLog(ctx, payload.TargetTimestamp)
+		logRemaining, err := model.CountOldLog(ctx, payload.TargetTimestamp)
 		if err != nil {
 			failSystemTask(task, runnerID, err)
 			return
 		}
-		syncLogCleanupStateFromRemaining(&state, remaining)
+		var taskRemaining int64
+		if payload.IncludeTaskLogs {
+			taskRemaining, err = model.CountOldTaskLogs(ctx, payload.TargetTimestamp, state.TaskCursor)
+			if err != nil {
+				failSystemTask(task, runnerID, err)
+				return
+			}
+		}
+		syncLogCleanupStateFromRemaining(&state, logRemaining+taskRemaining)
 		if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
 			logSystemTaskLockError(ctx, task, err)
 			return
@@ -369,42 +391,44 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 		if state.Remaining == 0 {
 			break
 		}
-
-		// Track whether this pass deleted anything so a fresh recount that still
-		// reports remaining rows resumes immediately instead of waiting for the
-		// lock to expire. If a whole pass deletes nothing while rows remain, the
-		// rows cannot be removed and we fail instead of busy-looping.
-		progressed := false
-		for state.Remaining > 0 {
-			rowsAffected, err := model.DeleteOldLogBatch(ctx, payload.TargetTimestamp, payload.BatchSize)
+		var processed int64
+		if logRemaining > 0 {
+			deleted, err := model.DeleteOldLogBatch(ctx, payload.TargetTimestamp, payload.BatchSize)
 			if err != nil {
 				failSystemTask(task, runnerID, err)
 				return
 			}
-			if rowsAffected == 0 {
-				break
-			}
-			progressed = true
-
-			state.Processed += rowsAffected
-			if state.Total < state.Processed {
-				state.Total = state.Processed
-			}
-			if state.Remaining > rowsAffected {
-				state.Remaining -= rowsAffected
-			} else {
-				state.Remaining = 0
-			}
-			state.Progress = logCleanupProgress(state.Processed, state.Total)
-
-			if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
-				logSystemTaskLockError(ctx, task, err)
+			state.DeletedLogs += deleted
+			processed += deleted
+		}
+		if taskRemaining > 0 {
+			batch, cleanupErr := model.DeleteOldTaskLogBatch(ctx, payload.TargetTimestamp, state.TaskCursor, payload.BatchSize)
+			state.DeletedTasks += batch.Deleted
+			state.SkippedTasks += batch.Skipped
+			state.TaskCursor = batch.LastID
+			processed += batch.Deleted + batch.Skipped
+			if cleanupErr != nil {
+				// 文件删除失败时保留对应记录及已完成数量，后续可重新发起清理。
+				state.Processed += processed
+				if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
+					logSystemTaskLockError(ctx, task, err)
+					return
+				}
+				failSystemTask(task, runnerID, cleanupErr)
 				return
 			}
 		}
-
-		if !progressed {
-			failSystemTask(task, runnerID, errors.New("no log rows were deleted"))
+		if processed == 0 {
+			failSystemTask(task, runnerID, errors.New("本轮未清理任何记录，请检查任务状态后重试"))
+			return
+		}
+		state.Processed += processed
+		if state.Total < state.Processed {
+			state.Total = state.Processed
+		}
+		state.Progress = logCleanupProgress(state.Processed, state.Total)
+		if err := model.UpdateSystemTaskState(task.TaskID, runnerID, state); err != nil {
+			logSystemTaskLockError(ctx, task, err)
 			return
 		}
 	}
@@ -419,7 +443,7 @@ func runLogCleanupTask(ctx context.Context, task *model.SystemTask, runnerID str
 		return
 	}
 
-	result := LogCleanupResult{DeletedCount: state.Processed}
+	result := LogCleanupResult{DeletedCount: state.DeletedLogs + state.DeletedTasks, DeletedLogs: state.DeletedLogs, DeletedTasks: state.DeletedTasks, SkippedTasks: state.SkippedTasks}
 	if err := model.FinishSystemTask(task.TaskID, runnerID, model.SystemTaskStatusSucceeded, result, ""); err != nil {
 		logSystemTaskLockError(ctx, task, err)
 	}

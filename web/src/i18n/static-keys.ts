@@ -634,4 +634,14 @@ export const STATIC_I18N_KEYS = [
   'Background',
   'Resolution',
   'Generating',
+  // 日志与生成文件联合清理的操作范围和结果说明。
+  'Clean logs and tasks',
+  'Delete logs and tasks',
+  'Clean history logs and tasks',
+  'Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.',
+  'This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.',
+  'Removed {{logs}} usage logs and {{tasks}} task logs.',
+  '{{count}} task logs were kept because they are still running or their files belong to another node.',
+  'Expiration removes generated and reference files only. Task logs remain until you clean them here.',
+  '{{processed}} of {{total}} records processed.',
 ] as const

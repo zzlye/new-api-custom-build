@@ -5392,6 +5392,15 @@
     "Open the local preview link in your browser after signing in. The media API requires authentication.": "登入後即可開啟本機預覽連結；檔案介面位址需要身分驗證。",
     "No upstream URL recorded. The provider may have returned image data directly; use the local preview link.": "未記錄上游位址：服務方可能直接回傳圖片資料，請使用本機預覽位址。",
     "Upstream links may expire earlier and are controlled by the provider.": "上游位址有效期由服務方決定，可能提早失效。",
-    "Media preview": "媒體預覽"
+    "Media preview": "媒體預覽",
+    "Clean logs and tasks": "清理日誌和任務",
+    "Delete logs and tasks": "刪除日誌和任務",
+    "Clean history logs and tasks": "清理歷史日誌和任務",
+    "Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.": "清理所選時間之前的使用日誌、已結束的任務日誌，以及對應的參考圖和生成檔案。執行中的任務會保留。",
+    "This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.": "將刪除 {{date}} 之前的使用日誌、在該時間之前已結束的任務日誌，以及對應的參考圖、生成圖片和影片。執行中的任務會保留。",
+    "Removed {{logs}} usage logs and {{tasks}} task logs.": "已刪除 {{logs}} 條使用日誌、{{tasks}} 條任務日誌。",
+    "{{count}} task logs were kept because they are still running or their files belong to another node.": "已保留 {{count}} 條任務日誌：相關任務仍在執行，或檔案位於其他節點。",
+    "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "到期只清理生成檔案和參考檔案；任務的文字日誌保留，可在下方一起清理。",
+    "{{processed}} of {{total}} records processed.": "已處理 {{processed}} / {{total}} 條記錄。"
   }
 }
