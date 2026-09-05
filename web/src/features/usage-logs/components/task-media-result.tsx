@@ -16,62 +16,43 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 
 import type { TaskLog } from '../types'
-import { TaskDetailsContent } from './task-details-content'
+import { useUsageLogsContext } from './usage-logs-provider'
 
 export { TaskMediaPreview } from './task-media-preview'
 
-// 所有后台任务均可查看完整记录，失败或媒体过期不会隐藏提示词和请求信息。
+// 单元格只负责选择任务，弹窗状态由页面宿主持有，列表刷新不会关闭正在查看的详情。
 export function TaskMediaResult(props: { log: TaskLog }) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const { setSelectedTaskId } = useUsageLogsContext()
   return (
-    <>
-      <div className='flex min-w-0 flex-col items-start gap-1'>
-        {props.log.fail_reason && (
-          <button
-            type='button'
-            onClick={() => setOpen(true)}
-            title={t('Click to view full error message')}
-            className='max-w-[230px] truncate text-left text-xs text-red-600 hover:underline dark:text-red-400'
-          >
-            {props.log.fail_reason}
-          </button>
-        )}
-        {!props.log.fail_reason && props.log.media_expired && (
-          <span className='text-muted-foreground text-xs'>
-            {t('Generated files have expired')}
-          </span>
-        )}
-        <Button variant='ghost' size='sm' onClick={() => setOpen(true)}>
-          {t('View task details')}
-        </Button>
-      </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-5xl'>
-          <DialogHeader>
-            <DialogTitle>{t('Task details')}</DialogTitle>
-            <DialogDescription>
-              {t(
-                'Request, prompt, references, generated media and timing are recorded together.'
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          {open && <TaskDetailsContent taskId={props.log.task_id} />}
-        </DialogContent>
-      </Dialog>
-    </>
+    <div className='flex min-w-0 flex-col items-start gap-1'>
+      {props.log.fail_reason && (
+        <button
+          type='button'
+          onClick={() => setSelectedTaskId(props.log.task_id)}
+          title={t('Click to view full error message')}
+          className='max-w-[230px] truncate text-left text-xs text-red-600 hover:underline dark:text-red-400'
+        >
+          {props.log.fail_reason}
+        </button>
+      )}
+      {!props.log.fail_reason && props.log.media_expired && (
+        <span className='text-muted-foreground text-xs'>
+          {t('Generated files have expired')}
+        </span>
+      )}
+      <Button
+        variant='ghost'
+        size='sm'
+        onClick={() => setSelectedTaskId(props.log.task_id)}
+      >
+        {t('View task details')}
+      </Button>
+    </div>
   )
 }

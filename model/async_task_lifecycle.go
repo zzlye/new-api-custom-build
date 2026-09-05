@@ -14,9 +14,12 @@ const AsyncRelayContextKey = "internal_async_relay_task"
 
 // AsyncRelayMedia 记录由服务器持有的生成文件；路径只供内部使用。
 type AsyncRelayMedia struct {
-	Path        string `json:"path"`
-	ContentType string `json:"content_type"`
-	Kind        string `json:"kind"`
+	// 来源只保存真实网络地址；标记已检查可避免反复解析仅含图片数据的大响应。
+	SourceURL     string `json:"source_url,omitempty"`
+	SourceChecked bool   `json:"source_checked,omitempty"`
+	Path          string `json:"path"`
+	ContentType   string `json:"content_type"`
+	Kind          string `json:"kind"`
 }
 
 // InsertWithLog 在同一事务中创建待处理任务及日志，保证返回编号时已经能查到记录。

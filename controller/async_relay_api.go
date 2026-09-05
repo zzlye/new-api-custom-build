@@ -47,7 +47,9 @@ func asyncRelayMediaLinks(task *model.AsyncRelayTask, prefix string) []dto.TaskM
 	}
 	media := make([]dto.TaskMedia, 0, len(files))
 	for index, file := range files {
-		media = append(media, dto.TaskMedia{URL: prefix + task.TaskID + "/media/" + strconv.Itoa(index), Kind: file.Kind, ContentType: file.ContentType})
+		media = append(media, dto.TaskMedia{URL: prefix + task.TaskID + "/media/" + strconv.Itoa(index),
+			PreviewURL: "/task-media/" + task.TaskID + "/media/" + strconv.Itoa(index), SourceURL: asyncMediaSourceURL(file.SourceURL),
+			Kind: file.Kind, ContentType: file.ContentType})
 	}
 	return media
 }

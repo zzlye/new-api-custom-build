@@ -63,13 +63,18 @@ Object.defineProperty(globalThis, 'getComputedStyle', {
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true
 
-const { act } = await import('react')
+const { act, useMemo } = await import('react')
 const { createRoot } = await import('react-dom/client')
-const { QueryClient, QueryClientProvider } =
+const { QueryClient, QueryClientProvider, notifyManager, defaultScheduler } =
   await import('@tanstack/react-query')
 const { createInstance } = await import('i18next')
 const { I18nextProvider } = await import('react-i18next')
 const { TaskMediaPreview } = await import('../task-media-result')
+const { UsageLogsProvider } = await import('../usage-logs-provider')
+const { TaskMediaLinks } = await import('../task-media-links')
+const { TaskMediaView } = await import('../task-media-view')
+const enLocale = (await import('@/i18n/locales/en.json')).default
+const zhLocale = (await import('@/i18n/locales/zh.json')).default
 const { useTaskLogsColumns } = await import('../columns/task-logs-columns')
 const { useReactTable, getCoreRowModel, flexRender } =
   await import('@tanstack/react-table')
@@ -87,6 +92,8 @@ const originalGet = fixtureApi.get
 const originalDelete = fixtureApi.delete
 const originalCreateURL = URL.createObjectURL
 const originalRevokeURL = URL.revokeObjectURL
+const originalWriteText = navigator.clipboard.writeText
+let copiedAddresses: string[] = []
 let getCalls: string[] = []
 let deleteCalls: string[] = []
 let released: string[] = []
@@ -97,14 +104,21 @@ const i18n = createInstance()
 await i18n.init({
   lng: 'en',
   fallbackLng: 'en',
-  resources: { en: { translation: {} } },
+  resources: { en: enLocale, zhCN: zhLocale },
   interpolation: { escapeValue: false },
 })
 let root: Root
 let container: HTMLDivElement
 let client: InstanceType<typeof QueryClient>
 
-beforeEach(() => {
+beforeEach(async () => {
+  // 让查询通知在 act 的微任务中提交，避免依赖真实时钟等待网络渲染。
+  notifyManager.setScheduler(queueMicrotask)
+  await i18n.changeLanguage('en')
+  copiedAddresses = []
+  navigator.clipboard.writeText = async (text: string) => {
+    copiedAddresses.push(text)
+  }
   getCalls = []
   deleteCalls = []
   released = []
@@ -123,6 +137,7 @@ beforeEach(() => {
     references: [
       {
         url: '/api/task/async_fixture/reference/0',
+        preview_url: '/task-media/async_fixture/reference/0',
         kind: 'image',
         content_type: 'image/png',
         name: '原图.png',
@@ -132,6 +147,8 @@ beforeEach(() => {
     media: [
       {
         url: '/api/task/async_fixture/media/0',
+        preview_url: '/task-media/async_fixture/media/0',
+        source_url: 'https://images.example/original.png?signature=fixture',
         kind: 'image',
         content_type: 'image/png',
       },
@@ -173,11 +190,13 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount())
   client.clear()
+  notifyManager.setScheduler(defaultScheduler)
   container.remove()
   fixtureApi.get = originalGet
   fixtureApi.delete = originalDelete
   URL.createObjectURL = originalCreateURL
   URL.revokeObjectURL = originalRevokeURL
+  navigator.clipboard.writeText = originalWriteText
   useAuthStore.setState((state) => ({ auth: { ...state.auth, user: null } }))
 })
 after(() => dom.happyDOM.cancelAsync())
@@ -217,10 +236,12 @@ async function renderDelete(role: number, status = 'SUCCESS') {
 }
 
 // 使用真实的结果列验证日志展示，文件过期提示不应覆盖生成失败原因。
-function TaskDetailsFixture(props: { log: TaskLog }) {
+function TaskDetailsCellFixture(props: { log: TaskLog }) {
   const columns = useTaskLogsColumns(false)
+  const data = useMemo(() => [props.log], [props.log])
   const table = useReactTable({
-    data: [props.log],
+    data,
+    manualPagination: true,
     columns,
     getCoreRowModel: getCoreRowModel(),
   })
@@ -231,7 +252,134 @@ function TaskDetailsFixture(props: { log: TaskLog }) {
   return cell ? flexRender(cell.column.columnDef.cell, cell.getContext()) : null
 }
 
+// 与页面相同，详情宿主在会刷新的表格单元格之外，测试刷新而不是手动卸载页面。
+function TaskDetailsFixture(props: { log: TaskLog }) {
+  return (
+    <UsageLogsProvider>
+      <TaskDetailsCellFixture log={props.log} />
+    </UsageLogsProvider>
+  )
+}
+
+async function renderTaskDetails(
+  log: TaskLog = { ...completedLog, is_async: true }
+) {
+  await act(async () =>
+    root.render(
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={client}>
+          <TaskDetailsFixture log={log} />
+        </QueryClientProvider>
+      </I18nextProvider>
+    )
+  )
+}
+
+async function openTaskDetails() {
+  const button = findButton(i18n.t('View task details'))
+  assert.ok(button)
+  await act(async () => button.click())
+  await act(async () => {
+    await new Promise<void>((resolve) => setImmediate(resolve))
+  })
+}
+
 describe('任务生成结果', () => {
+  test('生成图片同时展示稳定预览地址、内容接口和上游地址，复制时不使用临时图片地址', async () => {
+    await renderTaskDetails()
+    await openTaskDetails()
+    const results = document.querySelector(
+      'section[aria-label="Generated media"]'
+    )
+    assert.ok(results)
+    const preview = results.querySelector<HTMLAnchorElement>(
+      'a[href="http://localhost/task-media/async_fixture/media/0"]'
+    )
+    assert.ok(preview, '缺少可再次打开的本地预览链接')
+    assert.equal(preview.target, '_blank')
+    assert.ok(
+      results.textContent?.includes(
+        'http://localhost/api/task/async_fixture/media/0'
+      )
+    )
+    assert.ok(
+      results.querySelector(
+        'a[href="https://images.example/original.png?signature=fixture"]'
+      )
+    )
+    const copyButton = results.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy Local preview URL"]'
+    )
+    assert.ok(copyButton)
+    await act(async () => copyButton.click())
+    assert.deepEqual(copiedAddresses, [
+      'http://localhost/task-media/async_fixture/media/0',
+    ])
+    assert.ok(getCalls.every((url) => url.startsWith('/api/task/')))
+  })
+  test('列表刷新重建单元格后已打开的任务详情保持展示，直到用户主动关闭', async () => {
+    await renderTaskDetails()
+    await openTaskDetails()
+    assert.ok(document.querySelector('[role="dialog"]'))
+    await renderTaskDetails({
+      ...completedLog,
+      is_async: true,
+      progress: '100%',
+      finish_time: 20,
+    })
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog, '列表刷新后详情不应消失')
+    assert.ok(dialog.textContent?.includes('保持人物，背景改成晴天'))
+    assert.ok(dialog.textContent?.includes('async_fixture'))
+    await renderTaskDetails({
+      ...completedLog,
+      task_id: 'async_other',
+      is_async: true,
+    })
+    assert.ok(
+      document
+        .querySelector('[role="dialog"]')
+        ?.textContent?.includes('async_fixture')
+    )
+    assert.ok(!getCalls.includes('/api/task/async_other/details'))
+    await act(async () => findButton('Close', dialog)?.click())
+    assert.equal(document.querySelector('[role="dialog"][data-open]'), null)
+  })
+  test('使用真实中文语言包时任务标题、字段和图片参数显示中文，切换英文立即更新', async () => {
+    taskDetails.parameters = {
+      size: '1280x720',
+      quality: 'auto',
+      moderation: 'auto',
+      output_format: 'png',
+    }
+    await i18n.changeLanguage('zhCN')
+    await renderTaskDetails()
+    await openTaskDetails()
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog)
+    assert.ok(dialog.textContent?.includes('任务详情'))
+    for (const label of [
+      '调用接口',
+      '提示词',
+      '生成参数',
+      '尺寸',
+      '质量',
+      '内容审核',
+      '输出格式',
+      '开始生成时间',
+      '参考图',
+    ]) {
+      assert.ok(dialog.textContent?.includes(label), `缺少中文字段：${label}`)
+    }
+    await act(async () => {
+      await i18n.changeLanguage('en')
+    })
+    assert.ok(
+      document
+        .querySelector('[role="dialog"]')
+        ?.textContent?.includes('Task details')
+    )
+  })
   test('任务详情按需加载接口、提示词、参考图、结果和耗时', async () => {
     await act(async () =>
       root.render(
@@ -419,6 +567,107 @@ describe('任务生成结果', () => {
       document.querySelector('[role="alert"]')?.textContent || '',
       /Failed to load generated media/
     )
+  })
+})
+
+describe('任务媒体地址与独立预览', () => {
+  test('仅含图片数据时仍展示本地地址，不虚构上游地址', async () => {
+    assert.ok(taskDetails.media?.[0])
+    delete taskDetails.media[0].source_url
+    await renderTaskDetails()
+    await openTaskDetails()
+    const results = document.querySelector(
+      'section[aria-label="Generated media"]'
+    )
+    assert.ok(
+      results?.querySelector(
+        'a[href="http://localhost/task-media/async_fixture/media/0"]'
+      )
+    )
+    assert.ok(results?.textContent?.includes('No upstream URL recorded.'))
+    assert.ok(!results?.textContent?.includes('Upstream media URL'))
+  })
+  test('媒体到期后停止展示地址，延长尚未清理的保存期限后恢复入口', async () => {
+    assert.ok(taskDetails.media?.[0])
+    const media = taskDetails.media[0]
+    const renderLinks = async (expiresAt: number) => {
+      await act(async () =>
+        root.render(
+          <I18nextProvider i18n={i18n}>
+            <TaskMediaLinks media={media} expiresAt={expiresAt} />
+          </I18nextProvider>
+        )
+      )
+    }
+    await renderLinks(1)
+    assert.equal(document.querySelectorAll('a').length, 0)
+    await renderLinks(Math.floor(Date.now() / 1000) + 3600)
+    assert.equal(document.querySelectorAll('a').length, 2)
+    await renderLinks(1)
+    assert.equal(document.querySelectorAll('button').length, 0)
+  })
+  test('独立预览按链接选择指定视频，只通过认证接口读取这一份文件', async () => {
+    taskDetails.media?.push({
+      url: '/api/task/async_fixture/media/1',
+      preview_url: '/task-media/async_fixture/media/1',
+      kind: 'video',
+      content_type: 'video/mp4',
+    })
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <QueryClientProvider client={client}>
+            <TaskMediaView taskId='async_fixture' kind='media' index='1' />
+          </QueryClientProvider>
+        </I18nextProvider>
+      )
+    )
+    await act(async () => {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    })
+    assert.ok(document.querySelector('video[aria-label="Generated video"]'))
+    assert.deepEqual(getCalls, [
+      '/api/task/async_fixture/details',
+      '/api/task/async_fixture/media/1',
+    ])
+  })
+  test('独立预览面对过期任务只显示到期说明，不请求任何文件', async () => {
+    taskDetails.media_expired = true
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <QueryClientProvider client={client}>
+            <TaskMediaView taskId='async_fixture' kind='reference' index='0' />
+          </QueryClientProvider>
+        </I18nextProvider>
+      )
+    )
+    await act(async () => {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    })
+    assert.ok(
+      document
+        .querySelector('[role="alert"]')
+        ?.textContent?.includes('Generated files have expired')
+    )
+    assert.deepEqual(getCalls, ['/api/task/async_fixture/details'])
+  })
+  test('独立预览拒绝无效文件序号且不发送请求', async () => {
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <QueryClientProvider client={client}>
+            <TaskMediaView taskId='async_fixture' kind='media' index='-1' />
+          </QueryClientProvider>
+        </I18nextProvider>
+      )
+    )
+    assert.ok(
+      document
+        .querySelector('[role="alert"]')
+        ?.textContent?.includes('Media preview is unavailable')
+    )
+    assert.deepEqual(getCalls, [])
   })
 })
 

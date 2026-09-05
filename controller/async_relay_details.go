@@ -19,6 +19,8 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
+	// 旧记录只补来源信息，不重发生成请求，也不修改完成时间和保存期限。
+	restoreAsyncRelayMediaURLs(task)
 	expired := model.AsyncRelayTaskExpired(task, common.GetTimestamp())
 	var input model.AsyncRelayRequestDetails
 	available := task.RequestDetails != "" && common.UnmarshalJsonStr(task.RequestDetails, &input) == nil
@@ -54,6 +56,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		item := dto.TaskMedia{Name: reference.Name, Role: reference.Role, Kind: reference.Kind, ContentType: reference.ContentType, Error: reference.Error}
 		if !expired && (reference.Path != "" || reference.Source != "") {
 			item.URL = "/api/task/" + task.TaskID + "/reference/" + strconv.Itoa(index)
+			item.PreviewURL = "/task-media/" + task.TaskID + "/reference/" + strconv.Itoa(index)
 		}
 		references = append(references, item)
 	}
@@ -67,7 +70,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 	common.ApiSuccess(c, response)
 }
 
-// GetAsyncRelayReference 与生成文件使用相同的归属和到期规则，远程参考图也不直接暴露带签名的地址。
+// GetAsyncRelayReference 与生成文件使用相同的归属和到期规则，读取远程参考图时仍需通过地址校验。
 func GetAsyncRelayReference(c *gin.Context) {
 	task := loadAsyncRelayTask(c)
 	if task == nil {

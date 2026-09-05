@@ -68,7 +68,8 @@ type AsyncRelayTask struct {
 	ResponseBody        string `json:"response_body,omitempty" gorm:"type:text"`
 	ResultContentType   string `json:"result_content_type,omitempty" gorm:"type:varchar(128)"`
 	ResultFilePath      string `json:"result_file_path,omitempty" gorm:"type:text"`
-	ResultFiles         string `json:"result_files,omitempty" gorm:"type:text"`
+	// 媒体清单包含多图来源和签名链接，使用各数据库的大文本类型保存。
+	ResultFiles string `json:"result_files,omitempty"`
 
 	Status     AsyncRelayTaskStatus `json:"status" gorm:"type:varchar(32);index"`
 	Error      string               `json:"error,omitempty" gorm:"type:text"`

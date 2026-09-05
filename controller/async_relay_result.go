@@ -13,11 +13,13 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 )
 
-// asyncMediaSource 仅在执行期间存在，下载完成后只保存本地文件清单。
+// asyncMediaSource 在归档时同时携带文件内容和可选来源，来源地址本身不触发额外下载。
 type asyncMediaSource struct {
+	SourceURL   string
 	Value       string
 	ContentType string
 	Base64      bool
@@ -32,9 +34,10 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 		}
 	case string:
 		if strings.HasPrefix(item, "https://") || strings.HasPrefix(item, "http://") || strings.HasPrefix(item, "data:") {
-			*sources = append(*sources, asyncMediaSource{Value: item})
+			*sources = append(*sources, asyncMediaSource{Value: item, SourceURL: asyncMediaSourceURL(item)})
 		}
 	case map[string]any:
+		inlineStart := len(*sources)
 		hasInline := false
 		if data, ok := item["b64_json"].(string); ok && data != "" {
 			*sources = append(*sources, asyncMediaSource{Value: data, Base64: true})
@@ -58,13 +61,25 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 				}
 			}
 		}
-		// 内嵌图片和下载地址通常是同一份结果；已有完整图片时不再访问备用地址。
-		if !hasInline {
-			for _, key := range []string{"url", "image_url", "imageUrl", "video_url", "videoUrl"} {
-				if child, ok := item[key]; ok {
-					collectAsyncMediaSources(child, sources)
-				}
+		// 内嵌数据优先保存，备用地址只作为这份媒体的来源记录，不重复下载。
+		var aliases []asyncMediaSource
+		for _, key := range []string{"url", "image_url", "imageUrl", "video_url", "videoUrl"} {
+			if child, ok := item[key]; ok {
+				collectAsyncMediaSources(child, &aliases)
 			}
+		}
+		if hasInline {
+			for _, alias := range aliases {
+				if alias.SourceURL == "" {
+					continue
+				}
+				for index := inlineStart; index < len(*sources); index++ {
+					(*sources)[index].SourceURL = alias.SourceURL
+				}
+				break
+			}
+		} else {
+			*sources = append(*sources, aliases...)
 		}
 		// 仅遍历结果容器，不下载提示词、错误描述或用量字段里出现的地址。
 		for _, key := range []string{"data", "candidates", "content", "parts", "output", "choices", "message", "delta", "images", "results", "videoUrls"} {
@@ -182,6 +197,10 @@ func inspectAsyncMedia(path string) (string, string, error) {
 }
 
 func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.AsyncRelayMedia, error) {
+	sourceURL := asyncMediaSourceURL(source.SourceURL)
+	if sourceURL == "" && !source.Base64 {
+		sourceURL = asyncMediaSourceURL(source.Value)
+	}
 	var reader io.Reader
 	var closer io.Closer
 	if strings.HasPrefix(source.Value, "data:") {
@@ -250,7 +269,7 @@ func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.A
 		return model.AsyncRelayMedia{}, err
 	}
 	keep = true
-	return model.AsyncRelayMedia{Path: path, ContentType: contentType, Kind: kind}, nil
+	return model.AsyncRelayMedia{Path: path, ContentType: contentType, Kind: kind, SourceURL: sourceURL, SourceChecked: true}, nil
 }
 
 // completeAsyncRelayResult 生成结果和预览文件全部就绪后才提交成功状态。
@@ -282,7 +301,14 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 			failAsyncRelayTask(task, err.Error())
 			return true
 		}
-		media = append(media, model.AsyncRelayMedia{Path: path, ContentType: detected, Kind: kind})
+		// 原生视频通过内容接口归档，真实来源从已保存的子任务补入，不额外发起下载。
+		sourceURL := ""
+		if task.RequestFormat == string(relaytypes.RelayFormatTask) && task.LinkedTaskID != "" {
+			if child, exists, err := model.GetByTaskId(task.UserID, task.LinkedTaskID); err == nil && exists {
+				sourceURL = asyncMediaSourceURL(child.PrivateData.ResultURL)
+			}
+		}
+		media = append(media, model.AsyncRelayMedia{Path: path, ContentType: detected, Kind: kind, SourceURL: sourceURL, SourceChecked: true})
 		contentType = detected
 	} else {
 		file, err := os.Open(path)
@@ -296,6 +322,7 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 			failAsyncRelayTask(task, err.Error())
 			return true
 		}
+		sources = uniqueAsyncMediaSources(sources)
 		if len(sources) == 0 {
 			failAsyncRelayTask(task, "上游未返回可保存的图片或视频")
 			return true
@@ -305,12 +332,7 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 			return true
 		}
 		var totalBytes int64
-		seen := make(map[string]bool)
 		for _, source := range sources {
-			if seen[source.Value] {
-				continue
-			}
-			seen[source.Value] = true
 			result, err := saveAsyncMediaSource(ctx, source)
 			if err != nil {
 				retryAsyncRelayMedia(task, "生成已完成，保存媒体失败："+err.Error())

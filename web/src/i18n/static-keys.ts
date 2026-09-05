@@ -628,4 +628,10 @@ export const STATIC_I18N_KEYS = [
   'Negative prompt',
   'Moderation',
   'Streaming',
+  // 任务参数与运行状态在详情中按字段名动态翻译。
+  'Size',
+  'Quality',
+  'Background',
+  'Resolution',
+  'Generating',
 ] as const

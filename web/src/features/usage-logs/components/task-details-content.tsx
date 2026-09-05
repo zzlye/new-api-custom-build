@@ -16,14 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { api } from '@/lib/api'
 import { formatTimestampToDate } from '@/lib/format'
 
-import type { TaskDetails, TaskMedia } from '../types'
+import { useTaskDetails } from '../hooks/use-task-details'
+import type { TaskMedia } from '../types'
+import { TaskMediaLinks } from './task-media-links'
 import { TaskMediaPreview } from './task-media-preview'
 
 const PARAMETER_LABELS: Record<string, string> = {
@@ -87,6 +87,7 @@ function TaskMediaGallery(props: {
             index={index}
             expiresAt={props.expiresAt}
           />
+          <TaskMediaLinks media={media} expiresAt={props.expiresAt} />
         </figure>
       ))}
     </div>
@@ -96,32 +97,7 @@ function TaskMediaGallery(props: {
 // 详情只在展开时加载，运行中的记录自动刷新；页面关闭后停止查询，不影响后台生成。
 export function TaskDetailsContent(props: { taskId: string }) {
   const { t } = useTranslation()
-  const query = useQuery({
-    queryKey: ['async-task-details', props.taskId],
-    queryFn: async ({ signal }) => {
-      const response = await api.get<{
-        success: boolean
-        data: TaskDetails
-        message?: string
-      }>(`/api/task/${encodeURIComponent(props.taskId)}/details`, {
-        signal,
-        disableDuplicate: true,
-        skipErrorHandler: true,
-      })
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to load task details')
-      }
-      return response.data.data
-    },
-    refetchInterval: (state) => {
-      const status = state.state.data?.status
-      return status && ['pending', 'processing', 'waiting'].includes(status)
-        ? 3000
-        : false
-    },
-    staleTime: 0,
-    retry: false,
-  })
+  const query = useTaskDetails(props.taskId)
   if (query.isPending) {
     return (
       <p role='status' className='text-muted-foreground py-6 text-sm'>
@@ -217,8 +193,8 @@ export function TaskDetailsContent(props: { taskId: string }) {
           {details.error}
         </p>
       )}
-      <section className='grid gap-2' aria-label={t('Prompt')}>
-        <h3 className='text-sm font-semibold'>{t('Prompt')}</h3>
+      <section className='grid gap-2' aria-label={t('Generation prompt')}>
+        <h3 className='text-sm font-semibold'>{t('Generation prompt')}</h3>
         {!details.input_available && (
           <p className='text-muted-foreground text-xs'>
             {t('Original input was not saved for this historical task.')}

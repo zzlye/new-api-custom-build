@@ -315,6 +315,10 @@ func TestAsyncRelayStorageRetryReusesSavedResponseWithoutResubmission(t *testing
 	require.Equal(t, model.AsyncRelayTaskStatusSucceeded, saved.Status, saved.Error)
 	assert.Equal(t, int32(2), downloads.Load())
 	assert.Empty(t, saved.Error)
+	// 仅提供下载链接的图片也保留来源，重试归档不会把地址丢掉。
+	media := asyncRelayMediaLinks(saved, "/api/task/")
+	require.Len(t, media, 1)
+	assert.Equal(t, source.URL+"/image.png", media[0].SourceURL)
 }
 
 func TestAsyncRelayVideoCompletionStoresLocalVideoAndKeepsOneTaskLog(t *testing.T) {
@@ -354,6 +358,9 @@ func TestAsyncRelayVideoCompletionStoresLocalVideoAndKeepsOneTaskLog(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, model.AsyncRelayTaskStatusSucceeded, saved.Status, saved.Error)
 	assert.Equal(t, int32(1), downloads.Load())
+	media := asyncRelayMediaLinks(saved, "/api/task/")
+	require.Len(t, media, 1)
+	assert.Equal(t, source.URL+"/video.mp4", media[0].SourceURL)
 	preview := asyncControllerRequest(GetAsyncRelayMedia, http.MethodGet, "/", parent.UserID, common.RoleCommonUser, gin.Params{{Key: "task_id", Value: parent.TaskID}, {Key: "index", Value: "0"}}, "")
 	require.Equal(t, http.StatusOK, preview.Code)
 	assert.Equal(t, video, preview.Body.Bytes())

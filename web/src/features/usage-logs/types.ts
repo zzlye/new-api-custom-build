@@ -287,6 +287,8 @@ export interface MidjourneyLog {
 
 // 生成文件只通过带用户认证的地址读取。
 export interface TaskMedia {
+  preview_url?: string
+  source_url?: string
   name?: string
   role?: string
   error?: string

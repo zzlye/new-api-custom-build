@@ -22,10 +22,13 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { useIsAdmin } from '@/hooks/use-admin'
 
 import type { ChannelAffinityInfo } from '../types'
+import { TaskDetailsDialog } from './task-details-dialog'
 
 export type LogsViewScope = 'all' | 'self'
 
 interface UsageLogsContextValue {
+  selectedTaskId: string | null
+  setSelectedTaskId: (taskId: string | null) => void
   selectedUserId: number | null
   setSelectedUserId: (userId: number | null) => void
   userInfoDialogOpen: boolean
@@ -45,6 +48,7 @@ const UsageLogsContext = createContext<UsageLogsContextValue | undefined>(
 )
 
 export function UsageLogsProvider({ children }: { children: ReactNode }) {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
   const [userInfoDialogOpen, setUserInfoDialogOpen] = useState(false)
   const [affinityTarget, setAffinityTarget] =
@@ -56,6 +60,8 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
   return (
     <UsageLogsContext.Provider
       value={{
+        selectedTaskId,
+        setSelectedTaskId,
         selectedUserId,
         setSelectedUserId,
         userInfoDialogOpen,
@@ -71,6 +77,10 @@ export function UsageLogsProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      <TaskDetailsDialog
+        taskId={selectedTaskId}
+        onClose={() => setSelectedTaskId(null)}
+      />
     </UsageLogsContext.Provider>
   )
 }
