@@ -1,0 +1,77 @@
+{
+  "customProviders": [
+    {
+      "id": "custom-new-api-async",
+      "name": "New API（后台任务）",
+      "submit": {
+        "path": "images/generations",
+        "method": "POST",
+        "contentType": "json",
+        "body": {
+          "model": "$profile.model",
+          "prompt": "$prompt",
+          "size": "$params.size",
+          "quality": "$params.quality",
+          "output_format": "$params.output_format",
+          "output_compression": "$params.output_compression",
+          "moderation": "$params.moderation",
+          "n": "$params.n",
+          "background": "$params.background"
+        },
+        "taskIdPath": "task_id"
+      },
+      "editSubmit": {
+        "path": "images/edits",
+        "method": "POST",
+        "contentType": "multipart",
+        "body": {
+          "model": "$profile.model",
+          "prompt": "$prompt",
+          "size": "$params.size",
+          "quality": "$params.quality",
+          "output_format": "$params.output_format",
+          "output_compression": "$params.output_compression",
+          "moderation": "$params.moderation",
+          "n": "$params.n",
+          "background": "$params.background"
+        },
+        "files": [
+          {
+            "field": "image[]",
+            "source": "inputImages",
+            "array": true
+          },
+          {
+            "field": "mask",
+            "source": "mask"
+          }
+        ],
+        "taskIdPath": "task_id"
+      },
+      "poll": {
+        "path": "tasks/{task_id}",
+        "method": "GET",
+        "intervalSeconds": 3,
+        "statusPath": "status",
+        "successValues": ["succeeded"],
+        "failureValues": ["failed", "cancelled"],
+        "errorPath": "error.message",
+        "result": {
+          "imageUrlPaths": ["result.data.*.url"],
+          "b64JsonPaths": ["result.data.*.b64_json"]
+        }
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "id": "new-api-local-async",
+      "name": "New API 本地异步",
+      "provider": "custom-new-api-async",
+      "baseUrl": "https://localhost:8443/v1",
+      "model": "gpt-image-2",
+      "apiMode": "images",
+      "apiProxy": false
+    }
+  ]
+}
