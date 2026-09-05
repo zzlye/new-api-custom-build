@@ -57,6 +57,10 @@ type AsyncRelayTask struct {
 	RequestFilePath    string `json:"request_file_path,omitempty" gorm:"type:text"`
 	RequestFiles       string `json:"request_files,omitempty" gorm:"type:text"`
 
+	// RequestDetails 保存脱敏后的提示词、参数及参考媒体清单，供任务详情独立读取。
+	RequestDetails      string `json:"-"`
+	ResponseCompletedAt int64  `json:"response_completed_at,omitempty" gorm:"bigint"`
+
 	// ResponseFilePath 单独保存原接口响应，原生视频继续处理时也能保留提交回执。
 	ResponseFilePath    string `json:"-" gorm:"type:text"`
 	ResponseStatusCode  int    `json:"response_status_code"`

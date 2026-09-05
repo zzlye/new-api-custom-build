@@ -22,7 +22,7 @@ import { after, afterEach, beforeEach, describe, test } from 'node:test'
 import { Window } from 'happy-dom'
 import type { Root } from 'react-dom/client'
 
-import type { TaskLog } from '../../types'
+import type { TaskDetails, TaskLog } from '../../types'
 
 // 为媒体展示和权限按钮创建独立页面，只模拟请求和浏览器文件地址这两个边界。
 const dom = new Window({ url: 'http://localhost/' })
@@ -76,7 +76,10 @@ const { useReactTable, getCoreRowModel, flexRender } =
 const { DeleteTaskLogButton } = await import('../delete-task-log-button')
 const { api } = await import('@/lib/api')
 type FixtureApi = {
-  get: (url: string, options?: unknown) => Promise<{ data: Blob }>
+  get: (
+    url: string,
+    options?: unknown
+  ) => Promise<{ data: Blob | { success: boolean; data: TaskDetails } }>
   delete: (url: string) => Promise<{ data: { success: boolean } }>
 }
 const fixtureApi = api as unknown as FixtureApi
@@ -88,6 +91,7 @@ let getCalls: string[] = []
 let deleteCalls: string[] = []
 let released: string[] = []
 let mediaLoadFails = false
+let taskDetails: TaskDetails
 const { useAuthStore } = await import('@/stores/auth-store')
 const i18n = createInstance()
 await i18n.init({
@@ -105,8 +109,46 @@ beforeEach(() => {
   deleteCalls = []
   released = []
   mediaLoadFails = false
+  taskDetails = {
+    task_id: 'async_fixture',
+    model_name: 'gpt-image-2',
+    request_method: 'POST',
+    request_path: '/v1/images/edits',
+    request_format: 'openai-image',
+    status: 'succeeded',
+    prompt: '保持人物，背景改成晴天',
+    prompt_source: 'request',
+    input_available: true,
+    parameters: { size: '1280x720', seed: '9007199254740993' },
+    references: [
+      {
+        url: '/api/task/async_fixture/reference/0',
+        kind: 'image',
+        content_type: 'image/png',
+        name: '原图.png',
+        role: 'reference',
+      },
+    ],
+    media: [
+      {
+        url: '/api/task/async_fixture/media/0',
+        kind: 'image',
+        content_type: 'image/png',
+      },
+    ],
+    media_expired: false,
+    expires_at: Math.floor(Date.now() / 1000) + 7200,
+    submit_time: 1788616029,
+    start_time: 1788616029,
+    response_time: 1788616079,
+    finish_time: 1788616080,
+    response_status_code: 200,
+  }
   fixtureApi.get = async (url) => {
     getCalls.push(url)
+    if (url.endsWith('/details')) {
+      return { data: { success: true, data: taskDetails } }
+    }
     if (mediaLoadFails) throw new Error('request failed')
     return { data: new Blob(['media']) }
   }
@@ -190,6 +232,56 @@ function TaskDetailsFixture(props: { log: TaskLog }) {
 }
 
 describe('任务生成结果', () => {
+  test('任务详情按需加载接口、提示词、参考图、结果和耗时', async () => {
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <QueryClientProvider client={client}>
+            <TaskDetailsFixture log={{ ...completedLog, is_async: true }} />
+          </QueryClientProvider>
+        </I18nextProvider>
+      )
+    )
+    assert.equal(getCalls.length, 0)
+    await act(async () => findButton('View task details')?.click())
+    // 等待查询通知提交到 React，不使用任意睡眠时间模拟网络速度。
+    await act(async () => {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    })
+    assert.ok(getCalls.includes('/api/task/async_fixture/details'))
+    assert.ok(document.body.textContent?.includes('POST /v1/images/edits'))
+    assert.ok(document.body.textContent?.includes('保持人物，背景改成晴天'))
+    assert.ok(document.body.textContent?.includes('9007199254740993'))
+    assert.ok(document.body.textContent?.includes('50s'))
+    assert.ok(document.querySelector('img[alt="Reference image 1"]'))
+    assert.ok(document.querySelector('img[alt="Generated image 1"]'))
+    assert.ok(getCalls.includes('/api/task/async_fixture/reference/0'))
+  })
+  test('过期任务仍可查看文字详情但不再加载参考图和生成图片', async () => {
+    taskDetails.media_expired = true
+    taskDetails.expires_at = 1
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <QueryClientProvider client={client}>
+            <TaskDetailsFixture
+              log={{ ...completedLog, is_async: true, media_expired: true }}
+            />
+          </QueryClientProvider>
+        </I18nextProvider>
+      )
+    )
+    await act(async () => findButton('View task details')?.click())
+    await act(async () => {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    })
+    assert.ok(document.body.textContent?.includes('保持人物，背景改成晴天'))
+    assert.ok(
+      document.body.textContent?.includes('Reference media have expired')
+    )
+    assert.deepEqual(getCalls, ['/api/task/async_fixture/details'])
+    assert.equal(document.querySelectorAll('img').length, 0)
+  })
   test('失败任务超过文件保存期限后仍展示失败原因', async () => {
     const failure = 'upstream generation failed'
     await act(async () =>

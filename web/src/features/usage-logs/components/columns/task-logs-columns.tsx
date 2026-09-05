@@ -194,9 +194,31 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       },
       meta: { mobileTitle: true },
     },
+    {
+      accessorKey: 'request_path',
+      header: t('Interface / Model'),
+      cell: ({ row }) => (
+        <div className='flex max-w-[250px] flex-col gap-1'>
+          <span
+            className='truncate font-mono text-xs'
+            title={row.original.request_path}
+          >
+            {row.original.request_path
+              ? [row.original.request_method, row.original.request_path]
+                  .filter(Boolean)
+                  .join(' ')
+              : '-'}
+          </span>
+          <span className='text-muted-foreground truncate text-xs'>
+            {row.original.model_name || '-'}
+          </span>
+        </div>
+      ),
+      size: 230,
+    },
     createDurationColumn<TaskLog>({
       submitTimeKey: 'submit_time',
-      finishTimeKey: 'finish_time',
+      finishTimeKey: 'duration_finish_time',
       unit: 'seconds',
       headerLabel: t('Duration'),
       warningThresholdSec: 300,
@@ -208,7 +230,11 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const status = row.getValue('status') as string
         return (
           <StatusBadge
-            label={t(taskStatusMapper.getLabel(status, status || 'Submitting'))}
+            label={
+              row.original.media_saving
+                ? t('Generation complete, saving files')
+                : t(taskStatusMapper.getLabel(status, status || 'Submitting'))
+            }
             variant={taskStatusMapper.getVariant(status)}
             size='sm'
             copyable={false}
@@ -227,14 +253,8 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const status = log.status
         const [dialogOpen, setDialogOpen] = useState(false)
 
-        // 成功任务展示媒体及过期状态，失败日志始终保留原始错误详情。
-        if (
-          log.is_async &&
-          status === TASK_STATUS.SUCCESS &&
-          (log.media_expired || log.media?.length)
-        ) {
-          return <TaskMediaResult log={log} />
-        }
+        // 成功、失败和排队记录都提供完整详情，生成结果不再是唯一入口。
+        if (log.is_async) return <TaskMediaResult log={log} />
         const isSunoSuccess =
           log.platform === 'suno' && status === TASK_STATUS.SUCCESS
         if (isSunoSuccess) {

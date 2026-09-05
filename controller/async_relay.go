@@ -107,10 +107,14 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 		return err
 	}
 	saved := false
+	var inputDetails model.AsyncRelayRequestDetails
 	defer func() {
 		_ = file.Close()
 		if !saved {
 			_ = common.RemoveAsyncMediaFile(requestPath)
+			for _, reference := range inputDetails.References {
+				_ = common.RemoveAsyncMediaFile(reference.Path)
+			}
 		}
 	}()
 	// 完整保留原始请求及表单附件，透明背景、流式开关、大整数和原生任务参数都由原接口处理。
@@ -149,6 +153,16 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 		NodeID: common.NodeName, RequestMethod: http.MethodPost,
 		RequestPath: c.Request.URL.Path, RequestQuery: removeAsyncQuery(c.Request.URL.RawQuery), RequestContentType: contentType,
 		RequestFormat: string(format), RequestFilePath: requestPath, RequestFiles: headers, RequestMetadata: string(metadata),
+	}
+	// 在原请求文件清理前保存提示词及参考图，采集过程不发起任何远程请求。
+	inputDetails = captureAsyncRequestDetails(task)
+	encodedDetails, err := common.Marshal(inputDetails)
+	if err != nil {
+		return err
+	}
+	task.RequestDetails = string(encodedDetails)
+	if task.ModelName == "" {
+		task.ModelName = inputDetails.Parameters["model"]
 	}
 	task.TaskID, err = model.GenerateAsyncRelayTaskID()
 	if err != nil {

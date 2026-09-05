@@ -332,6 +332,9 @@ func SetApiRouter(router *gin.Engine) {
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
 			// 预览与删除分开鉴权：普通用户看自己的结果，只有根用户可删除记录。
 			taskRoute.GET("/:task_id/media/:index", middleware.UserAuth(), controller.GetAsyncRelayMedia)
+			// 详情和参考图沿用本人及管理员的查看权限，删除仍单独要求根用户。
+			taskRoute.GET("/:task_id/details", middleware.UserAuth(), controller.GetAsyncRelayTaskDetails)
+			taskRoute.GET("/:task_id/reference/:index", middleware.UserAuth(), controller.GetAsyncRelayReference)
 			taskRoute.DELETE("/:id", middleware.RootAuth(), controller.DeleteTaskLog)
 		}
 

@@ -45,6 +45,10 @@ func (task *AsyncRelayTask) SyncLog(tx *gorm.DB) error {
 		return nil
 	}
 	status, progress := TaskStatusInProgress, "10%"
+	// 收到完整结果后的重试只是在保存文件，不再显示为刚开始生成。
+	if task.ResultFilePath != "" {
+		progress = "90%"
+	}
 	switch task.Status {
 	case AsyncRelayTaskStatusPending:
 		status, progress = TaskStatusQueued, "0%"
@@ -118,6 +122,15 @@ func AsyncRelayTaskExpired(task *AsyncRelayTask, now int64) bool {
 // ListAsyncRelayTaskFiles 列出清理任务拥有的文件，不接收客户端传入的路径。
 func ListAsyncRelayTaskFiles(task *AsyncRelayTask) ([]string, error) {
 	paths := []string{task.RequestFilePath, task.ResponseFilePath, task.ResultFilePath}
+	if task.RequestDetails != "" {
+		var details AsyncRelayRequestDetails
+		if err := common.UnmarshalJsonStr(task.RequestDetails, &details); err != nil {
+			return nil, err
+		}
+		for _, reference := range details.References {
+			paths = append(paths, reference.Path)
+		}
+	}
 	if task.ResultFiles == "" {
 		return paths, nil
 	}
@@ -145,6 +158,23 @@ func ExpireAsyncRelayTaskFiles(task *AsyncRelayTask) error {
 			return err
 		}
 	}
+	// 文字说明继续留在日志，参考媒体的文件路径与签名地址按相同保留期限清除。
+	requestDetails := task.RequestDetails
+	if requestDetails != "" {
+		var details AsyncRelayRequestDetails
+		if err := common.UnmarshalJsonStr(requestDetails, &details); err != nil {
+			return err
+		}
+		for index := range details.References {
+			details.References[index].Path = ""
+			details.References[index].Source = ""
+		}
+		encoded, err := common.Marshal(details)
+		if err != nil {
+			return err
+		}
+		requestDetails = string(encoded)
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		// 上游子记录可能内含图片或视频的内嵌数据，到期时一并移除但保留计费快照。
 		if task.RequestFormat == "task" {
@@ -166,7 +196,7 @@ func ExpireAsyncRelayTaskFiles(task *AsyncRelayTask) error {
 		}
 		return tx.Model(&AsyncRelayTask{}).Where("id = ? AND status IN ?", task.ID,
 			[]AsyncRelayTaskStatus{AsyncRelayTaskStatusSucceeded, AsyncRelayTaskStatusFailed, AsyncRelayTaskStatusCancelled}).
-			Updates(map[string]any{"request_file_path": "", "request_body": "", "request_files": "", "request_metadata": "", "result_file_path": "", "result_files": "", "response_file_path": "", "response_body": "", "result_expired_at": common.GetTimestamp()}).Error
+			Updates(map[string]any{"request_file_path": "", "request_body": "", "request_files": "", "request_metadata": "", "result_file_path": "", "result_files": "", "response_file_path": "", "response_body": "", "request_details": requestDetails, "result_expired_at": common.GetTimestamp()}).Error
 	})
 }
 

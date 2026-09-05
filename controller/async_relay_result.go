@@ -35,12 +35,15 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 			*sources = append(*sources, asyncMediaSource{Value: item})
 		}
 	case map[string]any:
+		hasInline := false
 		if data, ok := item["b64_json"].(string); ok && data != "" {
 			*sources = append(*sources, asyncMediaSource{Value: data, Base64: true})
+			hasInline = true
 		}
 		if item["type"] == "image_generation_call" {
 			if data, ok := item["result"].(string); ok && data != "" {
 				*sources = append(*sources, asyncMediaSource{Value: data, Base64: true})
+				hasInline = true
 			}
 		}
 		for _, key := range []string{"inlineData", "inline_data"} {
@@ -51,12 +54,16 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 				}
 				if data, ok := inline["data"].(string); ok && (strings.HasPrefix(contentType, "image/") || strings.HasPrefix(contentType, "video/")) {
 					*sources = append(*sources, asyncMediaSource{Value: data, ContentType: contentType, Base64: true})
+					hasInline = true
 				}
 			}
 		}
-		for _, key := range []string{"url", "image_url", "imageUrl", "video_url", "videoUrl"} {
-			if child, ok := item[key]; ok {
-				collectAsyncMediaSources(child, sources)
+		// 内嵌图片和下载地址通常是同一份结果；已有完整图片时不再访问备用地址。
+		if !hasInline {
+			for _, key := range []string{"url", "image_url", "imageUrl", "video_url", "videoUrl"} {
+				if child, ok := item[key]; ok {
+					collectAsyncMediaSources(child, sources)
+				}
 			}
 		}
 		// 仅遍历结果容器，不下载提示词、错误描述或用量字段里出现的地址。

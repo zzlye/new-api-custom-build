@@ -14,8 +14,8 @@ import (
 func CleanupOrphanAsyncMediaFiles() error {
 	referenced := make(map[string]bool)
 	var rows []AsyncRelayTask
-	err := DB.Select("request_file_path", "response_file_path", "result_file_path", "result_files", "id").
-		Where("request_file_path <> ? OR response_file_path <> ? OR result_file_path <> ? OR result_files <> ?", "", "", "", "").
+	err := DB.Select("request_file_path", "response_file_path", "result_file_path", "result_files", "request_details", "id").
+		Where("request_file_path <> ? OR response_file_path <> ? OR result_file_path <> ? OR result_files <> ? OR ((result_expired_at = 0 OR result_expired_at IS NULL) AND request_details <> ?)", "", "", "", "", "").
 		FindInBatches(&rows, 100, func(_ *gorm.DB, _ int) error {
 			for i := range rows {
 				paths, err := ListAsyncRelayTaskFiles(&rows[i])

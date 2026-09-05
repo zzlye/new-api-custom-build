@@ -230,6 +230,7 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 		worker.Writer.WriteHeaderNow()
 	}
 	task.ResponseStatusCode, task.ResponseContentType = worker.Writer.Status(), writer.header.Get("Content-Type")
+	task.ResponseCompletedAt = common.GetTimestamp()
 	logFields := map[string]any{"channel_id": worker.GetInt("channel_id")}
 	if quota, exists := worker.Get("async_relay_settled_quota"); exists {
 		logFields["quota"] = quota
@@ -244,7 +245,7 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 		}
 		if writer.err == nil {
 			result := model.DB.Model(&model.AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).
-				Updates(map[string]any{"response_file_path": responsePath, "response_status_code": task.ResponseStatusCode, "response_content_type": task.ResponseContentType, "updated_at": common.GetTimestamp()})
+				Updates(map[string]any{"response_file_path": responsePath, "response_status_code": task.ResponseStatusCode, "response_content_type": task.ResponseContentType, "response_completed_at": task.ResponseCompletedAt, "updated_at": common.GetTimestamp()})
 			if result.Error != nil || result.RowsAffected != 1 {
 				failAsyncRelayTask(task, "保存原接口响应失败")
 				return

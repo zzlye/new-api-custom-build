@@ -85,7 +85,8 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 	asyncTasks := make(map[string]*model.AsyncRelayTask)
 	if len(ids) > 0 {
 		var rows []*model.AsyncRelayTask
-		if err := model.DB.Where("task_id IN ?", ids).Find(&rows).Error; err == nil {
+		// 列表仅加载摘要，完整提示词与参考图清单由详情接口按需读取。
+		if err := model.DB.Select("task_id", "request_method", "request_path", "model_name", "request_format", "status", "result_file_path", "finished_at", "result_expired_at", "result_files", "response_completed_at").Where("task_id IN ?", ids).Find(&rows).Error; err == nil {
 			for _, row := range rows {
 				asyncTasks[row.TaskID] = row
 			}
@@ -100,7 +101,14 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 		}
 		result[i] = relay.TaskModel2Dto(task)
 		result[i].IsAsync = task.IsAsync
+		result[i].DurationFinishTime = task.FinishTime
 		if asyncTask := asyncTasks[task.TaskID]; asyncTask != nil {
+			result[i].RequestMethod, result[i].RequestPath, result[i].ModelName = asyncTask.RequestMethod, asyncTask.RequestPath, asyncTask.ModelName
+			result[i].MediaSaving = asyncTask.ResultFilePath != "" && !asyncTask.Status.IsTerminal()
+			// 普通生图的耗时以接口返回为准，后台文件补存不会虚增生成耗时。
+			if asyncTask.ResponseCompletedAt > 0 && asyncTask.RequestFormat != "task" && asyncTask.RequestFormat != "mj_proxy" {
+				result[i].DurationFinishTime = asyncTask.ResponseCompletedAt
+			}
 			result[i].MediaExpired = model.AsyncRelayTaskExpired(asyncTask, common.GetTimestamp())
 			if asyncTask.FinishedAt > 0 {
 				result[i].ExpiresAt = asyncTask.FinishedAt + common.AsyncMediaRetentionSeconds()

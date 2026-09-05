@@ -287,12 +287,19 @@ export interface MidjourneyLog {
 
 // 生成文件只通过带用户认证的地址读取。
 export interface TaskMedia {
+  name?: string
+  role?: string
+  error?: string
   url: string
   kind: 'image' | 'video'
   content_type: string
 }
 
 export interface TaskLog {
+  request_method?: string
+  request_path?: string
+  model_name?: string
+  media_saving?: boolean
   is_async?: boolean
   media?: TaskMedia[]
   media_expired?: boolean
@@ -307,6 +314,7 @@ export interface TaskLog {
   channel_id: number
   submit_time: number // seconds
   finish_time?: number // seconds
+  duration_finish_time?: number
   progress?: string
   progress_message_en?: string
   data?: string // JSON string
@@ -426,4 +434,29 @@ export interface UserInfo {
   aff_count?: number
   aff_quota?: number
   remark?: string
+}
+
+// 完整任务详情由独立接口按需加载，列表只携带轻量摘要。
+export interface TaskDetails {
+  task_id: string
+  model_name: string
+  request_method: string
+  request_path: string
+  request_format: string
+  status: string
+  error?: string
+  prompt: string
+  prompt_source?: string
+  input_available: boolean
+  input_error?: string
+  parameters: Record<string, string> | null
+  references: TaskMedia[]
+  media: TaskMedia[] | null
+  media_expired: boolean
+  expires_at?: number
+  submit_time: number
+  start_time: number
+  response_time: number
+  finish_time: number
+  response_status_code: number
 }
