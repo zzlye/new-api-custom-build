@@ -5325,6 +5325,27 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "View generated media": "View generated media",
+    "Generated media": "Generated media",
+    "Generated image {{number}}": "Generated image {{number}}",
+    "Generated video": "Generated video",
+    "Generated files have expired": "Generated files have expired",
+    "Loading generated media...": "Loading generated media...",
+    "Failed to load generated media": "Failed to load generated media",
+    "Generated files are automatically removed after the retention period. Task logs are kept.": "Generated files are automatically removed after the retention period. Task logs are kept.",
+    "Delete task log": "Delete task log",
+    "Task log deleted": "Task log deleted",
+    "Failed to delete task log": "Failed to delete task log",
+    "Wait until the task finishes before deleting its log": "Wait until the task finishes before deleting its log",
+    "This deletes the task log and its stored media. This action cannot be undone.": "This deletes the task log and its stored media. This action cannot be undone.",
+    "Generated media retention": "Generated media retention",
+    "Retention period (hours)": "Retention period (hours)",
+    "Save media retention settings": "Save media retention settings",
+    "Default: 2 hours after completion. Enter 1 to 168 whole hours. Changes apply to files that have not been removed. Only root users can change this setting or delete task logs.": "Default: 2 hours after completion. Enter 1 to 168 whole hours. Changes apply to files that have not been removed. Only root users can change this setting or delete task logs.",
+    "Enter a whole number from 1 to 168": "Enter a whole number from 1 to 168",
+    "internal": "internal",
+    "IMAGE": "IMAGE",
+    "VIDEO": "VIDEO"
   }
 }

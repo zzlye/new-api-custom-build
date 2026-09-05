@@ -284,6 +284,9 @@ export const MJ_SUBMIT_RESULT_MAPPINGS: Record<string, StatusMapping> = {
  * Task action type mappings
  */
 export const TASK_ACTION_MAPPINGS: Record<string, StatusMapping> = {
+  // 后台图片和视频沿用任务日志的操作类型展示。
+  IMAGE: { label: 'IMAGE', variant: 'blue' },
+  VIDEO: { label: 'VIDEO', variant: 'violet' },
   [TASK_ACTIONS.MUSIC]: { label: 'Generate Music', variant: 'neutral' },
   [TASK_ACTIONS.LYRICS]: { label: 'Generate Lyrics', variant: 'pink' },
   [TASK_ACTIONS.GENERATE]: { label: 'Image to Video', variant: 'blue' },
@@ -319,6 +322,7 @@ export const TASK_STATUS_MAPPINGS: Record<string, StatusMapping> = {
  * Task platform mappings
  */
 export const TASK_PLATFORM_MAPPINGS: Record<string, StatusMapping> = {
+  internal: { label: 'internal', variant: 'blue' },
   [TASK_PLATFORMS.SUNO]: { label: 'suno', variant: 'green' },
   [TASK_PLATFORMS.KLING]: { label: 'kling', variant: 'blue' },
   [TASK_PLATFORMS.RUNWAY]: { label: 'runway', variant: 'violet' },

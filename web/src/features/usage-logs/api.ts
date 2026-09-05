@@ -110,3 +110,11 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+// 删除由服务端根用户权限再次把关，失败时保留列表记录。
+export async function deleteTaskLog(id: number): Promise<void> {
+  const response = await api.delete(`/api/task/${id}`)
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'Failed to delete task log')
+  }
+}

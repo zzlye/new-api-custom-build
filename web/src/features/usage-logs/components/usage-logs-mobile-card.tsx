@@ -385,6 +385,7 @@ function TaskLogsCard<TData>({
       <div className='flex min-w-0 items-start justify-between gap-3'>
         <CompactCell cell={taskIdCell} className='flex-1' />
         <CompactCell cell={statusCell} className='shrink-0 text-right' />
+        <CompactCell cell={cells.get('actions')} className='shrink-0' />
       </div>
 
       <div className='grid grid-cols-2 gap-1.5'>

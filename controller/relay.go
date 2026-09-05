@@ -71,7 +71,7 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
-	// 图片和 Gemini 生图请求可以显式切换为后台任务，默认仍保持同步响应。
+	// 媒体生成默认入队，后台执行上下文会直接进入原有处理和计费流程。
 	if shouldQueue, asyncErr := ShouldQueueAsyncRelay(c, relayFormat); asyncErr != nil {
 		statusCode := http.StatusBadRequest
 		if common.IsRequestBodyTooLargeError(asyncErr) || errors.Is(asyncErr, common.ErrRequestBodyTooLarge) {
@@ -434,6 +434,20 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 }
 
 func RelayMidjourney(c *gin.Context) {
+	if strings.HasPrefix(c.Param("id"), "async_") && c.Request.Method == http.MethodGet {
+		c.Params = append(c.Params, gin.Param{Key: "async_task_id", Value: c.Param("id")})
+		GetAsyncRelayTask(c)
+		return
+	}
+	if shouldQueue, err := ShouldQueueAsyncRelay(c, types.RelayFormatMjProxy); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error()}})
+		return
+	} else if shouldQueue {
+		if err := EnqueueAsyncRelayRequest(c, types.RelayFormatMjProxy); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error()}})
+		}
+		return
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatMjProxy, nil, nil)
 
 	if err != nil {
@@ -501,6 +515,20 @@ func RelayNotFound(c *gin.Context) {
 }
 
 func RelayTaskFetch(c *gin.Context) {
+	taskID := c.Param("task_id")
+	if taskID == "" {
+		taskID = c.GetString("task_id")
+	}
+	if !strings.HasPrefix(taskID, "async_") && taskID != "" {
+		if child, exists, err := model.GetByTaskId(c.GetInt("id"), taskID); err == nil && exists && child.AsyncParentID != "" {
+			taskID = child.AsyncParentID
+		}
+	}
+	if strings.HasPrefix(taskID, "async_") {
+		c.Params = append(c.Params, gin.Param{Key: "async_task_id", Value: taskID})
+		GetAsyncRelayTask(c)
+		return
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
@@ -516,6 +544,19 @@ func RelayTaskFetch(c *gin.Context) {
 }
 
 func RelayTask(c *gin.Context) {
+	if c.Request.Method == http.MethodGet {
+		RelayTaskFetch(c)
+		return
+	}
+	if shouldQueue, err := ShouldQueueAsyncRelay(c, types.RelayFormatTask); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error()}})
+		return
+	} else if shouldQueue {
+		if err := EnqueueAsyncRelayRequest(c, types.RelayFormatTask); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": err.Error()}})
+		}
+		return
+	}
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
@@ -628,8 +669,15 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
-		if insertErr := task.Insert(); insertErr != nil {
+		var insertErr error
+		if parentID := c.GetString(model.AsyncRelayContextKey); parentID != "" {
+			insertErr = model.AttachAsyncRelayNativeTask(parentID, task)
+		} else {
+			insertErr = task.Insert()
+		}
+		if insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			c.Set("async_relay_persist_error", "上游已提交，保存任务关联失败，请核对任务记录")
 		}
 	}
 

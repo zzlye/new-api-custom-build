@@ -22,6 +22,11 @@ func Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
+// ValidJson 统一校验完整的 JSON 文档，业务代码无需直接调用底层实现。
+func ValidJson(data []byte) bool {
+	return json.Valid(data)
+}
+
 func GetJsonType(data json.RawMessage) string {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {

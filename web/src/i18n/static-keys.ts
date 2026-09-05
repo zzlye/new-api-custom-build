@@ -19,6 +19,28 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // 后台媒体任务、表单校验和动态状态使用的翻译键。
+  'View generated media',
+  'Generated media',
+  'Generated image {{number}}',
+  'Generated video',
+  'Generated files have expired',
+  'Loading generated media...',
+  'Failed to load generated media',
+  'Generated files are automatically removed after the retention period. Task logs are kept.',
+  'Delete task log',
+  'Task log deleted',
+  'Failed to delete task log',
+  'Wait until the task finishes before deleting its log',
+  'This deletes the task log and its stored media. This action cannot be undone.',
+  'Generated media retention',
+  'Retention period (hours)',
+  'Save media retention settings',
+  'Default: 2 hours after completion. Enter 1 to 168 whole hours. Changes apply to files that have not been removed. Only root users can change this setting or delete task logs.',
+  'Enter a whole number from 1 to 168',
+  'internal',
+  'IMAGE',
+  'VIDEO',
   // Header navigation
   'Home',
   'Console',

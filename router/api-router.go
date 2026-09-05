@@ -330,6 +330,9 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
+			// 预览与删除分开鉴权：普通用户看自己的结果，只有根用户可删除记录。
+			taskRoute.GET("/:task_id/media/:index", middleware.UserAuth(), controller.GetAsyncRelayMedia)
+			taskRoute.DELETE("/:id", middleware.RootAuth(), controller.DeleteTaskLog)
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")

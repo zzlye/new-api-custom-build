@@ -26,16 +26,20 @@ import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import type { TaskLog } from '../../types'
+import { DeleteTaskLogButton } from '../delete-task-log-button'
 import {
   AudioPreviewDialog,
   type AudioClip,
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
+import { TaskMediaResult } from '../task-media-result'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -92,6 +96,7 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
 
 export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
   const { t } = useTranslation()
+  const role = useAuthStore((state) => state.auth.user?.role)
   const columns: ColumnDef<TaskLog>[] = [
     {
       accessorKey: 'submit_time',
@@ -222,6 +227,14 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const status = log.status
         const [dialogOpen, setDialogOpen] = useState(false)
 
+        // 成功任务展示媒体及过期状态，失败日志始终保留原始错误详情。
+        if (
+          log.is_async &&
+          status === TASK_STATUS.SUCCESS &&
+          (log.media_expired || log.media?.length)
+        ) {
+          return <TaskMediaResult log={log} />
+        }
         const isSunoSuccess =
           log.platform === 'suno' && status === TASK_STATUS.SUCCESS
         if (isSunoSuccess) {
@@ -245,7 +258,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
           log.action === TASK_ACTIONS.REFERENCE_GENERATE ||
           log.action === TASK_ACTIONS.REMIX_GENERATE
         const isSuccess = status === TASK_STATUS.SUCCESS
-        const isUrl = failReason?.startsWith('http')
+        const isUrl = Boolean(log.result_url || failReason?.startsWith('http'))
 
         if (isSuccess && isVideoTask && isUrl) {
           const videoUrl = `/v1/videos/${log.task_id}/content`
@@ -290,5 +303,13 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
     }
   )
 
+  if (role === ROLE.SUPER_ADMIN) {
+    columns.push({
+      id: 'actions',
+      header: t('Actions'),
+      cell: ({ row }) => <DeleteTaskLogButton log={row.original} />,
+      size: 90,
+    })
+  }
   return columns
 }

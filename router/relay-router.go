@@ -4,7 +4,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
@@ -70,9 +69,10 @@ func SetRelayRouter(router *gin.Engine) {
 	// 异步图片和 Gemini 生图任务查询不经过模型分发，避免 GET 请求被当成缺少模型的请求。
 	asyncTaskRouter := router.Group("/v1")
 	asyncTaskRouter.Use(middleware.RouteTag("relay"))
-	asyncTaskRouter.Use(middleware.TokenAuth())
+	asyncTaskRouter.Use(middleware.TokenAuthReadOnly())
 	{
 		asyncTaskRouter.GET("/tasks/:task_id", controller.GetAsyncRelayTask)
+		asyncTaskRouter.GET("/tasks/:task_id/media/:index", controller.GetAsyncRelayMedia)
 	}
 
 	relayV1Router := router.Group("/v1")
@@ -215,7 +215,7 @@ func SetRelayRouter(router *gin.Engine) {
 }
 
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
-	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
+	relayMjRouter.GET("/image/:id", controller.MidjourneyImageProxy)
 	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
 	{
 		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)

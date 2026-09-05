@@ -352,6 +352,7 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
+  AsyncMediaRetentionHours: number
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean

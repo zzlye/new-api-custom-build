@@ -46,24 +46,27 @@ const (
 const TaskRefundLegacyCutoff int64 = 1771718400 // 2026-02-22 00:00:00 UTC
 
 type Task struct {
-	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
-	CreatedAt  int64                 `json:"created_at" gorm:"index"`
-	UpdatedAt  int64                 `json:"updated_at"`
-	TaskID     string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
-	Platform   constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
-	UserId     int                   `json:"user_id" gorm:"index"`
-	Group      string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
-	ChannelId  int                   `json:"channel_id" gorm:"index"`
-	Quota      int                   `json:"quota"`
-	Action     string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
-	Status     TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
-	FailReason string                `json:"fail_reason"`
-	SubmitTime int64                 `json:"submit_time" gorm:"index"`
-	StartTime  int64                 `json:"start_time" gorm:"index"`
-	FinishTime int64                 `json:"finish_time" gorm:"index"`
-	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
-	Properties Properties            `json:"properties" gorm:"type:json"`
-	Username   string                `json:"username,omitempty" gorm:"-"`
+	// 后台生成的上游子任务只参与轮询和计费，不在任务日志重复展示。
+	AsyncParentID string                `json:"-" gorm:"type:varchar(191);index"`
+	IsAsync       bool                  `json:"is_async" gorm:"index"`
+	ID            int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
+	CreatedAt     int64                 `json:"created_at" gorm:"index"`
+	UpdatedAt     int64                 `json:"updated_at"`
+	TaskID        string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
+	Platform      constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
+	UserId        int                   `json:"user_id" gorm:"index"`
+	Group         string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
+	ChannelId     int                   `json:"channel_id" gorm:"index"`
+	Quota         int                   `json:"quota"`
+	Action        string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
+	Status        TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
+	FailReason    string                `json:"fail_reason"`
+	SubmitTime    int64                 `json:"submit_time" gorm:"index"`
+	StartTime     int64                 `json:"start_time" gorm:"index"`
+	FinishTime    int64                 `json:"finish_time" gorm:"index"`
+	Progress      string                `json:"progress" gorm:"type:varchar(20);index"`
+	Properties    Properties            `json:"properties" gorm:"type:json"`
+	Username      string                `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
@@ -219,7 +222,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	var err error
 
 	// 初始化查询构建器
-	query := DB.Where("user_id = ?", userId)
+	query := DB.Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
@@ -255,7 +258,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	var err error
 
 	// 初始化查询构建器
-	query := DB
+	query := DB.Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -297,7 +300,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
-	err := DB.Where("progress != ?", "100%").
+	err := DB.Where("is_async = ? OR is_async IS NULL", false).Where("progress != ?", "100%").
 		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
@@ -313,7 +316,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	err = DB.Where("is_async = ? OR is_async IS NULL", false).Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -326,7 +329,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 // the scheduler skips creating a row entirely.
 func HasUnfinishedSyncTasks() bool {
 	var id int64
-	err := DB.Model(&Task{}).
+	err := DB.Model(&Task{}).Where("is_async = ? OR is_async IS NULL", false).
 		Where("progress != ?", "100%").
 		Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
@@ -451,7 +454,7 @@ type TaskQuotaUsage struct {
 // TaskCountAllTasks returns total tasks that match the given query params (admin usage)
 func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Task{})
+	query := DB.Model(&Task{}).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -486,7 +489,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 // TaskCountAllUserTask returns total tasks for given user
 func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Task{}).Where("user_id = ?", userId)
+	query := DB.Model(&Task{}).Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}

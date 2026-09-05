@@ -285,7 +285,19 @@ export interface MidjourneyLog {
 // Task Logs Types
 // ============================================================================
 
+// 生成文件只通过带用户认证的地址读取。
+export interface TaskMedia {
+  url: string
+  kind: 'image' | 'video'
+  content_type: string
+}
+
 export interface TaskLog {
+  is_async?: boolean
+  media?: TaskMedia[]
+  media_expired?: boolean
+  expires_at?: number
+  result_url?: string
   id: number
   user_id: number
   username?: string

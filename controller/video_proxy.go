@@ -37,6 +37,14 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	// 后台生成结果统一从受控保存目录读取，旧视频接口也执行相同的到期判断。
+	if strings.HasPrefix(taskID, "async_") {
+		task := loadAsyncRelayTask(c)
+		if task != nil {
+			serveAsyncRelayMedia(c, task, "0")
+		}
+		return
+	}
 	userID := c.GetInt("id")
 	task, exists, err := model.GetByTaskId(userID, taskID)
 	if err != nil {
@@ -49,6 +57,15 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	if task.AsyncParentID != "" && c.GetString(model.AsyncRelayContextKey) == "" {
+		parent, err := model.GetAsyncRelayTaskByUserAndTaskID(userID, task.AsyncParentID)
+		if err != nil || parent == nil {
+			videoProxyError(c, http.StatusNotFound, "invalid_request_error", "生成任务不存在")
+			return
+		}
+		serveAsyncRelayMedia(c, parent, "0")
+		return
+	}
 	if task.Status != model.TaskStatusSuccess {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("Task is not completed yet, current status: %s", task.Status))
@@ -178,6 +195,8 @@ func VideoProxy(c *gin.Context) {
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
+		// 后台下载应把上游提前断开视为失败，不将残缺视频标记为成功。
+		c.Set("video_proxy_stream_error", true)
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
 	}
 }

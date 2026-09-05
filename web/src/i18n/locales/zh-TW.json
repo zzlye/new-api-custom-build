@@ -5325,6 +5325,27 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "View generated media": "查看生成結果",
+    "Generated media": "生成結果",
+    "Generated image {{number}}": "生成圖片 {{number}}",
+    "Generated video": "生成影片",
+    "Generated files have expired": "生成檔案已過期",
+    "Loading generated media...": "正在載入生成結果…",
+    "Failed to load generated media": "載入生成結果失敗",
+    "Generated files are automatically removed after the retention period. Task logs are kept.": "生成檔案於保留期限結束後自動清理，任務日誌仍然保留。",
+    "Delete task log": "刪除任務日誌",
+    "Task log deleted": "任務日誌已刪除",
+    "Failed to delete task log": "刪除任務日誌失敗",
+    "Wait until the task finishes before deleting its log": "任務結束後即可刪除日誌",
+    "This deletes the task log and its stored media. This action cannot be undone.": "將刪除此任務日誌和已儲存的生成檔案，此操作不可復原。",
+    "Generated media retention": "生成檔案保留",
+    "Retention period (hours)": "保留時間（小時）",
+    "Save media retention settings": "儲存生成檔案設定",
+    "Default: 2 hours after completion. Enter 1 to 168 whole hours. Changes apply to files that have not been removed. Only root users can change this setting or delete task logs.": "預設從生成完成起保留 2 小時，可設定為 1 至 168 的整數小時。修改對尚未清理的檔案生效。僅根使用者可修改此設定或刪除任務日誌。",
+    "Enter a whole number from 1 to 168": "請輸入 1 至 168 的整數",
+    "internal": "伺服器背景任務",
+    "IMAGE": "圖片生成",
+    "VIDEO": "影片生成"
   }
 }

@@ -1,28 +1,32 @@
 package model
 
+import "strings"
+
 type Midjourney struct {
-	Id          int    `json:"id"`
-	Code        int    `json:"code"`
-	UserId      int    `json:"user_id" gorm:"index"`
-	Action      string `json:"action" gorm:"type:varchar(40);index"`
-	MjId        string `json:"mj_id" gorm:"index"`
-	Prompt      string `json:"prompt"`
-	PromptEn    string `json:"prompt_en"`
-	Description string `json:"description"`
-	State       string `json:"state"`
-	SubmitTime  int64  `json:"submit_time" gorm:"index"`
-	StartTime   int64  `json:"start_time" gorm:"index"`
-	FinishTime  int64  `json:"finish_time" gorm:"index"`
-	ImageUrl    string `json:"image_url"`
-	VideoUrl    string `json:"video_url"`
-	VideoUrls   string `json:"video_urls"`
-	Status      string `json:"status" gorm:"type:varchar(20);index"`
-	Progress    string `json:"progress" gorm:"type:varchar(30);index"`
-	FailReason  string `json:"fail_reason"`
-	ChannelId   int    `json:"channel_id"`
-	Quota       int    `json:"quota"`
-	Buttons     string `json:"buttons"`
-	Properties  string `json:"properties"`
+	// 后台生成统一展示在任务日志，绘图子记录仅用于上游轮询。
+	AsyncParentID string `json:"-" gorm:"type:varchar(191);index"`
+	Id            int    `json:"id"`
+	Code          int    `json:"code"`
+	UserId        int    `json:"user_id" gorm:"index"`
+	Action        string `json:"action" gorm:"type:varchar(40);index"`
+	MjId          string `json:"mj_id" gorm:"index"`
+	Prompt        string `json:"prompt"`
+	PromptEn      string `json:"prompt_en"`
+	Description   string `json:"description"`
+	State         string `json:"state"`
+	SubmitTime    int64  `json:"submit_time" gorm:"index"`
+	StartTime     int64  `json:"start_time" gorm:"index"`
+	FinishTime    int64  `json:"finish_time" gorm:"index"`
+	ImageUrl      string `json:"image_url"`
+	VideoUrl      string `json:"video_url"`
+	VideoUrls     string `json:"video_urls"`
+	Status        string `json:"status" gorm:"type:varchar(20);index"`
+	Progress      string `json:"progress" gorm:"type:varchar(30);index"`
+	FailReason    string `json:"fail_reason"`
+	ChannelId     int    `json:"channel_id"`
+	Quota         int    `json:"quota"`
+	Buttons       string `json:"buttons"`
+	Properties    string `json:"properties"`
 }
 
 // TaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
@@ -38,7 +42,7 @@ func GetAllUserTask(userId int, startIdx int, num int, queryParams TaskQueryPara
 	var err error
 
 	// 初始化查询构建器
-	query := DB.Where("user_id = ?", userId)
+	query := DB.Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 
 	if queryParams.MjID != "" {
 		query = query.Where("mj_id = ?", queryParams.MjID)
@@ -65,7 +69,7 @@ func GetAllTasks(startIdx int, num int, queryParams TaskQueryParams) []*Midjourn
 	var err error
 
 	// 初始化查询构建器
-	query := DB
+	query := DB.Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -125,9 +129,19 @@ func GetByOnlyMJId(mjId string) *Midjourney {
 }
 
 func GetByMJId(userId int, mjId string) *Midjourney {
+	query := DB.Where("user_id = ?", userId)
+	if strings.HasPrefix(mjId, "async_") {
+		parent, err := GetAsyncRelayTaskByUserAndTaskID(userId, mjId)
+		if err != nil || parent == nil || parent.RequestFormat != "mj_proxy" || parent.LinkedTaskID == "" {
+			return nil
+		}
+		// 复用同一上游编号的任务仍按主任务隔离，避免读取已过期的其他记录。
+		query = query.Where("async_parent_id = ?", parent.TaskID)
+		mjId = parent.LinkedTaskID
+	}
 	var mj *Midjourney
 	var err error
-	err = DB.Where("user_id = ? and mj_id = ?", userId, mjId).First(&mj).Error
+	err = query.Where("mj_id = ?", mjId).First(&mj).Error
 	if err != nil {
 		return nil
 	}
@@ -198,7 +212,7 @@ func MjBulkUpdateByTaskIds(taskIDs []int, params map[string]any) error {
 // CountAllTasks returns total midjourney tasks for admin query
 func CountAllTasks(queryParams TaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Midjourney{})
+	query := DB.Model(&Midjourney{}).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -218,7 +232,7 @@ func CountAllTasks(queryParams TaskQueryParams) int64 {
 // CountAllUserTask returns total midjourney tasks for user
 func CountAllUserTask(userId int, queryParams TaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Midjourney{}).Where("user_id = ?", userId)
+	query := DB.Model(&Midjourney{}).Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
 	if queryParams.MjID != "" {
 		query = query.Where("mj_id = ?", queryParams.MjID)
 	}

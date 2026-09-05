@@ -75,6 +75,22 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 			}
 		}
 	}
+	// 一次加载本页后台任务，避免每行单独访问数据库。
+	ids := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		if task.IsAsync {
+			ids = append(ids, task.TaskID)
+		}
+	}
+	asyncTasks := make(map[string]*model.AsyncRelayTask)
+	if len(ids) > 0 {
+		var rows []*model.AsyncRelayTask
+		if err := model.DB.Where("task_id IN ?", ids).Find(&rows).Error; err == nil {
+			for _, row := range rows {
+				asyncTasks[row.TaskID] = row
+			}
+		}
+	}
 	result := make([]*dto.TaskDto, len(tasks))
 	for i, task := range tasks {
 		if fillUser {
@@ -83,6 +99,16 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 			}
 		}
 		result[i] = relay.TaskModel2Dto(task)
+		result[i].IsAsync = task.IsAsync
+		if asyncTask := asyncTasks[task.TaskID]; asyncTask != nil {
+			result[i].MediaExpired = model.AsyncRelayTaskExpired(asyncTask, common.GetTimestamp())
+			if asyncTask.FinishedAt > 0 {
+				result[i].ExpiresAt = asyncTask.FinishedAt + common.AsyncMediaRetentionSeconds()
+			}
+			if asyncTask.Status == model.AsyncRelayTaskStatusSucceeded {
+				result[i].Media = asyncRelayMediaLinks(asyncTask, "/api/task/")
+			}
+		}
 	}
 	return result
 }

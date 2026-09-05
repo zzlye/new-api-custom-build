@@ -75,6 +75,10 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 			return err
 		}
 
+		// 为后台媒体任务日志记录实际结算额度，不额外发起扣费。
+		if ctx != nil {
+			ctx.Set("async_relay_settled_quota", actualQuota)
+		}
 		// 发送额度通知（订阅计费使用订阅剩余额度）
 		if actualQuota != 0 {
 			if relayInfo.BillingSource == BillingSourceSubscription {
@@ -89,7 +93,14 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 	// 回退：无 BillingSession 时使用旧路径
 	quotaDelta := actualQuota - relayInfo.FinalPreConsumedQuota
 	if quotaDelta != 0 {
-		return PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true)
+		err := PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true)
+		if err == nil && ctx != nil {
+			ctx.Set("async_relay_settled_quota", actualQuota)
+		}
+		return err
+	}
+	if ctx != nil {
+		ctx.Set("async_relay_settled_quota", actualQuota)
 	}
 	return nil
 }

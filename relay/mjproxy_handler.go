@@ -276,7 +276,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		ChannelId:   c.GetInt("channel_id"),
 		Quota:       priceData.Quota,
 	}
-	err = midjourneyTask.Insert()
+	err = model.InsertMidjourneyForAsyncRelay(midjourneyTask, c.GetString(model.AsyncRelayContextKey))
 	if err != nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "insert_midjourney_task_failed")
 	}
@@ -465,6 +465,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 
 		originTask := model.GetByMJId(relayInfo.UserId, mjId)
+		if originTask != nil && strings.HasPrefix(midjRequest.TaskId, "async_") {
+			midjRequest.TaskId = originTask.MjId
+		}
 		if originTask == nil {
 			return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
 		} else { //原任务的Status=SUCCESS，则可以做放大UPSCALE、变换VARIATION等动作，此时必须使用原来的请求地址才能正确处理
@@ -632,7 +635,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		midjourneyTask.Progress = "100%"
 		midjourneyTask.Status = "SUCCESS"
 	}
-	err = midjourneyTask.Insert()
+	err = model.InsertMidjourneyForAsyncRelay(midjourneyTask, c.GetString(model.AsyncRelayContextKey))
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,

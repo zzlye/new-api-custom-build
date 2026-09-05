@@ -16,6 +16,7 @@ const (
 
 	AsyncRelayTaskStatusPending    AsyncRelayTaskStatus = "pending"
 	AsyncRelayTaskStatusProcessing AsyncRelayTaskStatus = "processing"
+	AsyncRelayTaskStatusWaiting    AsyncRelayTaskStatus = "waiting"
 	AsyncRelayTaskStatusSucceeded  AsyncRelayTaskStatus = "succeeded"
 	AsyncRelayTaskStatusFailed     AsyncRelayTaskStatus = "failed"
 	AsyncRelayTaskStatusCancelled  AsyncRelayTaskStatus = "cancelled"
@@ -30,11 +31,22 @@ const (
 // AsyncRelayTask 保存需要后台处理的图片、视频以及 Gemini 生图请求。
 // 文件字段只保存服务器本地路径或对象存储地址，不把大文件直接写入数据库。
 type AsyncRelayTask struct {
-	ID        int64  `json:"id" gorm:"primaryKey"`
-	TaskID    string `json:"task_id" gorm:"type:varchar(191);uniqueIndex"`
-	UserID    int    `json:"user_id" gorm:"index"`
-	TokenID   int    `json:"token_id" gorm:"index"`
-	ModelName string `json:"model,omitempty" gorm:"type:varchar(128);index"`
+	// 文件下载重试独立于上游提交，重试结果保存时不再次扣费或生成。
+	MediaAttempts int    `json:"-"`
+	NextAttemptAt int64  `json:"-" gorm:"bigint;index"`
+	ID            int64  `json:"id" gorm:"primaryKey"`
+	TaskID        string `json:"task_id" gorm:"type:varchar(191);uniqueIndex"`
+	UserID        int    `json:"user_id" gorm:"index"`
+	TokenID       int    `json:"token_id" gorm:"index"`
+	ModelName     string `json:"model,omitempty" gorm:"type:varchar(128);index"`
+
+	// 任务固定在持有请求文件的节点执行；关联编号用于复用上游原生任务的查询与计费。
+	NodeID            string `json:"-" gorm:"type:varchar(191);index"`
+	LinkedTaskID      string `json:"-" gorm:"type:varchar(191);index"`
+	LogID             int64  `json:"-" gorm:"index"`
+	RequestMetadata   string `json:"-" gorm:"type:text"`
+	DispatchStartedAt int64  `json:"-" gorm:"bigint"`
+	ResultExpiredAt   int64  `json:"result_expired_at,omitempty" gorm:"bigint;index"`
 
 	RequestMethod      string `json:"request_method" gorm:"type:varchar(16)"`
 	RequestPath        string `json:"request_path" gorm:"type:varchar(255);index"`
@@ -198,18 +210,46 @@ func RecoverStaleAsyncRelayTasks(timeoutSeconds ...int64) (int64, error) {
 	if len(timeoutSeconds) > 0 && timeoutSeconds[0] > 0 {
 		timeout = timeoutSeconds[0]
 	}
-	now := common.GetTimestamp()
-	cutoff := now - timeout
-	result := DB.Model(&AsyncRelayTask{}).
-		Where("status = ? AND updated_at < ?", AsyncRelayTaskStatusProcessing, cutoff).
-		Updates(map[string]any{
-			"status":     AsyncRelayTaskStatusPending,
-			"worker_id":  "",
-			"started_at": 0,
-			"updated_at": now,
-			"error":      "",
+	cutoff := common.GetTimestamp() - timeout
+	var tasks []*AsyncRelayTask
+	if err := DB.Where("status = ? AND updated_at < ?", AsyncRelayTaskStatusProcessing, cutoff).Limit(100).Find(&tasks).Error; err != nil {
+		return 0, err
+	}
+	var recovered int64
+	for _, task := range tasks {
+		previousWorker := task.WorkerID
+		task.Status, task.WorkerID = AsyncRelayTaskStatusPending, ""
+		if task.LinkedTaskID != "" || task.ResultFilePath != "" {
+			task.Status = AsyncRelayTaskStatusWaiting
+		} else if task.DispatchStartedAt > 0 {
+			// 已提交但结果未知时不自动重发，避免重复生成和重复扣费。
+			task.Status = AsyncRelayTaskStatusFailed
+			task.Error = "执行进程中断，上游结果待核对，任务未重复提交"
+			task.FinishedAt = common.GetTimestamp()
+		} else {
+			task.StartedAt = 0
+		}
+		task.UpdatedAt = common.GetTimestamp()
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			// 心跳时间也参与比较，查询后刚续租的任务不会被误回收。
+			result := tx.Model(&AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ? AND updated_at < ?", task.ID, AsyncRelayTaskStatusProcessing, previousWorker, cutoff).Select("*").Updates(task)
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return nil
+			}
+			if err := task.SyncLog(tx); err != nil {
+				return err
+			}
+			recovered++
+			return nil
 		})
-	return result.RowsAffected, result.Error
+		if err != nil {
+			return recovered, err
+		}
+	}
+	return recovered, nil
 }
 
 // ClaimAsyncRelayTask 将待处理任务原子地领取为处理中。
@@ -276,13 +316,24 @@ func (task *AsyncRelayTask) UpdateWithStatus(fromStatus AsyncRelayTaskStatus) (b
 	if task.Status.IsTerminal() && task.FinishedAt == 0 {
 		task.FinishedAt = task.UpdatedAt
 	}
-	result := DB.Model(&AsyncRelayTask{}).
-		Where("id = ? AND status = ?", task.ID, fromStatus).
-		Select("*").Updates(task)
-	if result.Error != nil {
-		return false, result.Error
-	}
-	return result.RowsAffected > 0, nil
+	won := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		query := tx.Model(&AsyncRelayTask{}).Where("id = ? AND status = ?", task.ID, fromStatus)
+		// 执行租约也参与比较，过期执行者的结果不会覆盖后来领取的任务。
+		if fromStatus == AsyncRelayTaskStatusProcessing && task.WorkerID != "" {
+			query = query.Where("worker_id = ?", task.WorkerID)
+		}
+		result := query.Select("*").Updates(task)
+		if result.Error != nil {
+			return result.Error
+		}
+		won = result.RowsAffected > 0
+		if !won {
+			return nil
+		}
+		return task.SyncLog(tx)
+	})
+	return won && err == nil, err
 }
 
 // Update 保存任务的最新请求处理结果。

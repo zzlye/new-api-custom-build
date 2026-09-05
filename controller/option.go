@@ -131,6 +131,11 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	// 保存时长属于根用户设置，处理器额外校验避免路由调整时放宽权限。
+	if option.Key == common.AsyncMediaRetentionOption && c.GetInt("role") != common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改生成文件保存时长"})
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))
