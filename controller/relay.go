@@ -519,11 +519,7 @@ func RelayTaskFetch(c *gin.Context) {
 	if taskID == "" {
 		taskID = c.GetString("task_id")
 	}
-	if !strings.HasPrefix(taskID, "async_") && taskID != "" {
-		if child, exists, err := model.GetByTaskId(c.GetInt("id"), taskID); err == nil && exists && child.AsyncParentID != "" {
-			taskID = child.AsyncParentID
-		}
-	}
+	// 原生视频编号继续使用原来的查询结构，仅显式任务编号进入统一任务接口。
 	if strings.HasPrefix(taskID, "async_") {
 		c.Params = append(c.Params, gin.Param{Key: "async_task_id", Value: taskID})
 		GetAsyncRelayTask(c)

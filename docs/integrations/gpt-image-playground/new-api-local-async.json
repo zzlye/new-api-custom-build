@@ -18,7 +18,10 @@
           "n": "$params.n",
           "background": "$params.background"
         },
-        "taskIdPath": "task_id"
+        "taskIdPath": "task_id",
+        "query": {
+          "async": "true"
+        }
       },
       "editSubmit": {
         "path": "images/edits",
@@ -46,19 +49,31 @@
             "source": "mask"
           }
         ],
-        "taskIdPath": "task_id"
+        "taskIdPath": "task_id",
+        "query": {
+          "async": "true"
+        }
       },
       "poll": {
         "path": "tasks/{task_id}",
         "method": "GET",
         "intervalSeconds": 3,
         "statusPath": "status",
-        "successValues": ["succeeded"],
-        "failureValues": ["failed", "cancelled"],
+        "successValues": [
+          "succeeded"
+        ],
+        "failureValues": [
+          "failed",
+          "cancelled"
+        ],
         "errorPath": "error.message",
         "result": {
-          "imageUrlPaths": ["result.data.*.url"],
-          "b64JsonPaths": ["result.data.*.b64_json"]
+          "imageUrlPaths": [
+            "result.data.*.url"
+          ],
+          "b64JsonPaths": [
+            "result.data.*.b64_json"
+          ]
         }
       }
     }

@@ -1,12 +1,11 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,6 +20,7 @@ const asyncRelayMaxBatch = 4
 
 // asyncRelayMetadata 仅保存重建请求所需的非密钥信息，不把令牌或会话写入任务文件。
 type asyncRelayMetadata struct {
+	Host            string     `json:"host,omitempty"`
 	Params          gin.Params `json:"params"`
 	ClientIP        string     `json:"client_ip"`
 	SpecificChannel string     `json:"specific_channel,omitempty"`
@@ -88,9 +88,20 @@ func isMediaGenerationRequest(c *gin.Context, body []byte) bool {
 	return false
 }
 
-// EnqueueAsyncRelayRequest 持久化请求后立刻返回编号，不等待上游连接或生成完成。
+// EnqueueAsyncRelayRequest 始终持久化后台任务，默认由服务器转回原响应，仅显式任务模式返回编号。
 func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) error {
-	contentType := c.GetHeader("Content-Type")
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return err
+	}
+	if storage.Size() > common.AsyncMediaMaxFileBytes {
+		return fmt.Errorf("生成请求超过保存上限")
+	}
+	input, err := storage.NewReader()
+	if err != nil {
+		return err
+	}
+	defer input.Close()
 	requestPath, file, err := common.CreateAsyncMediaFile()
 	if err != nil {
 		return err
@@ -102,63 +113,23 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 			_ = common.RemoveAsyncMediaFile(requestPath)
 		}
 	}()
-	var body []byte
-	if strings.Contains(strings.ToLower(contentType), "multipart/form-data") {
-		// 重写表单时保留全部附件及自定义字段，只移除异步开关并关闭上游流式输出。
-		form, err := common.ParseMultipartFormReusable(c)
-		if err != nil {
-			return err
-		}
-		defer form.RemoveAll()
-		writer := multipart.NewWriter(file)
-		for key, values := range form.Value {
-			if key == "async" || key == "background" || key == "stream" {
-				continue
-			}
-			for _, value := range values {
-				if err := writer.WriteField(key, value); err != nil {
-					return err
-				}
-			}
-		}
-		if err := writer.WriteField("stream", "false"); err != nil {
-			return err
-		}
-		for key, files := range form.File {
-			for _, header := range files {
-				input, err := header.Open()
-				if err != nil {
-					return err
-				}
-				output, createErr := writer.CreatePart(header.Header)
-				if createErr != nil {
-					_ = input.Close()
-					return createErr
-				}
-				_, copyErr := io.Copy(output, input)
-				_ = input.Close()
-				if copyErr != nil {
-					return fmt.Errorf("保存附件 %s 失败: %w", key, copyErr)
-				}
-			}
-		}
-		if err := writer.Close(); err != nil {
-			return err
-		}
-		contentType = writer.FormDataContentType()
-	} else {
-		body, err = asyncRelayRequestBody(c)
-		if err != nil {
-			return err
-		}
-		body, err = normalizeAsyncRelayJSON(body)
-		if err != nil {
-			return err
-		}
-		if _, err := file.Write(body); err != nil {
-			return err
-		}
+	// 完整保留原始请求及表单附件，透明背景、流式开关、大整数和原生任务参数都由原接口处理。
+	size, err := io.Copy(file, input)
+	_ = input.Close()
+	if err != nil {
+		return err
+	}
+	modelName := c.GetString("original_model")
+	contentType := c.GetHeader("Content-Type")
+	if contentType == "" {
 		contentType = "application/json"
+	}
+	if modelName == "" && !strings.Contains(strings.ToLower(contentType), "multipart/form-data") {
+		var value struct {
+			Model string `json:"model"`
+		}
+		_ = common.DecodeJson(io.NewSectionReader(file, 0, size), &value)
+		modelName = value.Model
 	}
 	if err := file.Sync(); err != nil {
 		return err
@@ -170,23 +141,26 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 	if err != nil {
 		return err
 	}
-	metadata, err := common.Marshal(asyncRelayMetadata{Params: c.Params, ClientIP: c.ClientIP(), SpecificChannel: c.GetString("specific_channel_id"), Action: c.GetString("action"), RelayMode: c.GetInt("relay_mode")})
+	metadata, err := common.Marshal(asyncRelayMetadata{Host: c.Request.Host, Params: c.Params, ClientIP: c.ClientIP(), SpecificChannel: c.GetString("specific_channel_id"), Action: c.GetString("action"), RelayMode: c.GetInt("relay_mode")})
 	if err != nil {
 		return err
 	}
-	modelName := c.GetString("original_model")
-	if modelName == "" {
-		var value struct {
-			Model string `json:"model"`
-		}
-		_ = common.Unmarshal(body, &value)
-		modelName = value.Model
-	}
 	task := &model.AsyncRelayTask{UserID: c.GetInt("id"), TokenID: c.GetInt("token_id"), ModelName: modelName,
 		NodeID: common.NodeName, RequestMethod: http.MethodPost,
-		RequestPath:  strings.ReplaceAll(c.Request.URL.Path, ":streamGenerateContent", ":generateContent"),
-		RequestQuery: removeAsyncQuery(c.Request.URL.RawQuery), RequestContentType: contentType,
+		RequestPath: c.Request.URL.Path, RequestQuery: removeAsyncQuery(c.Request.URL.RawQuery), RequestContentType: contentType,
 		RequestFormat: string(format), RequestFilePath: requestPath, RequestFiles: headers, RequestMetadata: string(metadata),
+	}
+	task.TaskID, err = model.GenerateAsyncRelayTaskID()
+	if err != nil {
+		return err
+	}
+	taskMode := wantsAsyncRelayTask(c)
+	var delivery *asyncRelayDelivery
+	if !taskMode {
+		// 在任务可被领取前登记响应接收方，避免快速任务先执行完而错过响应。
+		delivery = &asyncRelayDelivery{changed: make(chan struct{}, 1)}
+		asyncRelayDeliveries.Store(task.TaskID, delivery)
+		defer asyncRelayDeliveries.Delete(task.TaskID)
 	}
 	action := "IMAGE"
 	if format == relaytypes.RelayFormatTask || strings.HasSuffix(task.RequestPath, "/video") {
@@ -196,11 +170,30 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 		return err
 	}
 	saved = true
+	c.Header("X-New-Api-Task-Id", task.TaskID)
+	WakeAsyncRelayWorkers()
+	if !taskMode {
+		return delivery.serve(c, task.TaskID)
+	}
 	c.Header("Location", "/v1/tasks/"+task.TaskID)
 	c.Header("Retry-After", "3")
+	c.Header("Preference-Applied", "respond-async")
 	c.JSON(http.StatusAccepted, gin.H{"id": task.TaskID, "task_id": task.TaskID, "object": asyncRelayObjectForFormat(format), "status": task.Status, "created": task.CreatedAt, "model": task.ModelName, "poll_url": "/v1/tasks/" + task.TaskID, "request_path": task.RequestPath})
-	WakeAsyncRelayWorkers()
 	return nil
+}
+
+// wantsAsyncRelayTask 只由明确的接入选择改变返回方式，普通客户端不需要识别任务协议。
+func wantsAsyncRelayTask(c *gin.Context) bool {
+	if value, exists := c.GetQuery("async"); exists {
+		enabled, _ := strconv.ParseBool(value)
+		return enabled
+	}
+	for _, value := range strings.Split(c.GetHeader("Prefer"), ",") {
+		if strings.EqualFold(strings.TrimSpace(strings.SplitN(value, ";", 2)[0]), "respond-async") {
+			return true
+		}
+	}
+	return false
 }
 
 func asyncRelayRequestBody(c *gin.Context) ([]byte, error) {
@@ -211,27 +204,10 @@ func asyncRelayRequestBody(c *gin.Context) ([]byte, error) {
 	return storage.Bytes()
 }
 
-// normalizeAsyncRelayJSON 保留原始数字精度，避免大整数在入队时被浮点转换改写。
-func normalizeAsyncRelayJSON(body []byte) ([]byte, error) {
-	var payload map[string]json.RawMessage
-	if err := common.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("请求应为有效的对象: %w", err)
-	}
-	if payload == nil {
-		return nil, fmt.Errorf("请求应为有效的对象")
-	}
-	delete(payload, "async")
-	delete(payload, "background")
-	if _, exists := payload["stream"]; exists {
-		payload["stream"] = json.RawMessage("false")
-	}
-	return common.Marshal(payload)
-}
-
 func asyncRequestHeaders(headers http.Header) (string, error) {
 	values := make(map[string][]string)
 	// 只持久化影响协议的白名单头，避免自定义鉴权信息进入数据库。
-	for _, key := range []string{"OpenAI-Beta", "OpenAI-Organization", "OpenAI-Project", "Accept-Language"} {
+	for _, key := range []string{"Accept", "X-Forwarded-Proto", "X-Forwarded-Host", "OpenAI-Beta", "OpenAI-Organization", "OpenAI-Project", "Accept-Language"} {
 		if items := headers.Values(key); len(items) > 0 {
 			values[key] = items
 		}
@@ -245,7 +221,7 @@ func removeAsyncQuery(raw string) string {
 	if err != nil {
 		return ""
 	}
-	for _, key := range []string{"async", "background", "alt", "key", "api_key", "access_token"} {
+	for _, key := range []string{"async", "key", "api_key", "access_token"} {
 		query.Del(key)
 	}
 	return query.Encode()

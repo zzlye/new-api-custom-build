@@ -93,12 +93,13 @@ func asyncControllerRequest(handler gin.HandlerFunc, method, path string, userID
 	return recording
 }
 
-func TestAsyncRelayEnqueuePersistsBeforeReturningAndNormalizesMultipart(t *testing.T) {
+func TestAsyncRelayEnqueuePersistsBeforeReturningAndPreservesMultipart(t *testing.T) {
 	prepareAsyncMediaController(t)
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	require.NoError(t, form.WriteField("model", "gpt-image-1"))
 	require.NoError(t, form.WriteField("stream", "true"))
+	require.NoError(t, form.WriteField("background", "transparent"))
 	require.NoError(t, form.WriteField("n", "2"))
 	part, err := form.CreateFormFile("image[]", "输入图片.png")
 	require.NoError(t, err)
@@ -107,7 +108,7 @@ func TestAsyncRelayEnqueuePersistsBeforeReturningAndNormalizesMultipart(t *testi
 	require.NoError(t, form.Close())
 	recording := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recording)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits?async=false&key=secret", &body)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits?async=true&key=secret", &body)
 	c.Request.Header.Set("Content-Type", form.FormDataContentType())
 	c.Request.Header.Set("X-Secret-Key", "do-not-store")
 	c.Set("id", 31)
@@ -135,8 +136,9 @@ func TestAsyncRelayEnqueuePersistsBeforeReturningAndNormalizesMultipart(t *testi
 	saved.Header.Set("Content-Type", task.RequestContentType)
 	require.NoError(t, saved.ParseMultipartForm(1024))
 	defer saved.MultipartForm.RemoveAll()
-	assert.Equal(t, "false", saved.FormValue("stream"))
+	assert.Equal(t, "true", saved.FormValue("stream"))
 	assert.Equal(t, "2", saved.FormValue("n"))
+	assert.Equal(t, "transparent", saved.FormValue("background"))
 	attachment, header, err := saved.FormFile("image[]")
 	require.NoError(t, err)
 	defer attachment.Close()
@@ -234,7 +236,7 @@ func TestAsyncRelayWorkerSurvivesClientCancellationAndChargesOnce(t *testing.T) 
 	require.NoError(t, model.DB.Create(&model.Ability{Group: "default", Model: "dall-e-3", ChannelId: channel.Id, Enabled: true}).Error)
 	recording := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recording)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"dall-e-3","prompt":"一只猫","n":1,"size":"1024x1024"}`))
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations?async=true", strings.NewReader(`{"model":"dall-e-3","prompt":"一只猫","n":1,"size":"1024x1024"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	clientCtx, cancel := context.WithCancel(c.Request.Context())
 	c.Request = c.Request.WithContext(clientCtx)

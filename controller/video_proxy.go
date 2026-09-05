@@ -63,8 +63,11 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, http.StatusNotFound, "invalid_request_error", "生成任务不存在")
 			return
 		}
-		serveAsyncRelayMedia(c, parent, "0")
-		return
+		// 已保存或已到期时使用统一文件规则；保存尚未完成时仍保留原生内容读取能力。
+		if model.AsyncRelayTaskExpired(parent, common.GetTimestamp()) || parent.Status == model.AsyncRelayTaskStatusSucceeded {
+			serveAsyncRelayMedia(c, parent, "0")
+			return
+		}
 	}
 	if task.Status != model.TaskStatusSuccess {
 		videoProxyError(c, http.StatusBadRequest, "invalid_request_error",

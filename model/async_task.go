@@ -57,6 +57,8 @@ type AsyncRelayTask struct {
 	RequestFilePath    string `json:"request_file_path,omitempty" gorm:"type:text"`
 	RequestFiles       string `json:"request_files,omitempty" gorm:"type:text"`
 
+	// ResponseFilePath 单独保存原接口响应，原生视频继续处理时也能保留提交回执。
+	ResponseFilePath    string `json:"-" gorm:"type:text"`
 	ResponseStatusCode  int    `json:"response_status_code"`
 	ResponseContentType string `json:"response_content_type,omitempty" gorm:"type:varchar(128)"`
 	ResponseBody        string `json:"response_body,omitempty" gorm:"type:text"`
@@ -219,7 +221,7 @@ func RecoverStaleAsyncRelayTasks(timeoutSeconds ...int64) (int64, error) {
 	for _, task := range tasks {
 		previousWorker := task.WorkerID
 		task.Status, task.WorkerID = AsyncRelayTaskStatusPending, ""
-		if task.LinkedTaskID != "" || task.ResultFilePath != "" {
+		if task.LinkedTaskID != "" || task.ResultFilePath != "" || task.ResponseFilePath != "" {
 			task.Status = AsyncRelayTaskStatusWaiting
 		} else if task.DispatchStartedAt > 0 {
 			// 已提交但结果未知时不自动重发，避免重复生成和重复扣费。

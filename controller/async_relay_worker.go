@@ -101,20 +101,27 @@ func ProcessAsyncRelayTasks(ctx context.Context, limit int) (int, error) {
 
 // asyncRelayFileWriter 将上游响应直接落盘，并在超过单文件上限时停止写入。
 type asyncRelayFileWriter struct {
-	file   *os.File
-	header http.Header
-	status int
-	size   int64
-	err    error
+	mu       sync.Mutex
+	delivery *asyncRelayDelivery
+	file     *os.File
+	header   http.Header
+	status   int
+	size     int64
+	err      error
 }
 
 func (writer *asyncRelayFileWriter) Header() http.Header { return writer.header }
 func (writer *asyncRelayFileWriter) WriteHeader(status int) {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	if writer.status == 0 {
 		writer.status = status
+		writer.delivery.publish(writer.file.Name(), writer.header, writer.status, writer.size)
 	}
 }
 func (writer *asyncRelayFileWriter) Write(data []byte) (int, error) {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	if writer.status == 0 {
 		writer.status = http.StatusOK
 	}
@@ -128,14 +135,27 @@ func (writer *asyncRelayFileWriter) Write(data []byte) (int, error) {
 	n, err := writer.file.Write(data)
 	writer.size += int64(n)
 	writer.err = err
+	// 仅通知落盘进度；慢客户端不会阻塞后台请求继续接收和保存结果。
+	writer.delivery.publish(writer.file.Name(), writer.header, writer.status, writer.size)
 	return n, err
 }
-func (writer *asyncRelayFileWriter) Flush() {}
+func (writer *asyncRelayFileWriter) Flush() {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if writer.status == 0 {
+		writer.status = http.StatusOK
+	}
+	writer.delivery.publish(writer.file.Name(), writer.header, writer.status, writer.size)
+}
 
 func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()
-	// 心跳续租只更新当前执行者的任务，慢生成不会被另一个执行者重复领取。
+	var delivery *asyncRelayDelivery
+	if value, exists := asyncRelayDeliveries.Load(task.TaskID); exists {
+		delivery = value.(*asyncRelayDelivery)
+	}
+	// 心跳续租与客户端连接无关，关闭页面不会取消已提交的任务。
 	heartbeatDone := make(chan struct{})
 	defer close(heartbeatDone)
 	gopool.Go(func() {
@@ -165,7 +185,13 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 				_ = model.DB.Model(&model.AsyncRelayTask{}).Where("id = ?", task.ID).Update("request_file_path", "").Error
 			}
 		}
+		delivery.finish(task.Error)
 	}()
+	// 原接口响应也是恢复检查点，收到上游答复后绝不为了补日志而再次生成。
+	if task.ResponseStatusCode >= 400 && task.ResponseFilePath != "" {
+		failAsyncRelayTask(task, asyncRelayResponseError(task))
+		return
+	}
 	if task.ResultFilePath != "" {
 		completeAsyncRelayResult(ctx, task, task.ResultFilePath, task.ResultContentType)
 		return
@@ -174,17 +200,16 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 		pollLinkedAsyncRelayTask(ctx, task)
 		return
 	}
+	if task.ResponseFilePath != "" {
+		completeAsyncRelayResult(ctx, task, task.ResponseFilePath, task.ResponseContentType)
+		return
+	}
 	requestFile, err := os.Open(task.RequestFilePath)
 	if err != nil {
 		failAsyncRelayTask(task, "读取已保存请求失败")
 		return
 	}
 	defer requestFile.Close()
-	info, err := requestFile.Stat()
-	if err != nil {
-		failAsyncRelayTask(task, "读取请求文件信息失败")
-		return
-	}
 	responsePath, responseFile, err := common.CreateAsyncMediaFile()
 	if err != nil {
 		failAsyncRelayTask(task, "创建结果文件失败")
@@ -197,109 +222,53 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 			_ = common.RemoveAsyncMediaFile(responsePath)
 		}
 	}()
-	writer := &asyncRelayFileWriter{file: responseFile, header: make(http.Header)}
+	writer := &asyncRelayFileWriter{file: responseFile, header: make(http.Header), delivery: delivery}
 	worker, _ := gin.CreateTestContext(writer)
 	defer common.CleanupBodyStorage(worker)
-	var metadata asyncRelayMetadata
-	if task.RequestMetadata != "" && common.Unmarshal([]byte(task.RequestMetadata), &metadata) != nil {
-		failAsyncRelayTask(task, "恢复请求参数失败")
-		return
+	executionErr := executeAsyncRelayRequest(ctx, task, worker, requestFile)
+	if executionErr == nil || writer.status != 0 {
+		worker.Writer.WriteHeaderNow()
 	}
-	worker.Params = metadata.Params
-	// Gemini 的路由参数也要同步切换，避免处理器再次选中流式接口。
-	for i := range worker.Params {
-		worker.Params[i].Value = strings.ReplaceAll(worker.Params[i].Value, ":streamGenerateContent", ":generateContent")
-	}
-	requestURL := task.RequestPath
-	if task.RequestQuery != "" {
-		requestURL += "?" + task.RequestQuery
-	}
-	request, err := http.NewRequestWithContext(ctx, task.RequestMethod, requestURL, requestFile)
-	if err != nil {
-		failAsyncRelayTask(task, "恢复请求地址失败")
-		return
-	}
-	request.ContentLength, request.Host = info.Size(), "async-worker"
-	request.RemoteAddr = net.JoinHostPort(metadata.ClientIP, "0")
-	if task.RequestFiles != "" {
-		_ = common.Unmarshal([]byte(task.RequestFiles), &request.Header)
-	}
-	request.Header.Set("Content-Type", task.RequestContentType)
-	request.Header.Set("Accept", "application/json")
-	token, err := model.GetTokenById(task.TokenID)
-	if err != nil || token == nil || token.UserId != task.UserID {
-		failAsyncRelayTask(task, "任务令牌已失效")
-		return
-	}
-	credential := "Bearer sk-" + token.Key
-	if metadata.SpecificChannel != "" {
-		credential += "-" + metadata.SpecificChannel
-	}
-	request.Header.Set("Authorization", credential)
-	worker.Request = request
-	worker.Set(model.AsyncRelayContextKey, task.TaskID)
-	worker.Set(common.RequestIdKey, task.TaskID)
-	common.SetContextKey(worker, constant.ContextKeyRequestStartTime, time.Now())
-	if metadata.Action != "" {
-		worker.Set("action", metadata.Action)
-	}
-	if metadata.RelayMode != 0 {
-		worker.Set("relay_mode", metadata.RelayMode)
-	}
-	// 在执行时重新校验令牌状态、额度、模型范围和客户端地址，不沿用提交时的过期权限。
-	middleware.TokenAuth()(worker)
-	if worker.IsAborted() {
-		failAsyncRelayTask(task, "执行时用户或令牌状态已变更")
-		return
-	}
-	if err := resolveAsyncRelayReferences(worker, task); err != nil {
-		failAsyncRelayTask(task, err.Error())
-		return
-	}
-	middleware.Distribute()(worker)
-	if worker.IsAborted() {
-		failAsyncRelayTask(task, "执行时模型或分组渠道不可用")
-		return
-	}
-	task.DispatchStartedAt = common.GetTimestamp()
-	// 发往上游前持久化标记，进程意外退出时对结果未知的请求不做自动重发。
-	marked := model.DB.Model(&model.AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).Update("dispatch_started_at", task.DispatchStartedAt)
-	if marked.Error != nil || marked.RowsAffected != 1 {
-		failAsyncRelayTask(task, "保存执行状态失败")
-		return
-	}
-	switch relaytypes.RelayFormat(task.RequestFormat) {
-	case relaytypes.RelayFormatTask:
-		RelayTask(worker)
-	case relaytypes.RelayFormatMjProxy:
-		RelayMidjourney(worker)
-	default:
-		Relay(worker, relaytypes.RelayFormat(task.RequestFormat))
-	}
+	task.ResponseStatusCode, task.ResponseContentType = worker.Writer.Status(), writer.header.Get("Content-Type")
 	logFields := map[string]any{"channel_id": worker.GetInt("channel_id")}
 	if quota, exists := worker.Get("async_relay_settled_quota"); exists {
 		logFields["quota"] = quota
 	}
 	_ = model.DB.Model(&model.Task{}).Where("id = ?", task.LogID).Updates(logFields).Error
-	task.ResponseStatusCode, task.ResponseContentType = worker.Writer.Status(), writer.header.Get("Content-Type")
+	if writer.err == nil && writer.status != 0 {
+		if err := responseFile.Sync(); err != nil {
+			writer.err = err
+		}
+		if err := responseFile.Close(); err != nil && writer.err == nil {
+			writer.err = err
+		}
+		if writer.err == nil {
+			result := model.DB.Model(&model.AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).
+				Updates(map[string]any{"response_file_path": responsePath, "response_status_code": task.ResponseStatusCode, "response_content_type": task.ResponseContentType, "updated_at": common.GetTimestamp()})
+			if result.Error != nil || result.RowsAffected != 1 {
+				failAsyncRelayTask(task, "保存原接口响应失败")
+				return
+			}
+			task.ResponseFilePath = responsePath
+			keepResponse = true
+		}
+	}
 	if writer.err != nil {
-		failAsyncRelayTask(task, writer.err.Error())
+		failAsyncRelayTask(task, "保存生成响应失败："+writer.err.Error())
 		return
 	}
+	if executionErr != nil {
+		failAsyncRelayTask(task, executionErr.Error())
+		return
+	}
+	// 原响应就绪即结束对外等待，后续下载、预览和原生任务查询继续在后台完成。
+	delivery.finish("")
 	if persistError := worker.GetString("async_relay_persist_error"); persistError != "" {
 		failAsyncRelayTask(task, persistError)
 		return
 	}
 	if task.ResponseStatusCode >= 400 {
-		failAsyncRelayTask(task, fmt.Sprintf("生成请求失败（HTTP %d）", task.ResponseStatusCode))
-		return
-	}
-	if err := responseFile.Sync(); err != nil {
-		failAsyncRelayTask(task, "保存生成结果失败")
-		return
-	}
-	if err := responseFile.Close(); err != nil {
-		failAsyncRelayTask(task, "关闭生成结果文件失败")
+		failAsyncRelayTask(task, asyncRelayResponseError(task))
 		return
 	}
 	linked, err := model.GetAsyncRelayTaskByTaskID(task.TaskID)
@@ -317,8 +286,126 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 		}
 		return
 	}
-	// 同步媒体响应已完整落盘，随后提取可预览的本地文件。
-	keepResponse = completeAsyncRelayResult(ctx, task, responsePath, task.ResponseContentType)
+	completeAsyncRelayResult(ctx, task, responsePath, task.ResponseContentType)
+}
+
+// executeAsyncRelayRequest 重建原协议请求并复用现有鉴权和结算，不继承前台连接的取消信号。
+func executeAsyncRelayRequest(ctx context.Context, task *model.AsyncRelayTask, worker *gin.Context, requestFile *os.File) error {
+	info, err := requestFile.Stat()
+	if err != nil {
+		return fmt.Errorf("读取请求文件信息失败")
+	}
+	var metadata asyncRelayMetadata
+	if task.RequestMetadata != "" && common.Unmarshal([]byte(task.RequestMetadata), &metadata) != nil {
+		return fmt.Errorf("恢复请求参数失败")
+	}
+	worker.Params = metadata.Params
+	requestURL := task.RequestPath
+	if task.RequestQuery != "" {
+		requestURL += "?" + task.RequestQuery
+	}
+	request, err := http.NewRequestWithContext(ctx, task.RequestMethod, requestURL, requestFile)
+	if err != nil {
+		return fmt.Errorf("恢复请求地址失败")
+	}
+	// 保留原始入口信息，原生任务适配器继续按原地址选择返回结构和生成链接。
+	request.ContentLength, request.Host, request.RequestURI = info.Size(), metadata.Host, requestURL
+	if request.Host == "" {
+		request.Host = "async-worker"
+	}
+	request.RemoteAddr = net.JoinHostPort(metadata.ClientIP, "0")
+	if task.RequestFiles != "" {
+		_ = common.Unmarshal([]byte(task.RequestFiles), &request.Header)
+	}
+	request.Header.Set("Content-Type", task.RequestContentType)
+	worker.Request = request
+	token, err := model.GetTokenById(task.TokenID)
+	if err != nil || token == nil || token.UserId != task.UserID {
+		worker.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": gin.H{"message": "任务令牌已失效", "type": "authentication_error"}})
+		return fmt.Errorf("任务令牌已失效")
+	}
+	credential := "Bearer sk-" + token.Key
+	if metadata.SpecificChannel != "" {
+		credential += "-" + metadata.SpecificChannel
+	}
+	request.Header.Set("Authorization", credential)
+	worker.Set(model.AsyncRelayContextKey, task.TaskID)
+	worker.Set(common.RequestIdKey, task.TaskID)
+	common.SetContextKey(worker, constant.ContextKeyRequestStartTime, time.Now())
+	if metadata.Action != "" {
+		worker.Set("action", metadata.Action)
+	}
+	if metadata.RelayMode != 0 {
+		worker.Set("relay_mode", metadata.RelayMode)
+	}
+	middleware.TokenAuth()(worker)
+	if worker.IsAborted() {
+		return fmt.Errorf("执行时用户或令牌状态已变更")
+	}
+	if err := resolveAsyncRelayReferences(worker, task); err != nil {
+		return err
+	}
+	middleware.Distribute()(worker)
+	if worker.IsAborted() {
+		return fmt.Errorf("执行时模型或分组渠道不可用")
+	}
+	task.DispatchStartedAt = common.GetTimestamp()
+	// 发往上游前记录提交标记；结果未知时不自动重发，避免重复生成和重复扣费。
+	marked := model.DB.Model(&model.AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).Update("dispatch_started_at", task.DispatchStartedAt)
+	if marked.Error != nil || marked.RowsAffected != 1 {
+		return fmt.Errorf("保存执行状态失败")
+	}
+	switch relaytypes.RelayFormat(task.RequestFormat) {
+	case relaytypes.RelayFormatTask:
+		RelayTask(worker)
+	case relaytypes.RelayFormatMjProxy:
+		RelayMidjourney(worker)
+	default:
+		Relay(worker, relaytypes.RelayFormat(task.RequestFormat))
+	}
+	return nil
+}
+
+// asyncRelayResponseError 把原接口的错误原因同步到日志，避免只留下笼统的状态码。
+func asyncRelayResponseError(task *model.AsyncRelayTask) string {
+	message := fmt.Sprintf("生成请求失败（HTTP %d）", task.ResponseStatusCode)
+	file, err := os.Open(task.ResponseFilePath)
+	if err != nil {
+		return message
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 256*1024))
+	if err != nil {
+		return message
+	}
+	var payload struct {
+		Error       any    `json:"error"`
+		Message     string `json:"message"`
+		Description string `json:"description"`
+	}
+	if common.Unmarshal(data, &payload) != nil {
+		return message
+	}
+	detail := payload.Message
+	if detail == "" {
+		detail = payload.Description
+	}
+	switch value := payload.Error.(type) {
+	case string:
+		detail = value
+	case map[string]any:
+		if text, ok := value["message"].(string); ok {
+			detail = text
+		}
+	}
+	if detail == "" {
+		return message
+	}
+	runes := []rune(detail)
+	if len(runes) > 2000 {
+		detail = string(runes[:2000]) + "…"
+	}
+	return message + "：" + detail
 }
 
 func failAsyncRelayTask(task *model.AsyncRelayTask, message string) {
@@ -415,7 +502,7 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 		}
 		return
 	}
-	child := model.GetByMJId(task.UserID, task.TaskID)
+	child := model.GetByMJId(task.UserID, task.LinkedTaskID)
 	if child == nil {
 		failAsyncRelayTask(task, "绘图任务记录缺失")
 		return

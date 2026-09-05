@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -59,12 +60,87 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 			}
 		}
 		// 仅遍历结果容器，不下载提示词、错误描述或用量字段里出现的地址。
-		for _, key := range []string{"data", "candidates", "content", "parts", "output", "choices", "message", "images", "results", "videoUrls"} {
+		for _, key := range []string{"data", "candidates", "content", "parts", "output", "choices", "message", "delta", "images", "results", "videoUrls"} {
 			if child, ok := item[key]; ok {
 				collectAsyncMediaSources(child, sources)
 			}
 		}
 	}
+}
+
+// readAsyncRelayMediaSources 同时解析普通响应和原样保存的事件流，不要求调用方关闭流式功能。
+func readAsyncRelayMediaSources(reader io.Reader, contentType string) ([]asyncMediaSource, error) {
+	var sources []asyncMediaSource
+	if !strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+		var value any
+		if err := common.DecodeJson(reader, &value); err != nil {
+			return nil, fmt.Errorf("上游生成结果格式有误")
+		}
+		collectAsyncMediaSources(value, &sources)
+		return sources, nil
+	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), int(common.AsyncMediaMaxFileBytes))
+	var event strings.Builder
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			if err := collectAsyncStreamMediaEvent(event.String(), &sources); err != nil {
+				return nil, err
+			}
+			event.Reset()
+			continue
+		}
+		if strings.HasPrefix(line, "data:") {
+			if event.Len() > 0 {
+				event.WriteByte('\n')
+			}
+			event.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("读取上游生成事件失败")
+	}
+	if err := collectAsyncStreamMediaEvent(event.String(), &sources); err != nil {
+		return nil, err
+	}
+	return sources, nil
+}
+
+// collectAsyncStreamMediaEvent 只收集最终图片，Responses 的完整结果与完成事件随后统一去重。
+func collectAsyncStreamMediaEvent(data string, sources *[]asyncMediaSource) error {
+	data = strings.TrimSpace(data)
+	if data == "" || data == "[DONE]" {
+		return nil
+	}
+	var value any
+	if common.Unmarshal([]byte(data), &value) != nil {
+		return fmt.Errorf("上游流式生成结果格式有误")
+	}
+	if event, ok := value.(map[string]any); ok {
+		eventType, _ := event["type"].(string)
+		if strings.Contains(eventType, "partial_image") {
+			return nil
+		}
+		switch eventType {
+		case "response.output_item.done":
+			value = event["item"]
+		case "response.completed":
+			value = event["response"]
+		case "error", "response.failed":
+			detail := "上游流式生成失败"
+			failure, _ := event["error"].(map[string]any)
+			if response, ok := event["response"].(map[string]any); ok {
+				failure, _ = response["error"].(map[string]any)
+			}
+			if message, ok := failure["message"].(string); ok && message != "" {
+				detail += "：" + message
+			}
+			return fmt.Errorf("%s", detail)
+		}
+	}
+	collectAsyncMediaSources(value, sources)
+	return nil
 }
 
 // inspectAsyncMedia 使用文件头识别可展示的媒体，不把上游返回的网页或脚本当作图片。
@@ -207,15 +283,12 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 			failAsyncRelayTask(task, "读取生成结果失败")
 			return true
 		}
-		var value any
-		err = common.DecodeJson(file, &value)
+		sources, err := readAsyncRelayMediaSources(file, contentType)
 		_ = file.Close()
 		if err != nil {
-			failAsyncRelayTask(task, "上游生成结果格式有误")
+			failAsyncRelayTask(task, err.Error())
 			return true
 		}
-		var sources []asyncMediaSource
-		collectAsyncMediaSources(value, &sources)
 		if len(sources) == 0 {
 			failAsyncRelayTask(task, "上游未返回可保存的图片或视频")
 			return true
@@ -248,7 +321,9 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 				return true
 			}
 		}
-		contentType = "application/json"
+		if !strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+			contentType = "application/json"
+		}
 	}
 	encoded, err := common.Marshal(media)
 	if err != nil {

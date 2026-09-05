@@ -117,7 +117,7 @@ func AsyncRelayTaskExpired(task *AsyncRelayTask, now int64) bool {
 
 // ListAsyncRelayTaskFiles 列出清理任务拥有的文件，不接收客户端传入的路径。
 func ListAsyncRelayTaskFiles(task *AsyncRelayTask) ([]string, error) {
-	paths := []string{task.RequestFilePath, task.ResultFilePath}
+	paths := []string{task.RequestFilePath, task.ResponseFilePath, task.ResultFilePath}
 	if task.ResultFiles == "" {
 		return paths, nil
 	}
@@ -166,7 +166,7 @@ func ExpireAsyncRelayTaskFiles(task *AsyncRelayTask) error {
 		}
 		return tx.Model(&AsyncRelayTask{}).Where("id = ? AND status IN ?", task.ID,
 			[]AsyncRelayTaskStatus{AsyncRelayTaskStatusSucceeded, AsyncRelayTaskStatusFailed, AsyncRelayTaskStatusCancelled}).
-			Updates(map[string]any{"request_file_path": "", "request_body": "", "request_files": "", "request_metadata": "", "result_file_path": "", "result_files": "", "response_body": "", "result_expired_at": common.GetTimestamp()}).Error
+			Updates(map[string]any{"request_file_path": "", "request_body": "", "request_files": "", "request_metadata": "", "result_file_path": "", "result_files": "", "response_file_path": "", "response_body": "", "result_expired_at": common.GetTimestamp()}).Error
 	})
 }
 

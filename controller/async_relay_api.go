@@ -214,7 +214,13 @@ func MidjourneyImageProxy(c *gin.Context) {
 	}
 	c.Params = append(c.Params, gin.Param{Key: "async_task_id", Value: child.AsyncParentID})
 	task := loadAsyncRelayTask(c)
-	if task != nil {
-		serveAsyncRelayMedia(c, task, "0")
+	if task == nil {
+		return
 	}
+	if model.AsyncRelayTaskExpired(task, common.GetTimestamp()) || task.Status == model.AsyncRelayTaskStatusSucceeded {
+		serveAsyncRelayMedia(c, task, "0")
+		return
+	}
+	// 后台文件尚在保存时保持原生预览可用，归属校验已在上面完成。
+	relay.RelayMidjourneyImage(c)
 }

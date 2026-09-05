@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -79,14 +80,35 @@ func TestAsyncRelayMultipartStreamIsQueued(t *testing.T) {
 	assert.True(t, queued)
 }
 
-func TestAsyncRelayNormalizationPreservesBillingNumbers(t *testing.T) {
-	normalized, err := normalizeAsyncRelayJSON([]byte(`{"model":"gpt-image-1","n":18446744073709551615,"async":false,"background":true,"stream":true}`))
-	require.NoError(t, err)
-	assert.Contains(t, string(normalized), `"n":18446744073709551615`)
-	assert.NotContains(t, string(normalized), `"async"`)
-	assert.NotContains(t, string(normalized), `"background"`)
-	assert.Contains(t, string(normalized), `"stream":false`)
-	assert.Equal(t, "model=gpt-image-1", removeAsyncQuery("async=true&model=gpt-image-1&background=1&key=secret&alt=sse"))
-	_, err = normalizeAsyncRelayJSON([]byte("null"))
-	require.Error(t, err)
+// 原接口字段保留测试同时保护计费数值、透明背景和客户端选择的流式协议。
+func TestAsyncRelayEnqueuePreservesOriginalRequestProtocol(t *testing.T) {
+	cases := []struct {
+		name, path, body, savedQuery string
+		format                       relaytypes.RelayFormat
+	}{
+		{"图片透明背景和大整数", "/v1/images/generations?async=true&key=secret", `{"model":"gpt-image-1","n":18446744073709551615,"async":false,"background":"transparent","stream":true}`, "", relaytypes.RelayFormatOpenAIImage},
+		{"Gemini流式地址和查询参数", "/v1beta/models/gemini-2.5-flash-image:streamGenerateContent?async=true&alt=sse&key=secret", `{"contents":[],"generationConfig":{"responseModalities":["IMAGE"]}}`, "alt=sse", relaytypes.RelayFormatGemini},
+		{"Responses原生后台参数", "/v1/responses?async=true", `{"model":"gpt-4.1","tools":[{"type":"image_generation"}],"background":true,"stream":true}`, "", relaytypes.RelayFormatOpenAIResponses},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			prepareAsyncMediaController(t)
+			c := newAsyncRelayTestContext(test.path, test.body)
+			defer common.CleanupBodyStorage(c)
+			c.Request.Header.Set("Accept", "text/event-stream")
+			c.Set("id", 31)
+			c.Set("token_id", 11)
+			require.NoError(t, EnqueueAsyncRelayRequest(c, test.format))
+			assert.Equal(t, http.StatusAccepted, c.Writer.Status())
+			var task model.AsyncRelayTask
+			require.NoError(t, model.DB.First(&task).Error)
+			saved, err := os.ReadFile(task.RequestFilePath)
+			require.NoError(t, err)
+			assert.Equal(t, test.body, string(saved))
+			assert.Equal(t, c.Request.URL.Path, task.RequestPath)
+			assert.Equal(t, test.savedQuery, task.RequestQuery)
+			assert.Contains(t, task.RequestFiles, "text/event-stream")
+			assert.NotContains(t, task.RequestQuery, "secret")
+		})
+	}
 }
