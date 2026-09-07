@@ -149,9 +149,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
 
       return result.data || DEFAULT_LOGS_DATA
     },
-    // 后台任务列表自动刷新，离开页面后停止，不需要用户持续手动查询。
-    refetchInterval: logCategory === 'task' ? 5000 : false,
-    refetchIntervalInBackground: false,
+    // 任务日志只在打开、搜索和分页时读取，不因定时器、切换窗口或网络重连自行更新。
+    refetchInterval: false,
+    refetchOnWindowFocus: logCategory === 'task' ? false : undefined,
+    refetchOnReconnect: logCategory === 'task' ? false : undefined,
     placeholderData: (previousData, previousQuery) => {
       if (previousQuery?.queryKey[1] === logCategory) {
         return previousData

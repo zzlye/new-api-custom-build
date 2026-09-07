@@ -2,6 +2,7 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -20,6 +21,7 @@ func GetAllTask(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	// 解析其他查询参数
 	queryParams := model.SyncTaskQueryParams{
+		ModelName:      strings.TrimSpace(c.Query("model_name")),
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
 		Status:         c.Query("status"),
@@ -45,6 +47,7 @@ func GetUserTask(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 
 	queryParams := model.SyncTaskQueryParams{
+		ModelName:      strings.TrimSpace(c.Query("model_name")),
 		Platform:       constant.TaskPlatform(c.Query("platform")),
 		TaskID:         c.Query("task_id"),
 		Status:         c.Query("status"),
@@ -100,6 +103,7 @@ func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {
 			}
 		}
 		result[i] = relay.TaskModel2Dto(task)
+		result[i].ModelName = task.Properties.OriginModelName
 		result[i].IsAsync = task.IsAsync
 		result[i].DurationFinishTime = task.FinishTime
 		if asyncTask := asyncTasks[task.TaskID]; asyncTask != nil {

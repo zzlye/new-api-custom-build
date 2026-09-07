@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -22,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -59,6 +61,8 @@ func prepareAsyncMediaController(t *testing.T) {
 	common.OptionMap = map[string]string{common.AsyncMediaRetentionOption: "2"}
 	common.OptionMapRWMutex.Unlock()
 	t.Cleanup(func() {
+		// 后台统计与心跳结束后再恢复全局配置，避免测试清理和异步采样发生数据竞争。
+		require.Eventually(t, func() bool { return gopool.WorkerCount() == 0 }, 5*time.Second, time.Millisecond, "后台采样或心跳尚未结束")
 		model.DB, model.LOG_DB = previousDB, previousLogDB
 		common.SetDatabaseTypes(previousMainType, previousLogType)
 		if common.RedisEnabled != previousRedis {
@@ -322,10 +326,16 @@ func TestAsyncRelayStorageRetryReusesSavedResponseWithoutResubmission(t *testing
 	require.Equal(t, model.AsyncRelayTaskStatusSucceeded, saved.Status, saved.Error)
 	assert.Equal(t, int32(2), downloads.Load())
 	assert.Empty(t, saved.Error)
-	// 仅提供下载链接的图片也保留来源，重试归档不会把地址丢掉。
+	// 归档仍保留重试所需信息，对外仅提供本站文件入口。
 	media := asyncRelayMediaLinks(saved, "/api/task/")
 	require.Len(t, media, 1)
-	assert.Equal(t, source.URL+"/image.png", media[0].SourceURL)
+	var stored []model.AsyncRelayMedia
+	require.NoError(t, common.UnmarshalJsonStr(saved.ResultFiles, &stored))
+	require.Len(t, stored, 1)
+	assert.Equal(t, source.URL+"/image.png", stored[0].SourceURL)
+	view, err := common.Marshal(media)
+	require.NoError(t, err)
+	assert.NotContains(t, string(view), source.URL)
 }
 
 func TestAsyncRelayVideoCompletionStoresLocalVideoAndKeepsOneTaskLog(t *testing.T) {
@@ -367,7 +377,14 @@ func TestAsyncRelayVideoCompletionStoresLocalVideoAndKeepsOneTaskLog(t *testing.
 	assert.Equal(t, int32(1), downloads.Load())
 	media := asyncRelayMediaLinks(saved, "/api/task/")
 	require.Len(t, media, 1)
-	assert.Equal(t, source.URL+"/video.mp4", media[0].SourceURL)
+	view, err := common.Marshal(media)
+	require.NoError(t, err)
+	assert.NotContains(t, string(view), source.URL)
+	direct := asyncControllerRequest(GetAsyncRelayMediaDirect, http.MethodGet, media[0].PreviewURL, 0, 0,
+		gin.Params{{Key: "task_id", Value: parent.TaskID}, {Key: "kind", Value: "media"}, {Key: "index", Value: "0"}}, "")
+	assert.Equal(t, http.StatusOK, direct.Code)
+	assert.Equal(t, "video/mp4", direct.Header().Get("Content-Type"))
+	assert.Equal(t, video, direct.Body.Bytes())
 	preview := asyncControllerRequest(GetAsyncRelayMedia, http.MethodGet, "/", parent.UserID, common.RoleCommonUser, gin.Params{{Key: "task_id", Value: parent.TaskID}, {Key: "index", Value: "0"}}, "")
 	require.Equal(t, http.StatusOK, preview.Code)
 	assert.Equal(t, video, preview.Body.Bytes())

@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "Đã xóa {{logs}} nhật ký sử dụng và {{tasks}} nhật ký tác vụ.",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "Giữ lại {{count}} nhật ký tác vụ do tác vụ vẫn đang chạy hoặc tệp nằm trên nút khác.",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "Hết hạn chỉ xóa tệp được tạo và tệp tham chiếu. Nhật ký tác vụ được giữ lại cho đến khi bạn dọn tại đây.",
-    "{{processed}} of {{total}} records processed.": "Đã xử lý {{processed}} / {{total}} bản ghi."
+    "{{processed}} of {{total}} records processed.": "Đã xử lý {{processed}} / {{total}} bản ghi.",
+    "Local media URL": "URL tệp cục bộ",
+    "Filter by model name": "Lọc theo tên mô hình",
+    "Refresh task details": "Làm mới chi tiết tác vụ",
+    "Background media concurrency": "Số yêu cầu đa phương tiện chạy nền đồng thời",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "Số yêu cầu đa phương tiện chạy nền đồng thời cho mỗi tiến trình. Tác vụ vượt mức sẽ chờ. Mặc định: 4; đặt 0 để bỏ giới hạn bổ sung này. Giới hạn tần suất yêu cầu vẫn áp dụng. Chỉ root có thể thay đổi.",
+    "Enter an integer from 0 to 256.": "Nhập số nguyên từ 0 đến 256."
   }
 }

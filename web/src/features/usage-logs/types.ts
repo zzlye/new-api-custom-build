@@ -68,6 +68,7 @@ export interface DrawingLogFilters extends CommonFilters {
  */
 export interface TaskLogFilters extends CommonFilters {
   taskId?: string
+  model?: string
 }
 
 /**
@@ -285,9 +286,10 @@ export interface MidjourneyLog {
 // Task Logs Types
 // ============================================================================
 
-// 生成文件只通过带用户认证的地址读取。
+// 内容接口要求登录，文件直链通过限定文件和有效期的签名读取。
 export interface TaskMedia {
   preview_url?: string
+  // 仅容纳旧版本接口字段，页面不展示也不复制上游地址。
   source_url?: string
   name?: string
   role?: string
@@ -396,6 +398,7 @@ export interface GetMidjourneyLogsParams {
 // ============================================================================
 
 export interface GetTaskLogsParams {
+  model_name?: string
   p?: number
   page_size?: number
   channel_id?: string

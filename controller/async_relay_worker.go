@@ -21,7 +21,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var asyncRelaySlots = make(chan struct{}, asyncRelayMaxBatch)
+var asyncRelaySlots struct {
+	sync.Mutex
+	active int
+}
 var asyncRelayWakeup = make(chan struct{}, 1)
 var asyncRelayStart sync.Once
 
@@ -53,12 +56,8 @@ func StartAsyncRelayWorkers() {
 				if err := model.CleanupExpiredAsyncRelayTasks(common.NodeName); err != nil {
 					common.SysError("清理到期媒体文件失败: " + err.Error())
 				}
-				for i := 0; i < asyncRelayMaxBatch; i++ {
-					gopool.Go(func() {
-						if _, err := ProcessAsyncRelayTasks(context.Background(), 1); err != nil {
-							common.SysError("执行后台媒体任务失败: " + err.Error())
-						}
-					})
+				if err := dispatchAsyncRelayTasks(); err != nil {
+					common.SysError("执行后台媒体任务失败: " + err.Error())
 				}
 				select {
 				case <-ticker.C:
@@ -69,16 +68,51 @@ func StartAsyncRelayWorkers() {
 	})
 }
 
-// ProcessAsyncRelayTasks 限制全进程同时执行的任务数，排队压力不会变成无限并发上游请求。
+// claimAsyncRelayTaskSlot 将并发名额和任务领取绑定；调低上限只影响后续领取，不中断在途任务。
+func claimAsyncRelayTaskSlot() (*model.AsyncRelayTask, error) {
+	asyncRelaySlots.Lock()
+	limit := common.AsyncMediaConcurrency()
+	if limit > 0 && asyncRelaySlots.active >= limit {
+		asyncRelaySlots.Unlock()
+		return nil, nil
+	}
+	asyncRelaySlots.active++
+	asyncRelaySlots.Unlock()
+	workerID := fmt.Sprintf("%s-%d", common.NodeName, time.Now().UnixNano())
+	task, err := model.ClaimAsyncRelayTaskForNode(common.NodeName, workerID)
+	if err != nil || task == nil {
+		releaseAsyncRelayTaskSlot()
+	}
+	return task, err
+}
+
+func releaseAsyncRelayTaskSlot() {
+	asyncRelaySlots.Lock()
+	asyncRelaySlots.active--
+	asyncRelaySlots.Unlock()
+}
+
+// dispatchAsyncRelayTasks 分批领取以便维护任务获得执行机会，批次大小不是同时执行上限。
+func dispatchAsyncRelayTasks() error {
+	for i := 0; i < 64; i++ {
+		task, err := claimAsyncRelayTaskSlot()
+		if err != nil || task == nil {
+			return err
+		}
+		gopool.Go(func() {
+			defer func() { releaseAsyncRelayTaskSlot(); WakeAsyncRelayWorkers() }()
+			processAsyncRelayTask(context.Background(), task)
+		})
+	}
+	// 未限制并发时继续领取下一批，避免批次大小变成另一个隐藏上限。
+	WakeAsyncRelayWorkers()
+	return nil
+}
+
+// ProcessAsyncRelayTasks 与持续调度共用名额，供批处理和回归验证逐个执行任务。
 func ProcessAsyncRelayTasks(ctx context.Context, limit int) (int, error) {
 	if ctx == nil {
 		ctx = context.Background()
-	}
-	select {
-	case asyncRelaySlots <- struct{}{}:
-		defer func() { <-asyncRelaySlots }()
-	default:
-		return 0, nil
 	}
 	if limit <= 0 || limit > asyncRelayMaxBatch {
 		limit = asyncRelayMaxBatch
@@ -88,13 +122,14 @@ func ProcessAsyncRelayTasks(ctx context.Context, limit int) (int, error) {
 		if ctx.Err() != nil {
 			return processed, ctx.Err()
 		}
-		workerID := fmt.Sprintf("%s-%d", common.NodeName, time.Now().UnixNano())
-		task, err := model.ClaimAsyncRelayTaskForNode(common.NodeName, workerID)
+		task, err := claimAsyncRelayTaskSlot()
 		if err != nil || task == nil {
 			return processed, err
 		}
 		processed++
 		processAsyncRelayTask(ctx, task)
+		releaseAsyncRelayTaskSlot()
+		WakeAsyncRelayWorkers()
 	}
 	return processed, nil
 }

@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "{{logs}} journaux d’utilisation et {{tasks}} journaux de tâches supprimés.",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "{{count}} journaux de tâches conservés : tâches encore en cours ou fichiers situés sur un autre nœud.",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "L’expiration supprime uniquement les fichiers générés et de référence. Les journaux de tâches restent disponibles jusqu’au nettoyage ci-dessous.",
-    "{{processed}} of {{total}} records processed.": "{{processed}} enregistrements traités sur {{total}}."
+    "{{processed}} of {{total}} records processed.": "{{processed}} enregistrements traités sur {{total}}.",
+    "Local media URL": "URL du fichier local",
+    "Filter by model name": "Filtrer par nom de modèle",
+    "Refresh task details": "Actualiser les détails de la tâche",
+    "Background media concurrency": "Requêtes média simultanées en arrière-plan",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "Requêtes média simultanées par processus. Les tâches supplémentaires attendent. Valeur par défaut : 4 ; 0 supprime cette limite supplémentaire. Les limites de fréquence restent actives. Modification réservée à root.",
+    "Enter an integer from 0 to 256.": "Saisissez un entier de 0 à 256."
   }
 }

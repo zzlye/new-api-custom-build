@@ -9,7 +9,20 @@ import (
 )
 
 const AsyncMediaRetentionOption = "AsyncMediaRetentionHours"
+const AsyncMediaConcurrencyOption = "AsyncMediaConcurrency"
 const AsyncMediaMaxFileBytes int64 = 512 * 1024 * 1024
+
+// AsyncMediaConcurrency 每次领取任务时读取设置；零表示不增加额外并发上限，旧配置默认四个。
+func AsyncMediaConcurrency() int {
+	OptionMapRWMutex.RLock()
+	value := OptionMap[AsyncMediaConcurrencyOption]
+	OptionMapRWMutex.RUnlock()
+	limit, err := strconv.Atoi(value)
+	if err != nil || limit < 0 || limit > 256 {
+		return 4
+	}
+	return limit
+}
 
 // AsyncMediaRetentionSeconds 每次读取根用户设置，使修改对尚未清理的结果立即生效。
 func AsyncMediaRetentionSeconds() int64 {

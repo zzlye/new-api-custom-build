@@ -67,6 +67,7 @@ const { act, useMemo } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { QueryClient, QueryClientProvider, notifyManager, defaultScheduler } =
   await import('@tanstack/react-query')
+const { focusManager, onlineManager } = await import('@tanstack/react-query')
 const { createInstance } = await import('i18next')
 const { I18nextProvider } = await import('react-i18next')
 const { TaskMediaPreview } = await import('../task-media-result')
@@ -285,7 +286,60 @@ async function openTaskDetails() {
 }
 
 describe('任务生成结果', () => {
-  test('生成图片同时展示稳定预览地址、内容接口和上游地址，复制时不使用临时图片地址', async () => {
+  test('运行中的详情不定时或随焦点重连刷新，仅手动刷新读取新状态', async () => {
+    taskDetails.status = 'pending'
+    const originalInterval = globalThis.setInterval
+    const originalClearInterval = globalThis.clearInterval
+    const intervals = new Map<number, () => void>()
+    let sequence = 0
+    // 只推进轮询时钟，不使用真实等待，也不替换被测查询逻辑。
+    globalThis.setInterval = ((callback: () => void) => {
+      intervals.set(++sequence, callback)
+      return sequence
+    }) as unknown as typeof setInterval
+    globalThis.clearInterval = ((id: number) =>
+      intervals.delete(id)) as unknown as typeof clearInterval
+    try {
+      await renderTaskDetails()
+      await openTaskDetails()
+      const count = () =>
+        getCalls.filter((url) => url.endsWith('/details')).length
+      assert.equal(count(), 1)
+      await act(async () => {
+        // 固定当前轮次，回调新增的定时器不在这一轮重复执行。
+        const scheduledCallbacks = [...intervals.values()]
+        for (const callback of scheduledCallbacks) callback()
+      })
+      await act(async () => {
+        focusManager.setFocused(false)
+        focusManager.setFocused(true)
+      })
+      await act(async () => {
+        onlineManager.setOnline(false)
+        onlineManager.setOnline(true)
+      })
+      assert.equal(count(), 1, '没有手动操作时应保持已有详情')
+      taskDetails = { ...taskDetails, status: 'succeeded' }
+      const refresh = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Refresh task details"]'
+      )
+      assert.ok(refresh)
+      await act(async () => refresh.click())
+      assert.equal(count(), 2)
+      assert.ok(
+        document
+          .querySelector('[role="dialog"]')
+          ?.textContent?.includes('Success')
+      )
+    } finally {
+      await act(async () => root.render(null))
+      globalThis.setInterval = originalInterval
+      globalThis.clearInterval = originalClearInterval
+      focusManager.setFocused(undefined)
+      onlineManager.setOnline(true)
+    }
+  })
+  test('生成图片仅展示本地地址，忽略旧接口中的上游地址及多余说明', async () => {
     await renderTaskDetails()
     await openTaskDetails()
     const results = document.querySelector(
@@ -302,13 +356,19 @@ describe('任务生成结果', () => {
         'http://localhost/api/task/async_fixture/media/0'
       )
     )
-    assert.ok(
+    assert.equal(
       results.querySelector(
         'a[href="https://images.example/original.png?signature=fixture"]'
-      )
+      ),
+      null
     )
+    assert.ok(!results.textContent?.includes('Upstream media URL'))
+    assert.ok(
+      !results.textContent?.includes('The media API requires authentication')
+    )
+    assert.ok(!results.textContent?.includes('controlled by the provider'))
     const copyButton = results.querySelector<HTMLButtonElement>(
-      'button[aria-label="Copy Local preview URL"]'
+      'button[aria-label="Copy Local media URL"]'
     )
     assert.ok(copyButton)
     await act(async () => copyButton.click())
@@ -584,7 +644,7 @@ describe('任务媒体地址与独立预览', () => {
         'a[href="http://localhost/task-media/async_fixture/media/0"]'
       )
     )
-    assert.ok(results?.textContent?.includes('No upstream URL recorded.'))
+    assert.ok(!results?.textContent?.includes('No upstream URL recorded.'))
     assert.ok(!results?.textContent?.includes('Upstream media URL'))
   })
   test('媒体到期后停止展示地址，延长尚未清理的保存期限后恢复入口', async () => {
@@ -602,7 +662,7 @@ describe('任务媒体地址与独立预览', () => {
     await renderLinks(1)
     assert.equal(document.querySelectorAll('a').length, 0)
     await renderLinks(Math.floor(Date.now() / 1000) + 3600)
-    assert.equal(document.querySelectorAll('a').length, 2)
+    assert.equal(document.querySelectorAll('a').length, 1)
     await renderLinks(1)
     assert.equal(document.querySelectorAll('button').length, 0)
   })

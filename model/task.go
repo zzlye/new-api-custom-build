@@ -167,6 +167,7 @@ func (p TaskPrivateData) Value() (driver.Value, error) {
 
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
 type SyncTaskQueryParams struct {
+	ModelName      string
 	Platform       constant.TaskPlatform
 	ChannelID      string
 	TaskID         string
@@ -222,7 +223,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	var err error
 
 	// 初始化查询构建器
-	query := DB.Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
+	query := filterTaskModel(DB.Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", ""), queryParams.ModelName)
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
@@ -258,7 +259,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	var err error
 
 	// 初始化查询构建器
-	query := DB.Where("async_parent_id = ? OR async_parent_id IS NULL", "")
+	query := filterTaskModel(DB.Where("async_parent_id = ? OR async_parent_id IS NULL", ""), queryParams.ModelName)
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -454,7 +455,7 @@ type TaskQuotaUsage struct {
 // TaskCountAllTasks returns total tasks that match the given query params (admin usage)
 func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Task{}).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
+	query := filterTaskModel(DB.Model(&Task{}).Where("async_parent_id = ? OR async_parent_id IS NULL", ""), queryParams.ModelName)
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}
@@ -489,7 +490,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 // TaskCountAllUserTask returns total tasks for given user
 func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Task{}).Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", "")
+	query := filterTaskModel(DB.Model(&Task{}).Where("user_id = ?", userId).Where("async_parent_id = ? OR async_parent_id IS NULL", ""), queryParams.ModelName)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}

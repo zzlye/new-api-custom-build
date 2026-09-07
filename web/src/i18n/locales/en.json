@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "Removed {{logs}} usage logs and {{tasks}} task logs.",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "{{count}} task logs were kept because they are still running or their files belong to another node.",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "Expiration removes generated and reference files only. Task logs remain until you clean them here.",
-    "{{processed}} of {{total}} records processed.": "{{processed}} of {{total}} records processed."
+    "{{processed}} of {{total}} records processed.": "{{processed}} of {{total}} records processed.",
+    "Local media URL": "Local media URL",
+    "Filter by model name": "Filter by model name",
+    "Refresh task details": "Refresh task details",
+    "Background media concurrency": "Background media concurrency",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.",
+    "Enter an integer from 0 to 256.": "Enter an integer from 0 to 256."
   }
 }

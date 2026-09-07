@@ -393,6 +393,7 @@ export type OperationsSettings = {
 }
 
 export type SecuritySettings = {
+  AsyncMediaConcurrency: number
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
   ModelRequestRateLimitSuccessCount: number

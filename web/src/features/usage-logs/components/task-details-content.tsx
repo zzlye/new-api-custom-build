@@ -94,7 +94,7 @@ function TaskMediaGallery(props: {
   )
 }
 
-// 详情只在展开时加载，运行中的记录自动刷新；页面关闭后停止查询，不影响后台生成。
+// 详情只在展开或手动刷新时加载，停止页面刷新不会暂停后台生成和文件清理。
 export function TaskDetailsContent(props: { taskId: string }) {
   const { t } = useTranslation()
   const query = useTaskDetails(props.taskId)
@@ -135,6 +135,17 @@ export function TaskDetailsContent(props: { taskId: string }) {
       : null
   return (
     <div className='grid min-w-0 gap-6'>
+      <div className='flex justify-end'>
+        <Button
+          variant='outline'
+          size='sm'
+          aria-label={t('Refresh task details')}
+          disabled={query.isFetching}
+          onClick={() => void query.refetch()}
+        >
+          {t('Refresh')}
+        </Button>
+      </div>
       <dl className='grid gap-3 text-sm sm:grid-cols-2'>
         <div className='min-w-0 sm:col-span-2'>
           <dt className='text-muted-foreground text-xs'>{t('Task ID')}</dt>

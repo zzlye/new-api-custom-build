@@ -17,8 +17,9 @@ export default defineConfig(({ envMode }) => {
 
   const isProd = envMode === 'production'
   // /uploads 用于根用户上传的外观媒体（主页背景图/视频）
+  // 媒体直链和接口一起转发，开发页面打开图片时也直接读取原文件。
   const devProxy = Object.fromEntries(
-    (['/api', '/mj', '/pg', '/uploads'] as const).map((key) => [
+    (['/api', '/mj', '/pg', '/uploads', '/task-media'] as const).map((key) => [
       key,
       { target: serverUrl, changeOrigin: true },
     ])

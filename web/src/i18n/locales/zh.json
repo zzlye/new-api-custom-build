@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "已删除 {{logs}} 条使用日志、{{tasks}} 条任务日志。",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "已保留 {{count}} 条任务日志：相关任务仍在运行，或文件位于其他节点。",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "到期只清理生成文件和参考文件；任务的文字日志保留，可在下方一起清理。",
-    "{{processed}} of {{total}} records processed.": "已处理 {{processed}} / {{total}} 条记录。"
+    "{{processed}} of {{total}} records processed.": "已处理 {{processed}} / {{total}} 条记录。",
+    "Local media URL": "本地文件地址",
+    "Filter by model name": "按模型名称筛选",
+    "Refresh task details": "刷新任务详情",
+    "Background media concurrency": "后台媒体并发数",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "每个服务进程同时执行的后台媒体请求数，超出后排队。默认 4，设为 0 时不额外限制并发，原有请求速率限制仍生效。仅根用户可修改。",
+    "Enter an integer from 0 to 256.": "请输入 0 至 256 的整数。"
   }
 }

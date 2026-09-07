@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "已刪除 {{logs}} 條使用日誌、{{tasks}} 條任務日誌。",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "已保留 {{count}} 條任務日誌：相關任務仍在執行，或檔案位於其他節點。",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "到期只清理生成檔案和參考檔案；任務的文字日誌保留，可在下方一起清理。",
-    "{{processed}} of {{total}} records processed.": "已處理 {{processed}} / {{total}} 條記錄。"
+    "{{processed}} of {{total}} records processed.": "已處理 {{processed}} / {{total}} 條記錄。",
+    "Local media URL": "本機檔案網址",
+    "Filter by model name": "依模型名稱篩選",
+    "Refresh task details": "重新整理任務詳情",
+    "Background media concurrency": "背景媒體並行數",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "每個服務程序同時執行的背景媒體請求數，超出後排隊。預設 4，設為 0 時不額外限制並行數，原有請求速率限制仍生效。僅根使用者可修改。",
+    "Enter an integer from 0 to 256.": "請輸入 0 至 256 的整數。"
   }
 }

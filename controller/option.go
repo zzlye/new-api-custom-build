@@ -136,6 +136,10 @@ func UpdateOption(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改生成文件保存时长"})
 		return
 	}
+	if option.Key == common.AsyncMediaConcurrencyOption && c.GetInt("role") != common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改后台媒体并发数"})
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))
@@ -393,6 +397,10 @@ func UpdateOption(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if option.Key == common.AsyncMediaConcurrencyOption {
+		// 保存后立即唤醒队列，调高上限无需等候服务重启。
+		WakeAsyncRelayWorkers()
 	}
 	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
 	recordManageAudit(c, "option.update", map[string]interface{}{

@@ -19,8 +19,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
-	// 旧记录只补来源信息，不重发生成请求，也不修改完成时间和保存期限。
-	restoreAsyncRelayMediaURLs(task)
+	// 详情只返回本站文件入口，不再为展示上游地址读取或改写历史结果。
 	expired := model.AsyncRelayTaskExpired(task, common.GetTimestamp())
 	var input model.AsyncRelayRequestDetails
 	available := task.RequestDetails != "" && common.UnmarshalJsonStr(task.RequestDetails, &input) == nil
@@ -56,7 +55,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		item := dto.TaskMedia{Name: reference.Name, Role: reference.Role, Kind: reference.Kind, ContentType: reference.ContentType, Error: reference.Error}
 		if !expired && (reference.Path != "" || reference.Source != "") {
 			item.URL = "/api/task/" + task.TaskID + "/reference/" + strconv.Itoa(index)
-			item.PreviewURL = "/task-media/" + task.TaskID + "/reference/" + strconv.Itoa(index)
+			item.PreviewURL = asyncRelayMediaPreviewURL(task, "reference", index)
 		}
 		references = append(references, item)
 	}

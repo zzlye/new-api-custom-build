@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "Удалено журналов использования: {{logs}}, журналов задач: {{tasks}}.",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "Сохранено журналов задач: {{count}}. Задачи ещё выполняются или файлы находятся на другом узле.",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "По истечении срока удаляются только созданные и исходные файлы. Журналы задач сохраняются до очистки здесь.",
-    "{{processed}} of {{total}} records processed.": "Обработано записей: {{processed}} из {{total}}."
+    "{{processed}} of {{total}} records processed.": "Обработано записей: {{processed}} из {{total}}.",
+    "Local media URL": "URL локального файла",
+    "Filter by model name": "Фильтр по имени модели",
+    "Refresh task details": "Обновить сведения о задаче",
+    "Background media concurrency": "Параллельные фоновые медиазапросы",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "Одновременные фоновые медиазапросы на процесс. Остальные задачи ожидают в очереди. По умолчанию: 4; 0 отключает этот дополнительный предел. Ограничения частоты запросов сохраняются. Изменять может только root.",
+    "Enter an integer from 0 to 256.": "Введите целое число от 0 до 256."
   }
 }

@@ -22,7 +22,7 @@ import { api } from '@/lib/api'
 
 import type { TaskDetails } from '../types'
 
-// 弹窗和独立预览页复用同一份已鉴权详情，运行中的任务继续自动更新。
+// 详情只在主动打开或点击刷新时读取；后台生成不依赖页面是否继续查询。
 export function useTaskDetails(taskId: string, enabled = true) {
   return useQuery({
     queryKey: ['async-task-details', taskId],
@@ -41,12 +41,10 @@ export function useTaskDetails(taskId: string, enabled = true) {
       }
       return response.data.data
     },
-    refetchInterval: (state) => {
-      const status = state.state.data?.status
-      return status && ['pending', 'processing', 'waiting'].includes(status)
-        ? 3000
-        : false
-    },
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: 'always',
     staleTime: 0,
     retry: false,
     enabled,

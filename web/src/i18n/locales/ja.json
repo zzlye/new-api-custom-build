@@ -5401,6 +5401,12 @@
     "Removed {{logs}} usage logs and {{tasks}} task logs.": "使用ログ {{logs}} 件とタスクログ {{tasks}} 件を削除しました。",
     "{{count}} task logs were kept because they are still running or their files belong to another node.": "実行中、またはファイルが別のノードにあるため、タスクログ {{count}} 件を保持しました。",
     "Expiration removes generated and reference files only. Task logs remain until you clean them here.": "期限切れでは生成ファイルと参照ファイルのみ削除されます。タスクログは、ここで整理するまで保持されます。",
-    "{{processed}} of {{total}} records processed.": "{{total}} 件中 {{processed}} 件を処理しました。"
+    "{{processed}} of {{total}} records processed.": "{{total}} 件中 {{processed}} 件を処理しました。",
+    "Local media URL": "ローカルファイル URL",
+    "Filter by model name": "モデル名で絞り込み",
+    "Refresh task details": "タスク詳細を更新",
+    "Background media concurrency": "バックグラウンドメディアの同時実行数",
+    "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "サービスプロセスごとの同時バックグラウンドメディアリクエスト数。超過分は待機します。既定値は 4、0 は追加の同時実行制限なしです。リクエストのレート制限は引き続き適用されます。root のみ変更できます。",
+    "Enter an integer from 0 to 256.": "0 から 256 までの整数を入力してください。"
   }
 }

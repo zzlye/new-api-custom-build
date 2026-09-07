@@ -34,6 +34,7 @@ func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
 	common.OptionMap[common.AsyncMediaRetentionOption] = "2"
+	common.OptionMap[common.AsyncMediaConcurrencyOption] = "4"
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -212,6 +213,12 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == common.AsyncMediaConcurrencyOption {
+		limit, err := strconv.Atoi(value)
+		if err != nil || limit < 0 || limit > 256 {
+			return fmt.Errorf("后台媒体并发数应为 0 到 256 的整数，0 表示不额外限制并发")
+		}
+	}
 	if key == common.AsyncMediaRetentionOption {
 		hours, err := strconv.Atoi(value)
 		if err != nil || hours < 1 || hours > 168 {

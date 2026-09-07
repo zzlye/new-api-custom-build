@@ -32,7 +32,6 @@ func (t *TaskResponse[T]) IsSuccess() bool {
 // TaskMedia 是任务日志和轮询接口共用的媒体预览信息。
 type TaskMedia struct {
 	PreviewURL  string `json:"preview_url,omitempty"`
-	SourceURL   string `json:"source_url,omitempty"`
 	Name        string `json:"name,omitempty"`
 	Role        string `json:"role,omitempty"`
 	Error       string `json:"error,omitempty"`

@@ -36,7 +36,7 @@ func loadAsyncRelayTask(c *gin.Context) *model.AsyncRelayTask {
 	return task
 }
 
-// asyncRelayMediaLinks 不暴露文件路径，所有预览均经过带归属校验的内容接口。
+// asyncRelayMediaLinks 不暴露保存路径，只返回登录内容接口和限定文件、期限的直链。
 func asyncRelayMediaLinks(task *model.AsyncRelayTask, prefix string) []dto.TaskMedia {
 	if model.AsyncRelayTaskExpired(task, common.GetTimestamp()) {
 		return nil
@@ -48,8 +48,8 @@ func asyncRelayMediaLinks(task *model.AsyncRelayTask, prefix string) []dto.TaskM
 	media := make([]dto.TaskMedia, 0, len(files))
 	for index, file := range files {
 		media = append(media, dto.TaskMedia{URL: prefix + task.TaskID + "/media/" + strconv.Itoa(index),
-			PreviewURL: "/task-media/" + task.TaskID + "/media/" + strconv.Itoa(index), SourceURL: asyncMediaSourceURL(file.SourceURL),
-			Kind: file.Kind, ContentType: file.ContentType})
+			PreviewURL: asyncRelayMediaPreviewURL(task, "media", index),
+			Kind:       file.Kind, ContentType: file.ContentType})
 	}
 	return media
 }

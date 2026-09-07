@@ -23,6 +23,19 @@ import { taskMediaAddress } from '../media-address'
 
 describe('任务媒体地址', () => {
   const origin = 'https://localhost:8443'
+  test('本站文件直链保留文件级签名，拒绝混入账户密钥和重复有效期', () => {
+    const path = '/task-media/async_example/media/0'
+    const signed = `${path}?expires=2000000000&signature=${'a'.repeat(64)}`
+    assert.equal(taskMediaAddress(signed, origin, 'preview'), origin + signed)
+    for (const invalid of [
+      `${signed}&api_key=private`,
+      `${signed}&expires=2000000001`,
+      `${path}?signature=short`,
+      `${path}?expires=1&signature=short`,
+    ]) {
+      assert.equal(taskMediaAddress(invalid, origin, 'preview'), '')
+    }
+  })
   test('本地地址保留当前页面协议和端口，来源保留签名参数', () => {
     assert.equal(
       taskMediaAddress('/task-media/async_example/media/0', origin, 'preview'),

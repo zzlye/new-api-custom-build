@@ -43,11 +43,26 @@ export function taskMediaAddress(
     const prefix = kind === 'preview' ? '/task-media/' : '/api/task/'
     if (
       address.origin !== origin ||
-      address.search ||
       address.hash ||
       !address.pathname.startsWith(prefix)
     ) {
       return ''
+    }
+    // 文件直链只允许服务器签发的文件级签名，不把账户密钥或其他查询参数放进链接。
+    if (address.search) {
+      if (kind !== 'preview') return ''
+      const parameters = address.searchParams
+      if (
+        [...parameters.keys()].some(
+          (key) => !['expires', 'signature'].includes(key)
+        ) ||
+        parameters.getAll('expires').length !== 1 ||
+        parameters.getAll('signature').length !== 1 ||
+        !/^[1-9]\d{0,12}$/.test(parameters.get('expires') || '') ||
+        !/^[a-f0-9]{64}$/.test(parameters.get('signature') || '')
+      ) {
+        return ''
+      }
     }
     return address.href
   } catch {

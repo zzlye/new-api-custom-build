@@ -37,6 +37,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   SettingsForm,
@@ -75,6 +77,11 @@ const isValidJSON = (value: string | undefined) => {
 
 const createRateLimitSchema = (t: (key: string) => string) =>
   z.object({
+    AsyncMediaConcurrency: z
+      .number({ error: t('Enter an integer from 0 to 256.') })
+      .int(t('Enter an integer from 0 to 256.'))
+      .min(0, t('Enter an integer from 0 to 256.'))
+      .max(256, t('Enter an integer from 0 to 256.')),
     ModelRequestRateLimitEnabled: z.boolean(),
     ModelRequestRateLimitDurationMinutes: z.number().min(0),
     ModelRequestRateLimitCount: z.number().min(0).max(100000000),
@@ -101,6 +108,9 @@ type RateLimitSectionProps = {
 
 export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
   const { t } = useTranslation()
+  const isRoot = useAuthStore(
+    (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
+  )
   const updateOption = useUpdateOption()
   const [useVisualEditor, setUseVisualEditor] = useState(true)
   const [jsonTargetType, setJsonTargetType] =
@@ -121,6 +131,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
   const onSubmit = async (values: RateLimitFormValues) => {
     const updates = Object.entries(values).filter(
       ([key, value]) =>
+        (key !== 'AsyncMediaConcurrency' || isRoot) &&
         value !== defaultValues[key as keyof RateLimitFormValues]
     )
 
@@ -254,6 +265,36 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
               )}
             />
           </div>
+
+          <FormField
+            control={form.control}
+            name='AsyncMediaConcurrency'
+            render={({ field }) => (
+              <FormItem className='border-t pt-4'>
+                <FormLabel>{t('Background media concurrency')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={256}
+                    step={1}
+                    className='max-w-xs'
+                    {...field}
+                    disabled={!isRoot}
+                    onChange={(event) =>
+                      field.onChange(Number(event.target.value))
+                    }
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
           <div className='min-w-0 space-y-4'>
             <div className='flex flex-wrap items-center justify-between gap-3'>

@@ -12,6 +12,10 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
+	// 文件直链独立于前端路由，前后端分开部署时也直接返回媒体内容。
+	mediaRouter := router.Group("/task-media", middleware.RouteTag("api"), middleware.GlobalAPIRateLimit())
+	mediaRouter.GET("/:task_id/:kind/:index", controller.GetAsyncRelayMediaDirect)
+	mediaRouter.HEAD("/:task_id/:kind/:index", controller.GetAsyncRelayMediaDirect)
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))

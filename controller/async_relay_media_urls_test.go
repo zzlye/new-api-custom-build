@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 详情中提供可再次访问的本地地址，并只记录真实存在的普通网络来源。
+// 详情中提供可再次访问的本地地址，并不对外返回上游地址。
 func TestAsyncTaskDetailsRecordMediaURLs(t *testing.T) {
 	for _, tc := range []struct {
 		name, alias, source string
@@ -62,8 +62,9 @@ func TestAsyncTaskDetailsRecordMediaURLs(t *testing.T) {
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &details))
 			require.Len(t, details.Data.Media, 1)
 			assert.Equal(t, "/api/task/"+claimed.TaskID+"/media/0", details.Data.Media[0].URL)
-			assert.Equal(t, "/task-media/"+claimed.TaskID+"/media/0", details.Data.Media[0].PreviewURL)
-			assert.Equal(t, tc.source, details.Data.Media[0].SourceURL)
+			assert.Contains(t, details.Data.Media[0].PreviewURL, "/task-media/"+claimed.TaskID+"/media/0?expires=")
+			assert.Empty(t, details.Data.Media[0].SourceURL)
+			assert.NotContains(t, response.Body.String(), `"source_url"`)
 			assert.NotContains(t, response.Body.String(), path)
 			assert.NotContains(t, response.Body.String(), asyncFixturePNG)
 			if tc.source != "" {
@@ -80,7 +81,7 @@ func TestAsyncTaskDetailsRecordMediaURLs(t *testing.T) {
 	}
 }
 
-func TestAsyncTaskDetailsRecoverHistoricalURLsWithoutRegenerating(t *testing.T) {
+func TestAsyncTaskDetailsKeepHistoricalResultsWithoutExposingSource(t *testing.T) {
 	prepareAsyncMediaController(t)
 	task := createCompletedAsyncImage(t, 31)
 	// 模拟升级前仅保存文件路径的记录，原始响应仍在保存期内。
@@ -99,11 +100,11 @@ func TestAsyncTaskDetailsRecoverHistoricalURLsWithoutRegenerating(t *testing.T) 
 	require.NoError(t, model.DB.Save(task).Error)
 	response := asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, gin.Params{{Key: "task_id", Value: task.TaskID}}, "")
 	require.Equal(t, http.StatusOK, response.Code)
-	assert.Contains(t, response.Body.String(), `"source_url":"https://images.example/old.png"`)
+	assert.NotContains(t, response.Body.String(), "images.example")
 	restored, err := model.GetAsyncRelayTaskByTaskID(task.TaskID)
 	require.NoError(t, err)
 	require.NotNil(t, restored)
-	assert.Contains(t, restored.ResultFiles, `"source_url":"https://images.example/old.png"`)
+	assert.Equal(t, task.ResultFiles, restored.ResultFiles)
 	assert.Equal(t, task.FinishedAt, restored.FinishedAt)
 	assert.Equal(t, task.ResponseCompletedAt, restored.ResponseCompletedAt)
 	assert.Equal(t, task.UpdatedAt, restored.UpdatedAt)

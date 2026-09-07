@@ -88,14 +88,14 @@ export function TaskMediaLinks(props: {
   const origin = window.location.origin
   const preview = taskMediaAddress(props.media.preview_url, origin, 'preview')
   const content = taskMediaAddress(props.media.url, origin, 'api')
-  const source = taskMediaAddress(props.media.source_url, origin, 'source')
-  if (!preview && !content && !source) return null
+  // 旧接口即使仍带上游地址，也只展示本站的文件入口。
+  if (!preview && !content) return null
   return (
     <div className='mt-3 grid gap-2 border-t pt-3'>
       <dl className='grid gap-3'>
         {preview && (
           <TaskMediaAddress
-            label={t('Local preview URL')}
+            label={t('Local media URL')}
             address={preview}
             openable
           />
@@ -103,33 +103,7 @@ export function TaskMediaLinks(props: {
         {content && (
           <TaskMediaAddress label={t('Media API URL')} address={content} />
         )}
-        {source && (
-          <TaskMediaAddress
-            label={t('Upstream media URL')}
-            address={source}
-            openable
-          />
-        )}
       </dl>
-      <p className='text-muted-foreground text-xs'>
-        {t(
-          'Open the local preview link in your browser after signing in. The media API requires authentication.'
-        )}
-      </p>
-      {!props.media.role && !source && (
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'No upstream URL recorded. The provider may have returned image data directly; use the local preview link.'
-          )}
-        </p>
-      )}
-      {source && (
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Upstream links may expire earlier and are controlled by the provider.'
-          )}
-        </p>
-      )}
     </div>
   )
 }
