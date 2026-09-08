@@ -222,6 +222,11 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 		}
 		delivery.finish(task.Error)
 	}()
+	// 升级前的等待重试记录和已开始保存的中断任务直接结束，不再重复下载。
+	if task.MediaAttempts > 0 || task.NextAttemptAt > 0 {
+		failAsyncRelayTask(task, "文件保存曾失败或中断，自动重试已关闭")
+		return
+	}
 	// 原接口响应也是恢复检查点，收到上游答复后绝不为了补日志而再次生成。
 	if task.ResponseStatusCode >= 400 && task.ResponseFilePath != "" {
 		failAsyncRelayTask(task, asyncRelayResponseError(task))
@@ -445,6 +450,7 @@ func asyncRelayResponseError(task *model.AsyncRelayTask) string {
 }
 
 func failAsyncRelayTask(task *model.AsyncRelayTask, message string) {
+	task.NextAttemptAt = 0
 	if message == "" {
 		message = "生成任务失败，请查看调用日志"
 	}
@@ -453,7 +459,7 @@ func failAsyncRelayTask(task *model.AsyncRelayTask, message string) {
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// 仅修改终态字段，避免把刚落库的上游关联或结果检查点覆盖为空。
 		result := tx.Model(&model.AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).
-			Updates(map[string]any{"status": task.Status, "error": message, "finished_at": task.FinishedAt, "updated_at": task.UpdatedAt, "media_attempts": task.MediaAttempts})
+			Updates(map[string]any{"status": task.Status, "error": message, "finished_at": task.FinishedAt, "updated_at": task.UpdatedAt, "next_attempt_at": 0})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -510,6 +516,9 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 			_, _ = task.UpdateWithStatus(model.AsyncRelayTaskStatusProcessing)
 			return
 		}
+		if !beginAsyncRelayMediaSave(task) {
+			return
+		}
 		path, file, err := common.CreateAsyncMediaFile()
 		if err != nil {
 			failAsyncRelayTask(task, "创建视频结果文件失败")
@@ -526,14 +535,14 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 		closeErr := file.Close()
 		if writer.err != nil || syncErr != nil || closeErr != nil || writer.status != http.StatusOK || writer.size == 0 || c.GetBool("video_proxy_stream_error") {
 			_ = common.RemoveAsyncMediaFile(path)
-			retryAsyncRelayMedia(task, "视频已生成，保存视频文件失败")
+			failAsyncRelayTask(task, "视频已生成，保存视频文件失败，自动重试已关闭")
 			return
 		}
 		contentType := writer.header.Get("Content-Type")
 		if contentType == "" || strings.HasPrefix(contentType, "application/octet-stream") {
 			contentType = "video/mp4"
 		}
-		if !completeAsyncRelayResult(ctx, task, path, contentType) {
+		if !finalizeAsyncRelayResult(ctx, task, path, contentType) {
 			_ = common.RemoveAsyncMediaFile(path)
 		}
 		return
@@ -568,6 +577,9 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 	} else if len(urls) == 0 && child.ImageUrl != "" {
 		urls = append(urls, child.ImageUrl)
 	}
+	if !beginAsyncRelayMediaSave(task) {
+		return
+	}
 	result, _ := common.Marshal(gin.H{"data": urls})
 	path, file, err := common.CreateAsyncMediaFile()
 	if err != nil {
@@ -579,10 +591,10 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 	closeErr := file.Close()
 	if err != nil || syncErr != nil || closeErr != nil {
 		_ = common.RemoveAsyncMediaFile(path)
-		retryAsyncRelayMedia(task, "绘图已生成，保存结果文件失败")
+		failAsyncRelayTask(task, "绘图已生成，保存结果文件失败，自动重试已关闭")
 		return
 	}
-	if !completeAsyncRelayResult(ctx, task, path, "application/json") {
+	if !finalizeAsyncRelayResult(ctx, task, path, "application/json") {
 		_ = common.RemoveAsyncMediaFile(path)
 	}
 }

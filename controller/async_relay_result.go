@@ -274,7 +274,15 @@ func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.A
 
 // completeAsyncRelayResult 生成结果和预览文件全部就绪后才提交成功状态。
 func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, path, contentType string) bool {
-	// 先持久化完整上游响应，重启或下载失败后只重试保存，不重新发起生成。
+	if !beginAsyncRelayMediaSave(task) {
+		return false
+	}
+	return finalizeAsyncRelayResult(ctx, task, path, contentType)
+}
+
+// finalizeAsyncRelayResult 只在本次保存执行中完成归档，调用前必须持久化唯一保存机会。
+func finalizeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, path, contentType string) bool {
+	// 先持久化完整上游响应；下载失败后保留核对依据，不重新发起生成或保存。
 	if task.ResultFilePath != path {
 		result := model.DB.Model(&model.AsyncRelayTask{}).Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).
 			Updates(map[string]any{"result_file_path": path, "result_content_type": contentType, "updated_at": common.GetTimestamp()})
@@ -335,7 +343,7 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 		for _, source := range sources {
 			result, err := saveAsyncMediaSource(ctx, source)
 			if err != nil {
-				retryAsyncRelayMedia(task, "生成已完成，保存媒体失败："+err.Error())
+				failAsyncRelayTask(task, "生成已完成，保存媒体失败："+err.Error()+"，自动重试已关闭")
 				return true
 			}
 			media = append(media, result)
@@ -373,17 +381,17 @@ func completeAsyncRelayResult(ctx context.Context, task *model.AsyncRelayTask, p
 	return true
 }
 
-// retryAsyncRelayMedia 使用有限次数的延后重试，只处理已经生成的媒体文件。
-func retryAsyncRelayMedia(task *model.AsyncRelayTask, message string) {
-	task.MediaAttempts++
-	if task.MediaAttempts > 3 {
-		failAsyncRelayTask(task, message)
-		return
+// beginAsyncRelayMediaSave 在下载或写入前占用唯一保存机会，进程中断也不会重复执行。
+func beginAsyncRelayMediaSave(task *model.AsyncRelayTask) bool {
+	result := model.DB.Model(&model.AsyncRelayTask{}).
+		Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).
+		Where("media_attempts = ? OR media_attempts IS NULL", 0).
+		Where("next_attempt_at = ? OR next_attempt_at IS NULL", 0).
+		Updates(map[string]any{"media_attempts": 1, "updated_at": common.GetTimestamp()})
+	if result.Error != nil || result.RowsAffected != 1 {
+		failAsyncRelayTask(task, "保存文件未执行或已中断，自动重试已关闭")
+		return false
 	}
-	task.Status = model.AsyncRelayTaskStatusWaiting
-	task.Error = message + "，稍后自动重试保存"
-	task.NextAttemptAt = common.GetTimestamp() + int64(task.MediaAttempts*10)
-	if _, err := task.UpdateWithStatus(model.AsyncRelayTaskStatusProcessing); err != nil {
-		common.SysError("保存媒体重试状态失败: " + err.Error())
-	}
+	task.MediaAttempts = 1
+	return true
 }

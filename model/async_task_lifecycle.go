@@ -48,7 +48,7 @@ func (task *AsyncRelayTask) SyncLog(tx *gorm.DB) error {
 		return nil
 	}
 	status, progress := TaskStatusInProgress, "10%"
-	// 收到完整结果后的重试只是在保存文件，不再显示为刚开始生成。
+	// 收到完整结果后正在保存文件，不再显示为刚开始生成。
 	if task.ResultFilePath != "" {
 		progress = "90%"
 	}
@@ -72,7 +72,6 @@ func ClaimAsyncRelayTaskForNode(nodeID, workerID string) (*AsyncRelayTask, error
 		var candidate AsyncRelayTask
 		err := DB.Where("(node_id = ? OR node_id = ? OR node_id IS NULL) AND status IN ?", nodeID, "", []AsyncRelayTaskStatus{AsyncRelayTaskStatusPending, AsyncRelayTaskStatusWaiting}).
 			Where("status = ? OR updated_at <= ?", AsyncRelayTaskStatusPending, common.GetTimestamp()-5).
-			Where("next_attempt_at <= ? OR next_attempt_at IS NULL", common.GetTimestamp()).
 			Order("updated_at asc, id asc").First(&candidate).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

@@ -276,7 +276,7 @@ func TestAsyncRelayWorkerSurvivesClientCancellationAndChargesOnce(t *testing.T) 
 	assert.Equal(t, int32(1), requests.Load())
 }
 
-func TestAsyncRelayStorageRetryReusesSavedResponseWithoutResubmission(t *testing.T) {
+func TestAsyncRelayNoAutomaticRetryStorage(t *testing.T) {
 	prepareAsyncMediaController(t)
 	settings := system_setting.GetFetchSetting()
 	previousProtection := settings.EnableSSRFProtection
@@ -310,32 +310,24 @@ func TestAsyncRelayStorageRetryReusesSavedResponseWithoutResubmission(t *testing
 	require.True(t, completeAsyncRelayResult(context.Background(), claimed, path, "application/json"))
 	saved, err := model.GetAsyncRelayTaskByTaskID(task.TaskID)
 	require.NoError(t, err)
-	assert.Equal(t, model.AsyncRelayTaskStatusWaiting, saved.Status)
+	assert.Equal(t, model.AsyncRelayTaskStatusFailed, saved.Status)
 	assert.Equal(t, path, saved.ResultFilePath)
+	assert.Zero(t, saved.NextAttemptAt)
+	assert.Contains(t, saved.Error, "保存媒体失败")
 	_, err = os.Stat(path)
 	require.NoError(t, err)
-	count, err := ProcessAsyncRelayTasks(context.Background(), 1)
-	require.NoError(t, err)
-	assert.Zero(t, count)
-	require.NoError(t, model.DB.Model(saved).Updates(map[string]any{"updated_at": common.GetTimestamp() - 10, "next_attempt_at": 0}).Error)
-	count, err = ProcessAsyncRelayTasks(context.Background(), 1)
-	require.NoError(t, err)
-	assert.Equal(t, 1, count)
-	saved, err = model.GetAsyncRelayTaskByTaskID(task.TaskID)
-	require.NoError(t, err)
-	require.Equal(t, model.AsyncRelayTaskStatusSucceeded, saved.Status, saved.Error)
-	assert.Equal(t, int32(2), downloads.Load())
-	assert.Empty(t, saved.Error)
-	// 归档仍保留重试所需信息，对外仅提供本站文件入口。
-	media := asyncRelayMediaLinks(saved, "/api/task/")
-	require.Len(t, media, 1)
-	var stored []model.AsyncRelayMedia
-	require.NoError(t, common.UnmarshalJsonStr(saved.ResultFiles, &stored))
-	require.Len(t, stored, 1)
-	assert.Equal(t, source.URL+"/image.png", stored[0].SourceURL)
-	view, err := common.Marshal(media)
-	require.NoError(t, err)
-	assert.NotContains(t, string(view), source.URL)
+	// 即使时间已过且下载服务恢复，后台也不再下载或重新生成。
+	require.NoError(t, model.DB.Model(saved).Updates(map[string]any{"updated_at": common.GetTimestamp() - 100, "next_attempt_at": 0}).Error)
+	for range 3 {
+		count, err := ProcessAsyncRelayTasks(context.Background(), 1)
+		require.NoError(t, err)
+		assert.Zero(t, count)
+	}
+	assert.Equal(t, int32(1), downloads.Load())
+	var taskLog model.Task
+	require.NoError(t, model.DB.First(&taskLog, saved.LogID).Error)
+	assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), taskLog.Status)
+	assert.Contains(t, taskLog.FailReason, "保存媒体失败")
 }
 
 func TestAsyncRelayVideoCompletionStoresLocalVideoAndKeepsOneTaskLog(t *testing.T) {

@@ -31,7 +31,7 @@ const (
 // AsyncRelayTask 保存需要后台处理的图片、视频以及 Gemini 生图请求。
 // 文件字段只保存服务器本地路径或对象存储地址，不把大文件直接写入数据库。
 type AsyncRelayTask struct {
-	// 文件下载重试独立于上游提交，重试结果保存时不再次扣费或生成。
+	// 保存前占用唯一执行机会；旧版重试字段保留，用于识别并结束历史待重试记录。
 	MediaAttempts int    `json:"-"`
 	NextAttemptAt int64  `json:"-" gorm:"bigint;index"`
 	ID            int64  `json:"id" gorm:"primaryKey"`
@@ -210,7 +210,7 @@ func HasPendingAsyncRelayTasks() bool {
 	return err == nil && id != 0
 }
 
-// RecoverStaleAsyncRelayTasks 将长时间没有更新的处理中任务重新放回队列。
+// RecoverStaleAsyncRelayTasks 回收超时执行者，仅恢复首次执行或已有任务编号的正常查询。
 // timeoutSeconds 省略或传入非正数时使用默认的十分钟超时值，返回本次回收数量。
 func RecoverStaleAsyncRelayTasks(timeoutSeconds ...int64) (int64, error) {
 	timeout := AsyncRelayTaskDefaultProcessingTimeoutSeconds
@@ -226,7 +226,13 @@ func RecoverStaleAsyncRelayTasks(timeoutSeconds ...int64) (int64, error) {
 	for _, task := range tasks {
 		previousWorker := task.WorkerID
 		task.Status, task.WorkerID = AsyncRelayTaskStatusPending, ""
-		if task.LinkedTaskID != "" || task.ResultFilePath != "" || task.ResponseFilePath != "" {
+		if task.MediaAttempts > 0 || task.NextAttemptAt > 0 {
+			// 已开始保存或旧版安排过重试的任务不能重新保存文件。
+			task.Status = AsyncRelayTaskStatusFailed
+			task.Error = "文件保存曾失败或中断，自动重试已关闭"
+			task.NextAttemptAt = 0
+			task.FinishedAt = common.GetTimestamp()
+		} else if task.LinkedTaskID != "" || task.ResultFilePath != "" || task.ResponseFilePath != "" {
 			task.Status = AsyncRelayTaskStatusWaiting
 		} else if task.DispatchStartedAt > 0 {
 			// 已提交但结果未知时不自动重发，避免重复生成和重复扣费。
