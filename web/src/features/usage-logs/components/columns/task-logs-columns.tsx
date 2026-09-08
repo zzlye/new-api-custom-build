@@ -24,6 +24,13 @@ import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
@@ -40,6 +47,7 @@ import {
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
 import { TaskMediaResult } from '../task-media-result'
+import { TaskMediaPreview } from '../task-media-preview'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -91,6 +99,34 @@ function AudioPreviewCell({ log }: { log: TaskLog }) {
         clips={clips as AudioClip[]}
       />
     </>
+  )
+}
+
+// 旧视频日志没有内部异步详情，预览时通过已登录请求读取，避免浏览器直接访问受保护的原生接口。
+function LegacyVideoPreviewCell({ taskId }: { taskId: string }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger className='text-foreground text-xs hover:underline'>
+        {t('Click to preview video')}
+      </DialogTrigger>
+      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-5xl'>
+        <DialogHeader>
+          <DialogTitle>{t('Generated video')}</DialogTitle>
+        </DialogHeader>
+        {open && (
+          <TaskMediaPreview
+            media={{
+              url: `/v1/videos/${taskId}/content`,
+              kind: 'video',
+              content_type: 'video/mp4',
+            }}
+            index={0}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -254,7 +290,10 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const [dialogOpen, setDialogOpen] = useState(false)
 
         // 成功、失败和排队记录都提供完整详情，生成结果不再是唯一入口。
-        if (log.is_async) return <TaskMediaResult log={log} />
+        // 以媒体清单为准兼容旧接口返回，避免异步日志因字段缺失退回原生视频链接。
+        if (log.is_async || (log.media && log.media.length > 0)) {
+          return <TaskMediaResult log={log} />
+        }
         const isSunoSuccess =
           log.platform === 'suno' && status === TASK_STATUS.SUCCESS
         if (isSunoSuccess) {
@@ -281,17 +320,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         const isUrl = Boolean(log.result_url || failReason?.startsWith('http'))
 
         if (isSuccess && isVideoTask && isUrl) {
-          const videoUrl = `/v1/videos/${log.task_id}/content`
-          return (
-            <a
-              href={videoUrl}
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-foreground text-xs hover:underline'
-            >
-              {t('Click to preview video')}
-            </a>
-          )
+          return <LegacyVideoPreviewCell taskId={log.task_id} />
         }
 
         if (!failReason) {
