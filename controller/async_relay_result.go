@@ -223,22 +223,24 @@ func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.A
 		downloadCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 		request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, source.Value, nil)
-		if err != nil {
-			return model.AsyncRelayMedia{}, err
-		}
+		if err != nil { return model.AsyncRelayMedia{}, err }
 		client := service.GetSSRFProtectedHTTPClient()
 		if client == nil {
 			return model.AsyncRelayMedia{}, fmt.Errorf("媒体下载服务尚未初始化")
 		}
-		response, err := client.Do(request)
-		if err != nil {
-			return model.AsyncRelayMedia{}, fmt.Errorf("下载生成文件失败")
+		// 临时媒体地址可能在任务完成后短暂不可用，采用递增等待进行抓取重试。
+		var response *http.Response
+		var lastErr error
+		for attempt, delay := range []time.Duration{0, time.Second, 3 * time.Second, 5 * time.Second} {
+			if attempt > 0 { select { case <-downloadCtx.Done(): return model.AsyncRelayMedia{}, downloadCtx.Err(); case <-time.After(delay): } }
+			response, err = client.Do(request)
+			if err == nil && response.StatusCode == http.StatusOK { break }
+			if err != nil { lastErr = err } else { lastErr = fmt.Errorf("HTTP %d", response.StatusCode); response.Body.Close() }
+			response = nil
 		}
-		closer, reader = response.Body, response.Body
+		if response == nil { return model.AsyncRelayMedia{}, fmt.Errorf("下载生成文件失败（重试4次）：%v", lastErr) }
+		reader, closer = response.Body, response.Body
 		defer closer.Close()
-		if response.StatusCode != http.StatusOK {
-			return model.AsyncRelayMedia{}, fmt.Errorf("下载生成文件失败（HTTP %d）", response.StatusCode)
-		}
 	}
 	path, file, err := common.CreateAsyncMediaFile()
 	if err != nil {
