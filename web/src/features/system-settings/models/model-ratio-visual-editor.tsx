@@ -575,6 +575,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           // 按秒计费复用模型单价字段，并用独立模式标记区分按请求计费。
           billingModeMap[name] = 'per_second'
           setIfPresent(priceMap, name, data.price)
+          if (data.billingExpr?.trim()) billingExprMap[name] = data.billingExpr.trim()
         } else if (data.price && data.price !== '') {
           setIfPresent(priceMap, name, data.price)
         } else {

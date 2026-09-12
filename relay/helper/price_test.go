@@ -3,6 +3,7 @@ package helper
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -312,6 +313,46 @@ func TestModelPriceHelperPerCallPerSecondUsesSecondsOnce(t *testing.T) {
 	require.Equal(t, float64(2_100_000), priceData.ApplyOtherRatiosToFloat(float64(priceData.Quota)))
 	require.Equal(t, 1_400_000, priceData.Quota)
 	require.Equal(t, float64(8), priceData.OtherRatios()["seconds"])
+}
+
+func TestModelPriceHelperPerSecondUsesResolutionPriceExpression(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+
+	prices, err := common.Marshal(map[string]float64{"video-resolution-price": 0.4})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(prices)))
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"video-resolution-price":"per_second"}`,
+		"billing_setting.billing_expr":    `{"video-resolution-price":"param(\"resolution\") == \"1080p\" ? 0.75 : param(\"resolution\") == \"480p\" ? 0.23 : 0.4"}`,
+		"group_ratio_setting.group_ratio": `{"default":1}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{"resolution":"1080p"}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{OriginModelName: "video-resolution-price", UserGroup: "default", UsingGroup: "default"}
+	info.PriceData.AddOtherRatio("seconds", 4)
+	expr, exists := billing_setting.GetBillingExpr("video-resolution-price")
+	require.True(t, exists)
+	require.NotEmpty(t, expr)
+
+	priceData, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	// 1080p 每秒 0.75 美元，4 秒共 3 美元；分辨率倍率在最终额度应用阶段生效。
+	require.Equal(t, 800_000, priceData.Quota)
+	require.Equal(t, float64(1_500_000), priceData.ApplyOtherRatiosToFloat(float64(priceData.Quota)))
+	require.InDelta(t, 0.75/0.4, priceData.OtherRatios()["resolution"], 0.000001)
 }
 
 func TestModelPriceHelperPerCallPerSecondRejectsDefaultPriceFallback(t *testing.T) {

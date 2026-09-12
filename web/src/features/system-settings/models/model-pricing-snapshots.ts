@@ -272,6 +272,7 @@ export const buildModelSnapshots = ({
     if (modeForModel === 'per_second') {
       return {
         name,
+        billingExpr: billingExprMap[name] || '',
         price,
         ratio,
         cacheRatio: cache,

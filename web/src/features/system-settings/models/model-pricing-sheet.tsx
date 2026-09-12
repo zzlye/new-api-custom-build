@@ -48,6 +48,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   InputGroup,
   InputGroupAddon,
@@ -469,9 +470,9 @@ export const ModelPricingEditorPanel = forwardRef<
         audioCompletionRatio: values.audioCompletionRatio || '',
       }
 
-      if (pricingMode === 'tiered_expr') {
+      if (pricingMode === 'tiered_expr' || pricingMode === 'per-second') {
         data.billingExpr = billingExpr
-        data.requestRuleExpr = requestRuleExpr
+        if (pricingMode === 'tiered_expr') data.requestRuleExpr = requestRuleExpr
       }
 
       return data
@@ -655,6 +656,18 @@ export const ModelPricingEditorPanel = forwardRef<
                           </FormItem>
                         )}
                       />
+                      <Field>
+                        <FieldLabel>{t('Resolution pricing expression')}</FieldLabel>
+                        <Textarea
+                          value={billingExpr}
+                          onChange={(event) => setBillingExpr(event.target.value)}
+                          placeholder='param("resolution") == "1080p" ? 0.75 : param("resolution") == "480p" ? 0.23 : 0.4'
+                          className='font-mono text-xs'
+                        />
+                        <FieldDescription>
+                          {t('Optional. Return the USD per-second price for the requested resolution. Use param("resolution") and param("seconds").')}
+                        </FieldDescription>
+                      </Field>
                     </FieldGroup>
                   </TabsContent>
 

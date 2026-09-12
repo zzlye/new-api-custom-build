@@ -402,6 +402,10 @@ func updatePricing() {
 		}
 		if billingMode := billing_setting.GetBillingMode(model); billingMode == billing_setting.BillingModePerSecond && findPrice {
 			pricing.BillingMode = billingMode
+			// 按秒模型也返回分辨率定价表达式，供模型详情展示和配置同步使用。
+			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
+				pricing.BillingExpr = expr
+			}
 		} else if billingMode == billing_setting.BillingModeTieredExpr {
 			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
 				pricing.BillingMode = billingMode

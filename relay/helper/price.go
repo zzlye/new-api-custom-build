@@ -219,6 +219,28 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 		}
 	}
 	perSecondBilling := billingMode == billing_setting.BillingModePerSecond && usePrice
+	if perSecondBilling {
+		// 按秒模型配置表达式后，表达式返回当前分辨率对应的每秒美元价格。
+		// 将结果换算成 resolution 倍率，保留原有秒数计费和结算链路。
+		if expr, ok := billing_setting.GetBillingExpr(info.OriginModelName); ok && strings.TrimSpace(expr) != "" {
+			requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+			if err != nil {
+				return hosttypes.PriceData{}, fmt.Errorf("读取分辨率定价请求失败: %w", err)
+			}
+			effectivePrice, _, err := billingexpr.RunExprWithRequest(expr, billingexpr.TokenParams{}, requestInput)
+			if err != nil || effectivePrice <= 0 || math.IsNaN(effectivePrice) || math.IsInf(effectivePrice, 0) {
+				if err == nil {
+					err = fmt.Errorf("表达式返回的价格无效: %g", effectivePrice)
+				}
+				return hosttypes.PriceData{}, fmt.Errorf("分辨率定价表达式执行失败: %w", err)
+			}
+			if modelPrice > 0 {
+				preservedRatios["resolution"] = effectivePrice / modelPrice
+			} else {
+				modelPrice = effectivePrice
+			}
+		}
+	}
 
 	var quota int
 	freeModel := false
