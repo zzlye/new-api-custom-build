@@ -656,18 +656,6 @@ export const ModelPricingEditorPanel = forwardRef<
                           </FormItem>
                         )}
                       />
-                      <Field>
-                        <FieldLabel>{t('Resolution pricing expression')}</FieldLabel>
-                        <Textarea
-                          value={billingExpr}
-                          onChange={(event) => setBillingExpr(event.target.value)}
-                          placeholder='param("resolution") == "1080p" ? 0.75 : param("resolution") == "480p" ? 0.23 : 0.4'
-                          className='font-mono text-xs'
-                        />
-                        <FieldDescription>
-                          {t('Optional. Return the USD per-second price for the requested resolution. Use param("resolution") and param("seconds").')}
-                        </FieldDescription>
-                      </Field>
                     </FieldGroup>
                   </TabsContent>
 
@@ -707,6 +695,35 @@ export const ModelPricingEditorPanel = forwardRef<
                           </FormItem>
                         )}
                       />
+                      <Field>
+                        <FieldLabel>{t('Resolution pricing expression')}</FieldLabel>
+                        <div className='flex flex-wrap gap-2'>
+                          {[
+                            ['480p 模板', 'param("resolution") == "480p" ? 0.23 : 0.4'],
+                            ['720p 模板', 'param("resolution") == "720p" ? 0.4 : 0.23'],
+                            ['1080p 模板', 'param("resolution") == "1080p" ? 0.75 : 0.4'],
+                          ].map(([label, expression]) => (
+                            <Button
+                              key={label}
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              onClick={() => setBillingExpr(expression)}
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
+                        <Textarea
+                          value={billingExpr}
+                          onChange={(event) => setBillingExpr(event.target.value)}
+                          placeholder='param("resolution") == "1080p" ? 0.75 : param("resolution") == "480p" ? 0.23 : 0.4'
+                          className='mt-2 font-mono text-xs'
+                        />
+                        <FieldDescription>
+                          {t('可选：按请求分辨率返回每秒价格。点击上方模板后，直接修改数字即可。')}
+                        </FieldDescription>
+                      </Field>
                     </FieldGroup>
                   </TabsContent>
 
