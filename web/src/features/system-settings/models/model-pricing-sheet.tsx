@@ -48,7 +48,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import {
   InputGroup,
   InputGroupAddon,
@@ -155,6 +154,8 @@ export const ModelPricingEditorPanel = forwardRef<
     ...EMPTY_LANE_ENABLED,
   })
   const [billingExpr, setBillingExpr] = useState('')
+  const [resolutionPricing, setResolutionPricing] = useState<'fixed' | 'resolution'>('fixed')
+  const [resolutionPrices, setResolutionPrices] = useState({ '480p': '', '720p': '', '1080p': '' })
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
@@ -200,6 +201,13 @@ export const ModelPricingEditorPanel = forwardRef<
       })
       setPricingMode(initialPricingMode)
       setBillingExpr(editData.billingExpr || '')
+      const expression = editData.billingExpr || ''
+      setResolutionPricing(expression ? 'resolution' : 'fixed')
+      setResolutionPrices({
+        '480p': expression.match(/"480p"\s*\?\s*([0-9.]+)/)?.[1] || '',
+        '720p': expression.match(/"720p"\s*\?\s*([0-9.]+)/)?.[1] || '',
+        '1080p': expression.match(/"1080p"\s*\?\s*([0-9.]+)/)?.[1] || '',
+      })
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
       form.reset({
@@ -215,6 +223,8 @@ export const ModelPricingEditorPanel = forwardRef<
       })
       setPricingMode('per-token')
       setBillingExpr('')
+      setResolutionPricing('fixed')
+      setResolutionPrices({ '480p': '', '720p': '', '1080p': '' })
       setRequestRuleExpr('')
     }
 
@@ -661,7 +671,29 @@ export const ModelPricingEditorPanel = forwardRef<
 
                   <TabsContent value='per-second' className='pt-0'>
                     <FieldGroup className='gap-5'>
-                      <FormField
+                      <Field>
+                        <FieldLabel>视频定价方式</FieldLabel>
+                        <div className='flex gap-2'>
+                          {([
+                            ['fixed', '固定价格'],
+                            ['resolution', '按分辨率'],
+                          ] as const).map(([value, label]) => (
+                            <Button
+                              key={value}
+                              type='button'
+                              variant={resolutionPricing === value ? 'default' : 'outline'}
+                              size='sm'
+                              onClick={() => {
+                                setResolutionPricing(value)
+                                if (value === 'fixed') setBillingExpr('')
+                              }}
+                            >
+                              {label}
+                            </Button>
+                          ))}
+                        </div>
+                      </Field>
+                      {resolutionPricing === 'fixed' && <FormField
                         control={form.control}
                         name='price'
                         render={({ field }) => (
@@ -694,36 +726,39 @@ export const ModelPricingEditorPanel = forwardRef<
                             </Field>
                           </FormItem>
                         )}
-                      />
-                      <Field>
-                        <FieldLabel>{t('Resolution pricing expression')}</FieldLabel>
-                        <div className='flex flex-wrap gap-2'>
-                          {[
-                            ['480p 模板', 'param("resolution") == "480p" ? 0.23 : 0.4'],
-                            ['720p 模板', 'param("resolution") == "720p" ? 0.4 : 0.23'],
-                            ['1080p 模板', 'param("resolution") == "1080p" ? 0.75 : 0.4'],
-                          ].map(([label, expression]) => (
-                            <Button
-                              key={label}
-                              type='button'
-                              variant='outline'
-                              size='sm'
-                              onClick={() => setBillingExpr(expression)}
-                            >
-                              {label}
-                            </Button>
-                          ))}
-                        </div>
-                        <Textarea
-                          value={billingExpr}
-                          onChange={(event) => setBillingExpr(event.target.value)}
-                          placeholder='param("resolution") == "1080p" ? 0.75 : param("resolution") == "480p" ? 0.23 : 0.4'
-                          className='mt-2 font-mono text-xs'
-                        />
-                        <FieldDescription>
-                          {t('可选：按请求分辨率返回每秒价格。点击上方模板后，直接修改数字即可。')}
-                        </FieldDescription>
-                      </Field>
+                      />}
+                      {resolutionPricing === 'resolution' && (
+                        <Field>
+                          <FieldLabel>各分辨率每秒价格</FieldLabel>
+                          <div className='grid gap-3 sm:grid-cols-3'>
+                            {(['480p', '720p', '1080p'] as const).map((resolution) => (
+                              <Field key={resolution}>
+                                <FieldLabel className='text-xs'>{resolution}</FieldLabel>
+                                <InputGroup>
+                                  <InputGroupAddon>$</InputGroupAddon>
+                                  <InputGroupInput
+                                    inputMode='decimal'
+                                    placeholder='0.00'
+                                    value={resolutionPrices[resolution]}
+                                    onChange={(event) => {
+                                      const value = event.target.value
+                                      if (!numericDraftRegex.test(value)) return
+                                      const next = { ...resolutionPrices, [resolution]: value }
+                                      setResolutionPrices(next)
+                                      const fallback = next['720p'] || next['480p'] || next['1080p'] || '0'
+                                      setBillingExpr(
+                                        `param("resolution") == "1080p" ? ${next['1080p'] || fallback} : param("resolution") == "720p" ? ${next['720p'] || fallback} : ${next['480p'] || fallback}`
+                                      )
+                                    }}
+                                  />
+                                  <InputGroupAddon align='inline-end'>/秒</InputGroupAddon>
+                                </InputGroup>
+                              </Field>
+                            ))}
+                          </div>
+                          <FieldDescription>三个分辨率都填写后保存，实际请求会根据 resolution 自动匹配价格。</FieldDescription>
+                        </Field>
+                      )}
                     </FieldGroup>
                   </TabsContent>
 
@@ -790,3 +825,9 @@ export const ModelPricingEditorPanel = forwardRef<
     </div>
   )
 })
+
+
+
+
+
+
