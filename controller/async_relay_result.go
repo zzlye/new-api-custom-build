@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,6 +26,23 @@ type asyncMediaSource struct {
 	Base64      bool
 }
 
+// 只识别结果文本中的 Markdown 图片，不把普通超链接当成生成文件。
+// 支持尖括号地址、可选标题和地址中的一层括号，保留签名查询参数原文。
+var asyncMarkdownImagePattern = regexp.MustCompile(`!\[[^\]\r\n]*\]\(\s*(?:<([^<>\r\n]+)>|([^\s()<>]+(?:\([^\s()<>]*\)[^\s()<>]*)*))(?:\s+["'][^\r\n]*?["'])?\s*\)`)
+
+func collectAsyncMarkdownImages(text string, sources *[]asyncMediaSource) {
+	// 超过归档上限时交由现有数量校验拒绝，限制超长回复的解析开销。
+	for _, match := range asyncMarkdownImagePattern.FindAllStringSubmatch(text, 129) {
+		value := match[1]
+		if value == "" {
+			value = match[2]
+		}
+		if strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "data:image/") {
+			*sources = append(*sources, asyncMediaSource{Value: value, SourceURL: asyncMediaSourceURL(value)})
+		}
+	}
+}
+
 // collectAsyncMediaSources 识别图片接口、Gemini、Responses 及聊天生图的结果结构。
 func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 	switch item := value.(type) {
@@ -35,6 +53,8 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 	case string:
 		if strings.HasPrefix(item, "https://") || strings.HasPrefix(item, "http://") || strings.HasPrefix(item, "data:") {
 			*sources = append(*sources, asyncMediaSource{Value: item, SourceURL: asyncMediaSourceURL(item)})
+		} else {
+			collectAsyncMarkdownImages(item, sources)
 		}
 	case map[string]any:
 		inlineStart := len(*sources)
@@ -63,6 +83,10 @@ func collectAsyncMediaSources(value any, sources *[]asyncMediaSource) {
 		}
 		// 内嵌数据优先保存，备用地址只作为这份媒体的来源记录，不重复下载。
 		var aliases []asyncMediaSource
+		// Gemini 将图片链接放在 parts.text；仍走相同的地址校验、下载和文件头检查。
+		if text, ok := item["text"].(string); ok {
+			collectAsyncMarkdownImages(text, &aliases)
+		}
 		for _, key := range []string{"url", "image_url", "imageUrl", "video_url", "videoUrl"} {
 			if child, ok := item[key]; ok {
 				collectAsyncMediaSources(child, &aliases)
