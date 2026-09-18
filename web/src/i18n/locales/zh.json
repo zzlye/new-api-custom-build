@@ -5407,6 +5407,11 @@
     "Refresh task details": "刷新任务详情",
     "Background media concurrency": "后台媒体并发数",
     "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "每个服务进程同时执行的后台媒体请求数，超出后排队。默认 4，设为 0 时不额外限制并发，原有请求速率限制仍生效。仅根用户可修改。",
-    "Enter an integer from 0 to 256.": "请输入 0 至 256 的整数。"
+    "Enter an integer from 0 to 256.": "请输入 0 至 256 的整数。",
+    "Video pricing method": "视频定价方式",
+    "By resolution": "按分辨率",
+    "Price per second by resolution": "各分辨率每秒价格",
+    "Price per second": "每秒价格",
+    "Enter a price greater than zero for every resolution.": "请为每个分辨率填写大于零的价格。"
   }
 }

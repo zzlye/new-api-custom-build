@@ -99,15 +99,21 @@ func readAsyncRelayMediaSources(reader io.Reader, contentType string) ([]asyncMe
 			return nil, fmt.Errorf("上游生成结果格式有误")
 		}
 		collectAsyncMediaSources(value, &sources)
+		if len(sources) == 0 {
+			if reason := asyncMediaResponseDiagnostic(value); reason != "" {
+				return nil, fmt.Errorf("%s", reason)
+			}
+		}
 		return sources, nil
 	}
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), int(common.AsyncMediaMaxFileBytes))
 	var event strings.Builder
+	var diagnostic string
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
-			if err := collectAsyncStreamMediaEvent(event.String(), &sources); err != nil {
+			if err := collectAsyncStreamMediaEvent(event.String(), &sources, &diagnostic); err != nil {
 				return nil, err
 			}
 			event.Reset()
@@ -123,14 +129,18 @@ func readAsyncRelayMediaSources(reader io.Reader, contentType string) ([]asyncMe
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("读取上游生成事件失败")
 	}
-	if err := collectAsyncStreamMediaEvent(event.String(), &sources); err != nil {
+	if err := collectAsyncStreamMediaEvent(event.String(), &sources, &diagnostic); err != nil {
 		return nil, err
+	}
+	// 流式响应先输出文字再输出图片属于正常情况，只在流结束且无媒体时报告原因。
+	if len(sources) == 0 && diagnostic != "" {
+		return nil, fmt.Errorf("%s", diagnostic)
 	}
 	return sources, nil
 }
 
 // collectAsyncStreamMediaEvent 只收集最终图片，Responses 的完整结果与完成事件随后统一去重。
-func collectAsyncStreamMediaEvent(data string, sources *[]asyncMediaSource) error {
+func collectAsyncStreamMediaEvent(data string, sources *[]asyncMediaSource, diagnostic *string) error {
 	data = strings.TrimSpace(data)
 	if data == "" || data == "[DONE]" {
 		return nil
@@ -162,6 +172,9 @@ func collectAsyncStreamMediaEvent(data string, sources *[]asyncMediaSource) erro
 		}
 	}
 	collectAsyncMediaSources(value, sources)
+	if reason := asyncMediaResponseDiagnostic(value); reason != "" {
+		*diagnostic = reason
+	}
 	return nil
 }
 
@@ -218,7 +231,7 @@ func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.A
 		reader = base64.NewDecoder(encoding, strings.NewReader(source.Value))
 	} else {
 		if err := service.ValidateSSRFProtectedFetchURL(source.Value); err != nil {
-			return model.AsyncRelayMedia{}, fmt.Errorf("生成文件地址校验失败")
+			return model.AsyncRelayMedia{}, fmt.Errorf("%s", asyncMediaURLValidationReason(err))
 		}
 		downloadCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
@@ -230,34 +243,16 @@ func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.A
 		if client == nil {
 			return model.AsyncRelayMedia{}, fmt.Errorf("媒体下载服务尚未初始化")
 		}
-		// 临时媒体地址可能在任务完成后短暂不可用，采用递增等待进行抓取重试。
-		var response *http.Response
-		var lastErr error
-		for attempt, delay := range []time.Duration{0, time.Second, 3 * time.Second, 5 * time.Second} {
-			if attempt > 0 {
-				select {
-				case <-downloadCtx.Done():
-					return model.AsyncRelayMedia{}, downloadCtx.Err()
-				case <-time.After(delay):
-				}
-			}
-			response, err = client.Do(request)
-			if err == nil && response.StatusCode == http.StatusOK {
-				break
-			}
-			if err != nil {
-				lastErr = err
-			} else {
-				lastErr = fmt.Errorf("HTTP %d", response.StatusCode)
-				response.Body.Close()
-			}
-			response = nil
-		}
-		if response == nil {
-			return model.AsyncRelayMedia{}, fmt.Errorf("下载生成文件失败（重试4次）：%v", lastErr)
+		// 只进行一次媒体下载，失败直接交由任务状态记录，禁止自动重复抓取。
+		response, err := client.Do(request)
+		if err != nil {
+			return model.AsyncRelayMedia{}, fmt.Errorf("下载生成文件失败")
 		}
 		reader, closer = response.Body, response.Body
 		defer closer.Close()
+		if response.StatusCode != http.StatusOK {
+			return model.AsyncRelayMedia{}, fmt.Errorf("下载生成文件失败（HTTP %d）", response.StatusCode)
+		}
 	}
 	path, file, err := common.CreateAsyncMediaFile()
 	if err != nil {

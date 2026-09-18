@@ -5407,6 +5407,11 @@
     "Refresh task details": "Refresh task details",
     "Background media concurrency": "Background media concurrency",
     "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.": "Simultaneous background media requests per service process. Extra tasks wait in the queue. Default: 4; 0 removes this extra limit. Request rate limits still apply. Only root can change this setting.",
-    "Enter an integer from 0 to 256.": "Enter an integer from 0 to 256."
+    "Enter an integer from 0 to 256.": "Enter an integer from 0 to 256.",
+    "Video pricing method": "Video pricing method",
+    "By resolution": "By resolution",
+    "Price per second by resolution": "Price per second by resolution",
+    "Price per second": "Price per second",
+    "Enter a price greater than zero for every resolution.": "Enter a price greater than zero for every resolution."
   }
 }

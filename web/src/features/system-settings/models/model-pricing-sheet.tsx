@@ -81,6 +81,14 @@ import {
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
 import { formatPricingNumber } from './pricing-format'
+import {
+  VIDEO_RESOLUTIONS,
+  EMPTY_RESOLUTION_PRICES,
+  readResolutionPrices,
+  hasValidResolutionPrices,
+  buildResolutionExpression,
+  type ResolutionPrices,
+} from './resolution-pricing'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
 export type { ModelRatioData } from './model-pricing-core'
@@ -154,8 +162,13 @@ export const ModelPricingEditorPanel = forwardRef<
     ...EMPTY_LANE_ENABLED,
   })
   const [billingExpr, setBillingExpr] = useState('')
-  const [resolutionPricing, setResolutionPricing] = useState<'fixed' | 'resolution'>('fixed')
-  const [resolutionPrices, setResolutionPrices] = useState({ '480p': '', '720p': '', '1080p': '' })
+  const [resolutionPricing, setResolutionPricing] = useState<
+    'fixed' | 'resolution'
+  >('fixed')
+  const [resolutionPrices, setResolutionPrices] = useState<ResolutionPrices>({
+    ...EMPTY_RESOLUTION_PRICES,
+  })
+  const [resolutionError, setResolutionError] = useState(false)
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
@@ -177,6 +190,7 @@ export const ModelPricingEditorPanel = forwardRef<
 
   useEffect(() => {
     const nextLaneState = createInitialLaneState(editData)
+    setResolutionError(false)
 
     if (editData) {
       let initialPricingMode: PricingMode = 'per-token'
@@ -201,13 +215,12 @@ export const ModelPricingEditorPanel = forwardRef<
       })
       setPricingMode(initialPricingMode)
       setBillingExpr(editData.billingExpr || '')
-      const expression = editData.billingExpr || ''
+      const expression =
+        initialPricingMode === 'per-second' ? editData.billingExpr || '' : ''
       setResolutionPricing(expression ? 'resolution' : 'fixed')
-      setResolutionPrices({
-        '480p': expression.match(/"480p"\s*\?\s*([0-9.]+)/)?.[1] || '',
-        '720p': expression.match(/"720p"\s*\?\s*([0-9.]+)/)?.[1] || '',
-        '1080p': expression.match(/"1080p"\s*\?\s*([0-9.]+)/)?.[1] || '',
-      })
+      setResolutionPrices(
+        readResolutionPrices(expression) ?? { ...EMPTY_RESOLUTION_PRICES }
+      )
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
       form.reset({
@@ -224,7 +237,7 @@ export const ModelPricingEditorPanel = forwardRef<
       setPricingMode('per-token')
       setBillingExpr('')
       setResolutionPricing('fixed')
-      setResolutionPrices({ '480p': '', '720p': '', '1080p': '' })
+      setResolutionPrices({ ...EMPTY_RESOLUTION_PRICES })
       setRequestRuleExpr('')
     }
 
@@ -358,29 +371,39 @@ export const ModelPricingEditorPanel = forwardRef<
   }
 
   const watchedValues = form.watch()
-  const previewRows = useMemo(
-    () =>
-      buildPreviewRows(
-        watchedValues,
-        pricingMode,
-        billingExpr,
-        requestRuleExpr,
-        promptPrice,
-        lanePrices,
-        laneEnabled,
-        t
-      ),
-    [
-      billingExpr,
-      laneEnabled,
-      lanePrices,
-      pricingMode,
-      promptPrice,
-      requestRuleExpr,
-      t,
+  const previewRows = useMemo(() => {
+    if (pricingMode === 'per-second' && resolutionPricing === 'resolution') {
+      return VIDEO_RESOLUTIONS.map((resolution) => ({
+        key: resolution,
+        label: resolution,
+        value: resolutionPrices[resolution]
+          ? `$${resolutionPrices[resolution]} / ${t('second')}`
+          : t('Empty'),
+        multiline: false,
+      }))
+    }
+    return buildPreviewRows(
       watchedValues,
-    ]
-  )
+      pricingMode,
+      billingExpr,
+      requestRuleExpr,
+      promptPrice,
+      lanePrices,
+      laneEnabled,
+      t
+    )
+  }, [
+    billingExpr,
+    resolutionPricing,
+    resolutionPrices,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    promptPrice,
+    requestRuleExpr,
+    t,
+    watchedValues,
+  ])
 
   const warnings = useMemo(() => {
     const nextWarnings: string[] = []
@@ -428,6 +451,11 @@ export const ModelPricingEditorPanel = forwardRef<
   }, [editData, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
   const validatePricingValues = useCallback(() => {
+    if (pricingMode === 'per-second' && resolutionPricing === 'resolution') {
+      const valid = hasValidResolutionPrices(resolutionPrices)
+      setResolutionError(!valid)
+      return valid
+    }
     if (
       pricingMode === 'per-second' &&
       toNumberOrNull(form.getValues('price')) === null
@@ -463,7 +491,16 @@ export const ModelPricingEditorPanel = forwardRef<
     }
 
     return true
-  }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t])
+  }, [
+    form,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    promptPrice,
+    resolutionPricing,
+    resolutionPrices,
+    t,
+  ])
 
   const buildSubmitData = useCallback(
     (values: ModelPricingFormValues) => {
@@ -480,14 +517,27 @@ export const ModelPricingEditorPanel = forwardRef<
         audioCompletionRatio: values.audioCompletionRatio || '',
       }
 
-      if (pricingMode === 'tiered_expr' || pricingMode === 'per-second') {
+      if (pricingMode === 'per-second') {
+        data.billingExpr = ''
+        if (resolutionPricing === 'resolution') {
+          // 基础单价使用720p价格，后端按请求分辨率计算倍率，无需另填隐藏字段。
+          data.price = String(Number(resolutionPrices['720p']))
+          data.billingExpr = buildResolutionExpression(resolutionPrices)
+        }
+      } else if (pricingMode === 'tiered_expr') {
         data.billingExpr = billingExpr
-        if (pricingMode === 'tiered_expr') data.requestRuleExpr = requestRuleExpr
+        data.requestRuleExpr = requestRuleExpr
       }
 
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr]
+    [
+      billingExpr,
+      pricingMode,
+      requestRuleExpr,
+      resolutionPricing,
+      resolutionPrices,
+    ]
   )
 
   useImperativeHandle(
@@ -672,20 +722,28 @@ export const ModelPricingEditorPanel = forwardRef<
                   <TabsContent value='per-second' className='pt-0'>
                     <FieldGroup className='gap-5'>
                       <Field>
-                        <FieldLabel>视频定价方式</FieldLabel>
+                        <FieldLabel>{t('Video pricing method')}</FieldLabel>
                         <div className='flex gap-2'>
-                          {([
-                            ['fixed', '固定价格'],
-                            ['resolution', '按分辨率'],
-                          ] as const).map(([value, label]) => (
+                          {(
+                            [
+                              ['fixed', t('Fixed price')],
+                              ['resolution', t('By resolution')],
+                            ] as const
+                          ).map(([value, label]) => (
                             <Button
                               key={value}
                               type='button'
-                              variant={resolutionPricing === value ? 'default' : 'outline'}
+                              variant={
+                                resolutionPricing === value
+                                  ? 'default'
+                                  : 'outline'
+                              }
                               size='sm'
+                              aria-pressed={resolutionPricing === value}
                               onClick={() => {
                                 setResolutionPricing(value)
-                                if (value === 'fixed') setBillingExpr('')
+                                setResolutionError(false)
+                                form.clearErrors('price')
                               }}
                             >
                               {label}
@@ -693,70 +751,100 @@ export const ModelPricingEditorPanel = forwardRef<
                           ))}
                         </div>
                       </Field>
-                      {resolutionPricing === 'fixed' && <FormField
-                        control={form.control}
-                        name='price'
-                        render={({ field }) => (
-                          <FormItem className='contents'>
-                            <Field>
-                              <FieldLabel>{t('Fixed price')}</FieldLabel>
-                              <FormControl>
-                                <InputGroup>
-                                  <InputGroupAddon>$</InputGroupAddon>
-                                  <InputGroupInput
-                                    inputMode='decimal'
-                                    placeholder='0.35'
-                                    {...field}
-                                    onChange={(event) => {
-                                      const value = event.target.value
-                                      if (numericDraftRegex.test(value)) {
-                                        field.onChange(value)
-                                      }
-                                    }}
-                                  />
-                                  <InputGroupAddon align='inline-end'>
-                                    {t('per second')}
-                                  </InputGroupAddon>
-                                </InputGroup>
-                              </FormControl>
-                              <FieldDescription>
-                                {t('Cost in USD per second.')}
-                              </FieldDescription>
-                              <FormMessage />
-                            </Field>
-                          </FormItem>
-                        )}
-                      />}
+                      {resolutionPricing === 'fixed' && (
+                        <FormField
+                          control={form.control}
+                          name='price'
+                          render={({ field }) => (
+                            <FormItem className='contents'>
+                              <Field>
+                                <FieldLabel>{t('Fixed price')}</FieldLabel>
+                                <FormControl>
+                                  <InputGroup>
+                                    <InputGroupAddon>$</InputGroupAddon>
+                                    <InputGroupInput
+                                      inputMode='decimal'
+                                      placeholder='0.35'
+                                      {...field}
+                                      onChange={(event) => {
+                                        const value = event.target.value
+                                        if (numericDraftRegex.test(value)) {
+                                          field.onChange(value)
+                                        }
+                                      }}
+                                    />
+                                    <InputGroupAddon align='inline-end'>
+                                      {t('per second')}
+                                    </InputGroupAddon>
+                                  </InputGroup>
+                                </FormControl>
+                                <FieldDescription>
+                                  {t('Cost in USD per second.')}
+                                </FieldDescription>
+                                <FormMessage />
+                              </Field>
+                            </FormItem>
+                          )}
+                        />
+                      )}
                       {resolutionPricing === 'resolution' && (
                         <Field>
-                          <FieldLabel>各分辨率每秒价格</FieldLabel>
+                          <FieldLabel>
+                            {t('Price per second by resolution')}
+                          </FieldLabel>
                           <div className='grid gap-3 sm:grid-cols-3'>
-                            {(['480p', '720p', '1080p'] as const).map((resolution) => (
+                            {VIDEO_RESOLUTIONS.map((resolution) => (
                               <Field key={resolution}>
-                                <FieldLabel className='text-xs'>{resolution}</FieldLabel>
+                                <FieldLabel className='text-xs'>
+                                  {resolution}
+                                </FieldLabel>
                                 <InputGroup>
                                   <InputGroupAddon>$</InputGroupAddon>
                                   <InputGroupInput
                                     inputMode='decimal'
                                     placeholder='0.00'
+                                    aria-label={`${resolution} ${t('Price per second')}`}
+                                    aria-invalid={
+                                      resolutionError &&
+                                      !(
+                                        Number(resolutionPrices[resolution]) >
+                                          0 &&
+                                        Number.isFinite(
+                                          Number(resolutionPrices[resolution])
+                                        )
+                                      )
+                                    }
                                     value={resolutionPrices[resolution]}
                                     onChange={(event) => {
                                       const value = event.target.value
                                       if (!numericDraftRegex.test(value)) return
-                                      const next = { ...resolutionPrices, [resolution]: value }
+                                      const next = {
+                                        ...resolutionPrices,
+                                        [resolution]: value,
+                                      }
                                       setResolutionPrices(next)
-                                      const fallback = next['720p'] || next['480p'] || next['1080p'] || '0'
-                                      setBillingExpr(
-                                        `param("resolution") == "1080p" ? ${next['1080p'] || fallback} : param("resolution") == "720p" ? ${next['720p'] || fallback} : ${next['480p'] || fallback}`
-                                      )
+                                      if (hasValidResolutionPrices(next)) {
+                                        setResolutionError(false)
+                                      }
                                     }}
                                   />
-                                  <InputGroupAddon align='inline-end'>/秒</InputGroupAddon>
+                                  <InputGroupAddon align='inline-end'>
+                                    /{t('second')}
+                                  </InputGroupAddon>
                                 </InputGroup>
                               </Field>
                             ))}
                           </div>
-                          <FieldDescription>三个分辨率都填写后保存，实际请求会根据 resolution 自动匹配价格。</FieldDescription>
+                          {resolutionError && (
+                            <p
+                              role='alert'
+                              className='text-destructive text-sm'
+                            >
+                              {t(
+                                'Enter a price greater than zero for every resolution.'
+                              )}
+                            </p>
+                          )}
                         </Field>
                       )}
                     </FieldGroup>
@@ -825,9 +913,3 @@ export const ModelPricingEditorPanel = forwardRef<
     </div>
   )
 })
-
-
-
-
-
-
