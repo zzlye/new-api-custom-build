@@ -852,8 +852,9 @@ func (t *TaskSubmitReq) HasImage() bool {
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	type Alias TaskSubmitReq
 	aux := &struct {
-		Metadata json.RawMessage `json:"metadata,omitempty"`
-		Duration json.RawMessage `json:"duration,omitempty"`
+		Metadata       json.RawMessage `json:"metadata,omitempty"`
+		Duration       json.RawMessage `json:"duration,omitempty"`
+		InputReference json.RawMessage `json:"input_reference,omitempty"`
 		*Alias
 	}{
 		Alias: (*Alias)(t),
@@ -861,6 +862,21 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 
 	if err := common.Unmarshal(data, &aux); err != nil {
 		return err
+	}
+
+	// 入口兼容 URL/Data URL 字符串与 image_url 对象；内部统一取地址用于校验和任务分类。
+	// Sora 兼容适配器仍从原始请求体构造上游 JSON，因此不会把对象重新压成字符串。
+	t.InputReference = ""
+	if len(aux.InputReference) > 0 && string(aux.InputReference) != "null" {
+		if err := common.Unmarshal(aux.InputReference, &t.InputReference); err != nil {
+			var reference struct {
+				ImageURL string `json:"image_url"`
+			}
+			if err := common.Unmarshal(aux.InputReference, &reference); err != nil || strings.TrimSpace(reference.ImageURL) == "" {
+				return fmt.Errorf("input_reference must be a string or an object containing a non-empty image_url string")
+			}
+			t.InputReference = reference.ImageURL
+		}
 	}
 
 	if len(aux.Duration) > 0 {
