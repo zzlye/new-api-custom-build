@@ -82,6 +82,7 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	VideoInput        map[string]any
 	VideoProtocol     *video_setting.Protocol
 	TokenId           int
 	TokenKey          string

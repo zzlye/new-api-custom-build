@@ -22,6 +22,10 @@ func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	protocolRoute.GET("/", controller.ListVideoProtocols)
 	protocolRoute.GET("/:id", controller.GetVideoProtocol)
 	protocolRoute.PUT("/:id", controller.SaveVideoProtocol)
+	adapters := apiRouter.Group("/video-adapters", middleware.RootAuth())
+	adapters.GET("", controller.GetVideoAdapters)
+	adapters.PUT("", controller.SaveVideoAdapters)
+	adapters.POST("/preview", controller.PreviewVideoAdapter)
 	channelRoute := apiRouter.Group("/channel")
 	channelRoute.Use(middleware.AdminAuth())
 

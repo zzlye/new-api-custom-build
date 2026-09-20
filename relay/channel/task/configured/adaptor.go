@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -49,7 +50,35 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if !strings.HasPrefix(c.GetHeader("Content-Type"), "application/json") {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("可配置视频入口需要 JSON 请求"), "invalid_request", http.StatusBadRequest)
 	}
-	return a.TaskAdaptor.ValidateRequestAndSetAction(c, info)
+	var input map[string]any
+	if err := common.UnmarshalBodyReusable(c, &input); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+	}
+	normalized, err := a.protocol.Normalize(input)
+	if err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_video_parameters", http.StatusBadRequest)
+	}
+	if a.protocol.Capabilities != nil {
+		if err = service.ValidateVideoAssets(normalized, c.GetInt("id")); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_video_assets", http.StatusBadRequest)
+		}
+	}
+	// 映射错误在计费前拒绝，素材此时仅检查结构，稍后才生成签名地址。
+	if _, err = a.protocol.MapRequest(normalized); err != nil {
+		return service.TaskErrorWrapperLocal(err, "invalid_video_parameters", http.StatusBadRequest)
+	}
+	req := relaycommon.TaskSubmitReq{Model: fmt.Sprint(normalized["model"]), Duration: normalized["duration"].(int)}
+	req.Prompt, _ = normalized["prompt"].(string)
+	req.Size, _ = normalized["size"].(string)
+	info.Action = constant.TaskActionTextGenerate
+	for _, key := range []string{"image_urls", "video_urls", "audio_urls", "first_frame"} {
+		if normalized[key] != nil {
+			info.Action = constant.TaskActionGenerate
+		}
+	}
+	c.Set("task_request", req)
+	c.Set("video_adapter_input", normalized)
+	return nil
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -64,7 +93,16 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
 	var input map[string]any
-	if err := common.UnmarshalBodyReusable(c, &input); err != nil {
+	if value, ok := c.Get("video_adapter_input"); ok {
+		input, _ = value.(map[string]any)
+	}
+	if input == nil {
+		if err := common.UnmarshalBodyReusable(c, &input); err != nil {
+			return nil, err
+		}
+	}
+	input, err := service.CloneVideoInput(input)
+	if err != nil {
 		return nil, err
 	}
 	req, err := relaycommon.GetTaskRequest(c)
@@ -75,10 +113,20 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	// 转换使用校验和计费后的秒数，避免 duration 与 seconds 冲突。
 	input["duration"] = taskcommon.NormalizeVideoDurationSeconds(req.Duration, 4)
 	delete(input, "seconds")
-	if _, ok := input["image_urls"]; !ok && req.InputReference != "" {
+	if _, ok := input["image_urls"]; !ok && req.InputReference != "" && a.protocol.Capabilities == nil {
 		input["image_urls"] = []string{req.InputReference}
 	}
 	delete(input, "input_reference")
+	taskID := c.GetString(model.AsyncRelayContextKey)
+	if taskID == "" {
+		taskID = info.PublicTaskID
+	}
+	if err := service.ResolveVideoMedia(input, c.GetInt("id"), taskID, a.protocol.Capabilities != nil); err != nil {
+		return nil, err
+	}
+	if a.protocol.Capabilities != nil {
+		info.VideoInput = input
+	}
 	data, err := a.protocol.MapRequest(input)
 	if err != nil {
 		return nil, err

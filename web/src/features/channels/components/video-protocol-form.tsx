@@ -6,6 +6,45 @@ export interface VideoField {
   target: string
   format: string
   item_key?: string
+  scale?: number
+  values?: Record<string, unknown>
+  when?: { source: string; operator: string; value?: unknown }[]
+  fallback?: unknown
+}
+
+export interface VideoParameter {
+  key: string
+  label: string
+  type: 'string' | 'number' | 'integer' | 'boolean'
+  editable: boolean
+  required?: boolean
+  default?: unknown
+  options?: unknown[]
+  min?: number
+  max?: number
+}
+
+export interface VideoCapabilities {
+  combinations?: {
+    duration: { min?: number; max?: number; values?: number[] }
+    resolutions?: string[]
+    aspect_ratios?: string[]
+    modes?: string[]
+  }[]
+  duration: { min?: number; max?: number; values?: number[]; default?: number }
+  resolutions?: string[]
+  aspect_ratios?: string[]
+  modes?: string[]
+  prompt_optional_with_image?: boolean
+  image_limit?: number
+  video_limit?: number
+  audio_limit?: number
+  audio_requires_visual?: boolean
+  video_requires_image?: boolean
+  first_frame_with_video?: boolean
+  generate_audio?: boolean
+  media_transport?: string
+  parameters?: VideoParameter[]
 }
 
 export interface VideoProtocol {
@@ -22,6 +61,7 @@ export interface VideoProtocol {
   fields: VideoField[]
   defaults: Record<string, unknown>
   headers: Record<string, string>
+  capabilities?: VideoCapabilities
   response: {
     id: string
     status: string
@@ -42,6 +82,7 @@ interface Props {
   onChange: (value: VideoProtocol) => void
   t: (key: string) => string
   disabled?: boolean
+  showEnabled?: boolean
 }
 
 const inputClass =
@@ -72,6 +113,18 @@ export function VideoProtocolForm(props: Props) {
     () => setRowIds((ids) => p.fields.map((_, i) => ids[i] ?? nanoid())),
     [p.fields]
   )
+  const [conditionIds, setConditionIds] = useState(() =>
+    p.fields.map((field) => (field.when ?? []).map(() => nanoid()))
+  )
+  useEffect(
+    () =>
+      setConditionIds((ids) =>
+        p.fields.map((field, i) =>
+          (field.when ?? []).map((_, j) => ids[i]?.[j] ?? nanoid())
+        )
+      ),
+    [p.fields]
+  )
   function updateField(index: number, patch: Partial<VideoField>) {
     props.onChange({
       ...p,
@@ -82,14 +135,18 @@ export function VideoProtocolForm(props: Props) {
   }
   return (
     <fieldset disabled={props.disabled} className='min-w-0 space-y-4'>
-      <label className='flex items-center gap-2 text-sm'>
-        <input
-          type='checkbox'
-          checked={p.enabled}
-          onChange={(e) => props.onChange({ ...p, enabled: e.target.checked })}
-        />
-        {t('Enable video protocol')}
-      </label>
+      {props.showEnabled !== false && (
+        <label className='flex items-center gap-2 text-sm'>
+          <input
+            type='checkbox'
+            checked={p.enabled}
+            onChange={(e) =>
+              props.onChange({ ...p, enabled: e.target.checked })
+            }
+          />
+          {t('Enable video protocol')}
+        </label>
+      )}
       <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
         {textFields.map(([key, label]) => (
           <label key={key} className='min-w-0 space-y-1 text-sm'>
@@ -165,6 +222,9 @@ export function VideoProtocolForm(props: Props) {
                     'string',
                     'number',
                     'boolean',
+                    'not',
+                    'object',
+                    'array',
                     'single',
                     'single_object',
                     'objects',
@@ -181,7 +241,9 @@ export function VideoProtocolForm(props: Props) {
               {t('Object URL field')}
               <input
                 className={inputClass}
-                disabled={!['single_object', 'objects'].includes(field.format)}
+                disabled={
+                  !['single_object', 'objects', 'object'].includes(field.format)
+                }
                 value={field.item_key ?? ''}
                 placeholder='image_url'
                 onChange={(e) =>
@@ -189,6 +251,141 @@ export function VideoProtocolForm(props: Props) {
                 }
               />
             </label>
+            <label className='min-w-0 text-xs'>
+              {t('Unit multiplier')}
+              <input
+                className={inputClass}
+                type='number'
+                min='0'
+                max='1000000'
+                step='any'
+                value={field.scale ?? ''}
+                placeholder='1'
+                onChange={(e) =>
+                  updateField(index, {
+                    scale:
+                      e.target.value === ''
+                        ? undefined
+                        : Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+            <details className='col-span-2 min-w-0 space-y-2'>
+              <summary className='cursor-pointer text-xs'>
+                {t('Conditions and value mapping')}
+              </summary>
+              {(field.when ?? []).map((condition, conditionIndex) => (
+                <div
+                  key={conditionIds[index]?.[conditionIndex]}
+                  className='grid grid-cols-2 gap-2'
+                >
+                  <label className='text-xs'>
+                    {t('Input field')}
+                    <input
+                      className={inputClass}
+                      value={condition.source}
+                      onChange={(e) =>
+                        updateField(index, {
+                          when: field.when?.map((v, i) =>
+                            i === conditionIndex
+                              ? { ...v, source: e.target.value }
+                              : v
+                          ),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className='text-xs'>
+                    {t('Condition')}
+                    <select
+                      className={inputClass}
+                      value={condition.operator}
+                      onChange={(e) =>
+                        updateField(index, {
+                          when: field.when?.map((v, i) =>
+                            i === conditionIndex
+                              ? { ...v, operator: e.target.value }
+                              : v
+                          ),
+                        })
+                      }
+                    >
+                      {['exists', 'missing', 'eq', 'ne'].map((v) => (
+                        <option key={v} value={v}>
+                          {t(`video.condition.${v}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {['eq', 'ne'].includes(condition.operator) ? (
+                    <label className='text-xs'>
+                      {t('Comparison value')}
+                      <input
+                        className={inputClass}
+                        value={
+                          typeof condition.value === 'string'
+                            ? condition.value
+                            : JSON.stringify(condition.value ?? '')
+                        }
+                        onChange={(e) => {
+                          let value: unknown = e.target.value
+                          try {
+                            value = JSON.parse(e.target.value)
+                          } catch {
+                            /* 非 JSON 的输入作为普通字符串。 */
+                          }
+                          updateField(index, {
+                            when: field.when?.map((v, i) =>
+                              i === conditionIndex ? { ...v, value } : v
+                            ),
+                          })
+                        }}
+                      />
+                    </label>
+                  ) : null}
+                  <button
+                    type='button'
+                    className='text-xs underline'
+                    onClick={() =>
+                      updateField(index, {
+                        when: field.when?.filter(
+                          (_, i) => i !== conditionIndex
+                        ),
+                      })
+                    }
+                  >
+                    {t('Remove')}
+                  </button>
+                </div>
+              ))}
+              <button
+                type='button'
+                className='text-xs underline'
+                onClick={() =>
+                  updateField(index, {
+                    when: [
+                      ...(field.when ?? []),
+                      { source: '', operator: 'exists' },
+                    ],
+                  })
+                }
+              >
+                {t('Add condition')}
+              </button>
+              <JSONField
+                label={t('Value mapping')}
+                invalidMessage={t('Enter a JSON object')}
+                value={field.values ?? {}}
+                onChange={(values) => updateField(index, { values })}
+              />
+              <ScalarJSONField
+                label={t('Value when missing')}
+                invalidMessage={t('Enter a valid JSON value')}
+                value={field.fallback}
+                onChange={(fallback) => updateField(index, { fallback })}
+              />
+            </details>
             <button
               type='button'
               className='justify-self-start text-xs underline'
@@ -306,6 +503,40 @@ function JSONField(props: {
             e.target.setCustomValidity('')
           } catch {
             e.target.setCustomValidity(props.invalidMessage)
+          }
+        }}
+      />
+    </label>
+  )
+}
+
+function ScalarJSONField({
+  value,
+  onChange,
+  label,
+  invalidMessage,
+}: {
+  value: unknown
+  onChange: (v: unknown) => void
+  label: string
+  invalidMessage: string
+}) {
+  const serialized = value === undefined ? '' : JSON.stringify(value)
+  const [text, setText] = useState(serialized)
+  useEffect(() => setText(serialized), [serialized])
+  return (
+    <label className='block text-xs'>
+      {label}
+      <input
+        className={inputClass}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value)
+          try {
+            onChange(e.target.value ? JSON.parse(e.target.value) : undefined)
+            e.target.setCustomValidity('')
+          } catch {
+            e.target.setCustomValidity(invalidMessage)
           }
         }}
       />

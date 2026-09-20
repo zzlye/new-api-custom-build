@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -52,6 +53,9 @@ func StartAsyncRelayWorkers() {
 				}
 				if _, err := model.RecoverStaleAsyncRelayTasks(); err != nil {
 					common.SysError("恢复后台媒体任务失败: " + err.Error())
+				}
+				if err := model.CleanupVideoAssets(); err != nil {
+					common.SysError("视频素材清理失败：" + err.Error())
 				}
 				if err := model.CleanupExpiredAsyncRelayTasks(common.NodeName); err != nil {
 					common.SysError("清理到期媒体文件失败: " + err.Error())
@@ -385,6 +389,9 @@ func executeAsyncRelayRequest(ctx context.Context, task *model.AsyncRelayTask, w
 	}
 	if err := resolveAsyncRelayReferences(worker, task); err != nil {
 		return err
+	}
+	if metadata.VideoAdapters != nil {
+		worker.Set(service.VideoAdapterSnapshotKey, metadata.VideoAdapters)
 	}
 	middleware.Distribute()(worker)
 	if worker.IsAborted() {

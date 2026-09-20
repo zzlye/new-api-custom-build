@@ -151,8 +151,8 @@ func TestVideoProtocolRootAccessAndPersistence(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code)
 	require.Contains(t, response.Body.String(), `"success":true`)
 	var stored model.Option
-	require.NoError(t, model.DB.First(&stored, "key = ?", video_setting.Key(8)).Error)
-	assert.JSONEq(t, string(data), stored.Value)
+	require.NoError(t, model.DB.First(&stored, "key = ?", video_setting.RegistryKey).Error)
+	assert.Contains(t, stored.Value, `"compat-default-8"`)
 	loaded, err := video_setting.Load(8)
 	require.NoError(t, err)
 	assert.Equal(t, &p, loaded)

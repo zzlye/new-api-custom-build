@@ -2,6 +2,7 @@ package video_setting
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -27,12 +28,49 @@ func (p *Protocol) MapRequest(input map[string]any) ([]byte, error) {
 		}
 	}
 	mappedMedia := map[string]bool{}
+	declaredSources := map[string]bool{}
 	for _, field := range p.Fields {
-		value := gjson.GetBytes(source, field.Source)
-		if !value.Exists() {
+		declaredSources[field.Source] = true
+		include := true
+		for _, condition := range field.When {
+			v := gjson.GetBytes(source, condition.Source)
+			switch condition.Operator {
+			case "exists":
+				include = include && v.Exists()
+			case "missing":
+				include = include && !v.Exists()
+			case "eq":
+				include = include && reflect.DeepEqual(v.Value(), condition.Value)
+			case "ne":
+				include = include && !reflect.DeepEqual(v.Value(), condition.Value)
+			}
+		}
+		if !include {
 			continue
 		}
-		converted, err := convertField(value.Value(), field)
+		value := gjson.GetBytes(source, field.Source)
+		if !value.Exists() && field.Fallback == nil {
+			continue
+		}
+		inputValue := value.Value()
+		if !value.Exists() {
+			inputValue = field.Fallback
+		}
+		if field.Scale != 0 {
+			n, ok := number(inputValue)
+			if !ok {
+				return nil, fmt.Errorf("%s 无法进行单位换算", field.Source)
+			}
+			inputValue = n * field.Scale
+		}
+		if len(field.Values) > 0 {
+			mapped, ok := field.Values[fmt.Sprint(inputValue)]
+			if !ok {
+				return nil, fmt.Errorf("%s 没有对应的枚举值", field.Source)
+			}
+			inputValue = mapped
+		}
+		converted, err := convertField(inputValue, field)
 		if err != nil {
 			return nil, fmt.Errorf("%s：%w", field.Source, err)
 		}
@@ -42,9 +80,20 @@ func (p *Protocol) MapRequest(input map[string]any) ([]byte, error) {
 		}
 		mappedMedia[field.Source] = true
 	}
-	for _, key := range []string{"image_urls", "audio_urls", "video_urls"} {
-		if len(gjson.GetBytes(source, key).Array()) > 0 && !mappedMedia[key] {
+	for _, key := range []string{"image_urls", "audio_urls", "video_urls", "first_frame", "last_frame"} {
+		v := gjson.GetBytes(source, key)
+		if v.Exists() && (!v.IsArray() || len(v.Array()) > 0) && !mappedMedia[key] {
 			return nil, fmt.Errorf("渠道未配置 %s 映射", key)
+		}
+	}
+	if value, ok := input["generate_audio"]; ok && value != nil && !mappedMedia["generate_audio"] {
+		return nil, fmt.Errorf("渠道未配置生成音频映射")
+	}
+	if extra, ok := input["extra_parameters"].(map[string]any); ok && !declaredSources["extra_parameters"] {
+		for key := range extra {
+			if !declaredSources["extra_parameters."+key] {
+				return nil, fmt.Errorf("渠道未配置附加参数 %s 映射", key)
+			}
 		}
 	}
 	return output, nil
@@ -73,6 +122,21 @@ func convertField(value any, field Field) (any, error) {
 		if err == nil {
 			return b, nil
 		}
+	case "not":
+		b, ok := value.(bool)
+		if ok {
+			return !b, nil
+		}
+	case "array":
+		return []any{value}, nil
+	case "object":
+		body, err := sjson.Set(`{}`, field.ItemKey, value)
+		if err != nil {
+			return nil, err
+		}
+		var result map[string]any
+		err = common.UnmarshalJsonStr(body, &result)
+		return result, err
 	case "single", "single_object", "objects", "frames":
 		items, ok := value.([]any)
 		if !ok || len(items) == 0 {

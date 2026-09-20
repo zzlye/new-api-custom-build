@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -150,7 +151,7 @@ func validatePrompt(prompt string) *dto.TaskError {
 // MaxTaskDurationSeconds caps user-supplied video duration. Duration is used
 // as a billing multiplier (OtherRatio "seconds"); an unbounded value could
 // overflow quota calculation into a negative charge.
-const MaxTaskDurationSeconds = 3600
+const MaxTaskDurationSeconds = video_setting.MaxDurationSeconds
 
 func validateTaskDurationBounds(req TaskSubmitReq) *dto.TaskError {
 	seconds := req.Duration

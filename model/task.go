@@ -105,6 +105,7 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
+	VideoInput     *map[string]any          `json:"video_input,omitempty"`
 	VideoProtocol  *video_setting.Protocol `json:"video_protocol,omitempty"` // 提交时冻结规则，后续修改不干扰已有任务。
 	Key            string                  `json:"key,omitempty"`
 	UpstreamTaskID string                  `json:"upstream_task_id,omitempty"` // 上游真实 task ID
@@ -186,6 +187,7 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.VideoProtocol != nil {
 		privateData.VideoProtocol = relayInfo.VideoProtocol
+		privateData.VideoInput = &relayInfo.VideoInput
 		privateData.Key = relayInfo.ApiKey
 	}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {

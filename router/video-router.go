@@ -8,6 +8,11 @@ import (
 )
 
 func SetVideoRouter(router *gin.Engine) {
+	capabilities := router.Group("/v1/video", middleware.TokenAuthReadOnly())
+	capabilities.GET("/capabilities", controller.GetVideoCapabilities)
+	assets := router.Group("/v1/video/assets", middleware.TokenAuth())
+	assets.POST("", controller.UploadVideoAsset)
+	router.GET("/v1/video/assets/:asset_id/content", controller.GetVideoAssetContent)
 	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
 	videoProxyRouter := router.Group("/v1")
 	videoProxyRouter.Use(middleware.RouteTag("relay"))

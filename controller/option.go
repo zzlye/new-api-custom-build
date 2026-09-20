@@ -82,7 +82,7 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" || strings.HasPrefix(k, video_setting.OptionPrefix) {
+		if k == "theme.frontend" || (strings.HasPrefix(k, video_setting.OptionPrefix) || k == video_setting.RegistryKey) {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -133,7 +133,7 @@ func UpdateOption(c *gin.Context) {
 		return
 	}
 	// 视频规则统一经过专用接口校验，通用设置接口不允许绕过。
-	if strings.HasPrefix(option.Key, video_setting.OptionPrefix) {
+	if strings.HasPrefix(option.Key, video_setting.OptionPrefix) || option.Key == video_setting.RegistryKey {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请在视频渠道协议中修改规则"})
 		return
 	}

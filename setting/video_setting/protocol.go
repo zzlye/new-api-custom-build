@@ -2,6 +2,7 @@ package video_setting
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -16,27 +17,39 @@ const Platform = "configured_video"
 
 // 渠道协议只保存字段规则，不保存密钥；鉴权始终使用实际选中的渠道密钥。
 type Protocol struct {
-	Enabled     bool              `json:"enabled"`
-	SubmitPath  string            `json:"submit_path"`
-	PollPath    string            `json:"poll_path"`
-	PollMethod  string            `json:"poll_method"`
-	PollIDField string            `json:"poll_id_field"`
-	ContentPath string            `json:"content_path"`
-	Encoding    string            `json:"encoding"`
-	AuthMode    string            `json:"auth_mode"`
-	AuthName    string            `json:"auth_name"`
-	AuthPrefix  string            `json:"auth_prefix"`
-	Fields      []Field           `json:"fields"`
-	Defaults    map[string]any    `json:"defaults"`
-	Headers     map[string]string `json:"headers"`
-	Response    Response          `json:"response"`
+	Enabled      bool              `json:"enabled"`
+	SubmitPath   string            `json:"submit_path"`
+	PollPath     string            `json:"poll_path"`
+	PollMethod   string            `json:"poll_method"`
+	PollIDField  string            `json:"poll_id_field"`
+	ContentPath  string            `json:"content_path"`
+	Encoding     string            `json:"encoding"`
+	AuthMode     string            `json:"auth_mode"`
+	AuthName     string            `json:"auth_name"`
+	AuthPrefix   string            `json:"auth_prefix"`
+	Fields       []Field           `json:"fields"`
+	Defaults     map[string]any    `json:"defaults"`
+	Headers      map[string]string `json:"headers"`
+	Response     Response          `json:"response"`
+	Capabilities *Capabilities     `json:"capabilities,omitempty"`
+	Revision     int               `json:"revision,omitempty"`
 }
 
 type Field struct {
-	Source  string `json:"source"`
-	Target  string `json:"target"`
-	Format  string `json:"format"`
-	ItemKey string `json:"item_key,omitempty"`
+	Source   string         `json:"source"`
+	Target   string         `json:"target"`
+	Format   string         `json:"format"`
+	ItemKey  string         `json:"item_key,omitempty"`
+	Scale    float64        `json:"scale,omitempty"`
+	Values   map[string]any `json:"values,omitempty"`
+	When     []Condition    `json:"when,omitempty"`
+	Fallback any            `json:"fallback,omitempty"`
+}
+
+type Condition struct {
+	Source   string `json:"source"`
+	Operator string `json:"operator"`
+	Value    any    `json:"value,omitempty"`
 }
 
 type Response struct {
@@ -54,6 +67,16 @@ var headerName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 func Key(channelID int) string { return OptionPrefix + strconv.Itoa(channelID) }
 
 func Load(channelID int) (*Protocol, error) {
+	common.OptionMapRWMutex.RLock()
+	registryRaw := common.OptionMap[RegistryKey]
+	common.OptionMapRWMutex.RUnlock()
+	if registryRaw != "" {
+		r, err := LoadRegistry()
+		if err != nil {
+			return nil, err
+		}
+		return r.DefaultProtocol(channelID), nil
+	}
 	common.OptionMapRWMutex.RLock()
 	raw := common.OptionMap[Key(channelID)]
 	common.OptionMapRWMutex.RUnlock()
@@ -96,6 +119,9 @@ func Presets() map[string]Protocol {
 func (p *Protocol) Validate() error {
 	if p == nil {
 		return fmt.Errorf("视频协议不能为空")
+	}
+	if err := p.Capabilities.Validate(); err != nil {
+		return err
 	}
 	if strings.Contains(p.SubmitPath, "{id}") {
 		return fmt.Errorf("提交路径不能包含任务编号")
@@ -141,6 +167,19 @@ func (p *Protocol) Validate() error {
 	seen := map[string]bool{}
 	sources := map[string]bool{}
 	for _, f := range p.Fields {
+		if math.IsNaN(f.Scale) || math.IsInf(f.Scale, 0) || f.Scale < 0 || f.Scale > 1000000 {
+			return fmt.Errorf("单位换算倍率无效")
+		}
+		for _, condition := range f.When {
+			if !fieldPath.MatchString(condition.Source) {
+				return fmt.Errorf("条件字段无效")
+			}
+			switch condition.Operator {
+			case "exists", "missing", "eq", "ne":
+			default:
+				return fmt.Errorf("条件操作无效")
+			}
+		}
 		if !fieldPath.MatchString(f.Source) || !fieldPath.MatchString(f.Target) {
 			return fmt.Errorf("字段路径无效：%s → %s", f.Source, f.Target)
 		}
@@ -159,21 +198,32 @@ func (p *Protocol) Validate() error {
 				return fmt.Errorf("时长必须来自已校验的 duration")
 			}
 		}
+		if f.Source == "duration" && (len(f.When) > 0 || len(f.Values) > 0 || f.Fallback != nil) {
+			return fmt.Errorf("时长只能改名、转换类型或换算单位，不能替换或省略")
+		}
 		if f.Source == "duration" && f.Format != "identity" && f.Format != "string" && f.Format != "number" {
 			return fmt.Errorf("时长必须为数字或字符串")
 		}
 		switch f.Format {
-		case "identity", "string", "number", "boolean", "single", "single_object", "objects", "frames":
+		case "identity", "string", "number", "boolean", "not", "object", "array", "single", "single_object", "objects", "frames":
 		default:
 			return fmt.Errorf("字段格式无效：%s", f.Format)
 		}
-		if (f.Format == "single_object" || f.Format == "objects") && !fieldPath.MatchString(f.ItemKey) {
+		if (f.Format == "single_object" || f.Format == "objects" || f.Format == "object") && !fieldPath.MatchString(f.ItemKey) {
 			return fmt.Errorf("对象内字段不能为空")
 		}
 	}
 	for _, required := range []string{"model", "prompt", "duration"} {
 		if !sources[required] {
 			return fmt.Errorf("缺少必要映射：%s", required)
+		}
+	}
+	// 自定义参数必须有发送路径，避免发布后才发现用户填写的值被丢弃。
+	if p.Capabilities != nil && !sources["extra_parameters"] {
+		for _, parameter := range p.Capabilities.Parameters {
+			if !sources["extra_parameters."+parameter.Key] {
+				return fmt.Errorf("自定义参数 %s 缺少字段映射", parameter.Key)
+			}
 		}
 	}
 	for key, value := range p.Defaults {

@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { VideoProtocolEditor } from '../video-protocol-editor'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
@@ -3621,7 +3620,6 @@ export function ChannelMutateDrawer({
                         summary={advancedSummary}
                       >
                         {/* ── Routing & Overrides ── */}
-                        {channelId ? <VideoProtocolEditor channelId={channelId} /> : null}
                         <div className={sideDrawerSectionClassName()}>
                           <CardHeading
                             title={t('Routing & Overrides')}
@@ -4235,9 +4233,7 @@ export function ChannelMutateDrawer({
                                         <SelectValue />
                                       </SelectTrigger>
                                     </FormControl>
-                                    <SelectContent
-                                      alignItemWithTrigger={false}
-                                    >
+                                    <SelectContent alignItemWithTrigger={false}>
                                       <SelectGroup>
                                         <SelectItem value='auto'>
                                           {t('Auto')}

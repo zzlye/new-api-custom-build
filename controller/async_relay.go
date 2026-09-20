@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,12 +21,13 @@ const asyncRelayMaxBatch = 4
 
 // asyncRelayMetadata 仅保存重建请求所需的非密钥信息，不把令牌或会话写入任务文件。
 type asyncRelayMetadata struct {
-	Host            string     `json:"host,omitempty"`
-	Params          gin.Params `json:"params"`
-	ClientIP        string     `json:"client_ip"`
-	SpecificChannel string     `json:"specific_channel,omitempty"`
-	Action          string     `json:"action,omitempty"`
-	RelayMode       int        `json:"relay_mode,omitempty"`
+	VideoAdapters   map[int]service.VideoAdapterSnapshot `json:"video_adapters,omitempty"`
+	Host            string                               `json:"host,omitempty"`
+	Params          gin.Params                           `json:"params"`
+	ClientIP        string                               `json:"client_ip"`
+	SpecificChannel string                               `json:"specific_channel,omitempty"`
+	Action          string                               `json:"action,omitempty"`
+	RelayMode       int                                  `json:"relay_mode,omitempty"`
 }
 
 // ShouldQueueAsyncRelay 统一接管媒体生成；文字对话与纯识图请求保持原有行为。
@@ -145,7 +147,9 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 	if err != nil {
 		return err
 	}
-	metadata, err := common.Marshal(asyncRelayMetadata{Host: c.Request.Host, Params: c.Params, ClientIP: c.ClientIP(), SpecificChannel: c.GetString("specific_channel_id"), Action: c.GetString("action"), RelayMode: c.GetInt("relay_mode")})
+	snapshot, _ := c.Get(service.VideoAdapterSnapshotKey)
+	videoAdapters, _ := snapshot.(map[int]service.VideoAdapterSnapshot)
+	metadata, err := common.Marshal(asyncRelayMetadata{VideoAdapters: videoAdapters, Host: c.Request.Host, Params: c.Params, ClientIP: c.ClientIP(), SpecificChannel: c.GetString("specific_channel_id"), Action: c.GetString("action"), RelayMode: c.GetInt("relay_mode")})
 	if err != nil {
 		return err
 	}
@@ -167,6 +171,26 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 	task.TaskID, err = model.GenerateAsyncRelayTaskID()
 	if err != nil {
 		return err
+	}
+	if videoAdapters != nil {
+		var videoInput map[string]any
+		if err := common.UnmarshalBodyReusable(c, &videoInput); err != nil {
+			return err
+		}
+		// 使用兼容候选的归一字段绑定素材；历史协议沿用原处理，别名上传也能在排队时保留。
+		for channelID, snapshot := range videoAdapters {
+			if !service.VideoChannelAllowed(c, channelID) || snapshot.Protocol == nil || snapshot.Protocol.Capabilities == nil {
+				continue
+			}
+			normalized, err := snapshot.Protocol.Normalize(videoInput)
+			if err != nil {
+				return err
+			}
+			if err := service.BindVideoAssets(normalized, task.UserID, task.TaskID); err != nil {
+				return err
+			}
+			break
+		}
 	}
 	taskMode := wantsAsyncRelayTask(c)
 	var delivery *asyncRelayDelivery

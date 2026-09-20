@@ -105,11 +105,36 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 	return channelQuery, nil
 }
 
-func GetChannel(group string, model string, retry int, requestPath string) (*Channel, error) {
+func GetChannel(group string, model string, retry int, requestPath string, allowed ...map[int]bool) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
+	var channelQuery *gorm.DB
+	// 能力过滤在优先级选择之前执行，否则高优先级不兼容渠道会挡住可用渠道。
+	if len(allowed) > 0 && allowed[0] != nil {
+		ids := []int{}
+		for id, ok := range allowed[0] {
+			if ok {
+				ids = append(ids, id)
+			}
+		}
+		base := DB.Model(&Ability{}).Where(clause.Eq{Column: clause.Column{Name: "group"}, Value: group}).Where("model = ? AND enabled = ? AND channel_id IN ?", model, true, ids)
+		var priorities []int64
+		err = base.Session(&gorm.Session{}).Distinct("priority").Order("priority DESC").Pluck("priority", &priorities).Error
+		if err != nil {
+			return nil, err
+		}
+		if len(priorities) == 0 {
+			return nil, nil
+		}
+		index := retry
+		if index >= len(priorities) {
+			index = len(priorities) - 1
+		}
+		channelQuery = base.Session(&gorm.Session{}).Where("priority = ?", priorities[index])
+	} else {
+		channelQuery, err = getChannelQuery(group, model, retry)
+	}
 	if err != nil {
 		return nil, err
 	}

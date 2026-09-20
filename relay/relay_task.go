@@ -154,7 +154,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	info.VideoProtocol = nil
 	if c.Request.URL.Path == "/v1/videos" || c.Request.URL.Path == "/v1/video" || c.Request.URL.Path == "/v1/video/generations" {
-		protocol, err := video_setting.Load(info.ChannelId)
+		upstream, err := service.VideoUpstreamModel(c.GetString("model_mapping"), info.OriginModelName)
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
+		}
+		protocol, _, err := service.VideoProtocolForRequest(c, info.ChannelId, upstream)
 		if err != nil {
 			return nil, service.TaskErrorWrapperLocal(err, "invalid_video_protocol", http.StatusBadRequest)
 		}
@@ -185,6 +189,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	info.UpstreamModelName = modelName
 	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
 		return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
+	}
+
+	if info.VideoProtocol != nil {
+		_, upstream, err := service.VideoProtocolForRequest(c, info.ChannelId, info.UpstreamModelName)
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "invalid_video_protocol", http.StatusBadRequest)
+		}
+		info.UpstreamModelName = upstream
 	}
 
 	// 3. 预生成公开 task ID（仅首次）

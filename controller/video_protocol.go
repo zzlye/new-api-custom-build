@@ -81,9 +81,10 @@ func SaveVideoProtocol(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	data, err := common.Marshal(p)
+	registry, err := video_setting.LoadRegistry()
 	if err == nil {
-		err = model.UpdateOption(video_setting.Key(id), string(data))
+		registry.SetDefaultProtocol(id, p)
+		err = model.SaveVideoAdapters(registry)
 	}
 	if err != nil {
 		common.ApiError(c, err)
