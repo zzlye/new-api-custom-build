@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -81,7 +82,7 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" {
+		if k == "theme.frontend" || strings.HasPrefix(k, video_setting.OptionPrefix) {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -129,6 +130,11 @@ func UpdateOption(c *gin.Context) {
 			"success": false,
 			"message": "无效的参数",
 		})
+		return
+	}
+	// 视频规则统一经过专用接口校验，通用设置接口不允许绕过。
+	if strings.HasPrefix(option.Key, video_setting.OptionPrefix) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请在视频渠道协议中修改规则"})
 		return
 	}
 	// 保存时长属于根用户设置，处理器额外校验避免路由调整时放宽权限。

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"strconv"
 	"strings"
 	"time"
@@ -81,6 +82,7 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	VideoProtocol     *video_setting.Protocol
 	TokenId           int
 	TokenKey          string
 	TokenGroup        string

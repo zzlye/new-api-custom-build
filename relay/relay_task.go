@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -151,6 +152,19 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if platform == "" {
 		platform = GetTaskPlatform(c)
 	}
+	info.VideoProtocol = nil
+	if c.Request.URL.Path == "/v1/videos" || c.Request.URL.Path == "/v1/video" || c.Request.URL.Path == "/v1/video/generations" {
+		protocol, err := video_setting.Load(info.ChannelId)
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "invalid_video_protocol", http.StatusBadRequest)
+		}
+		if protocol != nil && protocol.Enabled {
+			platform = video_setting.Platform
+			info.VideoProtocol = protocol
+			c.Set("configured_video_protocol", true)
+			c.Header("X-New-Api-Video-Protocol", "configured")
+		}
+	}
 	adaptor := GetTaskAdaptor(platform)
 	if adaptor == nil {
 		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("invalid api platform: %s", platform), "invalid_api_platform", http.StatusBadRequest)
@@ -222,6 +236,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {
+		if info.VideoProtocol != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "invalid_video_parameters", http.StatusBadRequest)
+		}
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
 
@@ -230,8 +247,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
-	if resp != nil && resp.StatusCode != http.StatusOK {
+	if resp != nil && resp.StatusCode != http.StatusOK && !(info.VideoProtocol != nil && resp.StatusCode >= 200 && resp.StatusCode < 300) {
 		responseBody, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"io"
 	"net/http"
 	"net/url"
@@ -109,34 +110,51 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
-	switch channel.Type {
-	case constant.ChannelTypeGemini:
-		apiKey := task.PrivateData.Key
-		if apiKey == "" {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Missing stored API key for Gemini task %s", taskID))
-			videoProxyError(c, http.StatusInternalServerError, "server_error", "API key not stored for task")
+	if task.Platform == video_setting.Platform {
+		protocol := task.PrivateData.VideoProtocol
+		if protocol == nil {
+			videoProxyError(c, http.StatusBadGateway, "server_error", "视频任务缺少协议快照")
 			return
 		}
-		videoURL, err = getGeminiVideoURL(channel, task, apiKey)
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Gemini video URL for task %s: %s", taskID, err.Error()))
-			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Gemini video URL")
-			return
-		}
-		req.Header.Set("x-goog-api-key", apiKey)
-	case constant.ChannelTypeVertexAi:
-		videoURL, err = getVertexVideoURL(channel, task)
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Vertex video URL for task %s: %s", taskID, err.Error()))
-			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
-			return
-		}
-	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
-		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
-		req.Header.Set("Authorization", "Bearer "+channel.Key)
-	default:
-		// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
 		videoURL = task.GetResultURL()
+		if protocol.ContentPath != "" {
+			videoURL, err = video_setting.Endpoint(baseURL, protocol.ContentPath, task.GetUpstreamTaskID())
+			if err != nil {
+				videoProxyError(c, http.StatusBadGateway, "server_error", err.Error())
+				return
+			}
+		}
+		// 结果地址来自存储/CDN 时不附加渠道密钥，仍沿用下方的下载地址校验。
+	} else {
+		switch channel.Type {
+		case constant.ChannelTypeGemini:
+			apiKey := task.PrivateData.Key
+			if apiKey == "" {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Missing stored API key for Gemini task %s", taskID))
+				videoProxyError(c, http.StatusInternalServerError, "server_error", "API key not stored for task")
+				return
+			}
+			videoURL, err = getGeminiVideoURL(channel, task, apiKey)
+			if err != nil {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Gemini video URL for task %s: %s", taskID, err.Error()))
+				videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Gemini video URL")
+				return
+			}
+			req.Header.Set("x-goog-api-key", apiKey)
+		case constant.ChannelTypeVertexAi:
+			videoURL, err = getVertexVideoURL(channel, task)
+			if err != nil {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Vertex video URL for task %s: %s", taskID, err.Error()))
+				videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
+				return
+			}
+		case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
+			videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
+			req.Header.Set("Authorization", "Bearer "+channel.Key)
+		default:
+			// Video URL is stored in PrivateData.ResultURL (fallback to FailReason for old data)
+			videoURL = task.GetResultURL()
+		}
 	}
 
 	videoURL = strings.TrimSpace(videoURL)
@@ -172,6 +190,28 @@ func VideoProxy(c *gin.Context) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to parse URL %s: %s", videoURL, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
+	}
+	if task.Platform == video_setting.Platform && task.PrivateData.VideoProtocol.ContentPath != "" {
+		task.PrivateData.VideoProtocol.Authorize(req, task.PrivateData.Key)
+		// CDN 跳转不继承渠道自定义鉴权头，同时保留原有的下载地址校验。
+		protectedClient := *client
+		checkRedirect := client.CheckRedirect
+		protectedClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+			if next.URL.Host != req.URL.Host || next.URL.Scheme != req.URL.Scheme {
+				next.Header.Del(task.PrivateData.VideoProtocol.AuthName)
+				for name := range task.PrivateData.VideoProtocol.Headers {
+					next.Header.Del(name)
+				}
+			}
+			if checkRedirect != nil {
+				return checkRedirect(next, via)
+			}
+			if len(via) >= 10 {
+				return fmt.Errorf("视频下载重定向过多")
+			}
+			return nil
+		}
+		client = &protectedClient
 	}
 
 	resp, err := client.Do(req)

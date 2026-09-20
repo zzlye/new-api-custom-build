@@ -1,6 +1,8 @@
 package relay
 
 import (
+	"github.com/QuantumNous/new-api/relay/channel/task/configured"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -143,6 +145,8 @@ func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 	switch platform {
+	case video_setting.Platform:
+		return &configured.TaskAdaptor{}
 	//case constant.APITypeAIProxyLibrary:
 	//	return &aiproxy.Adaptor{}
 	case constant.TaskPlatformSuno:

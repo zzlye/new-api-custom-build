@@ -695,6 +695,10 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
+	// 可配置渠道只执行一次创建，协议/网络异常不能通过再次付费提交来探测。
+	if c.GetBool("configured_video_protocol") {
+		return false
+	}
 	// 原生视频也只提交一次；后续仅查询已有任务编号并保存一次文件。
 	if c.GetString(model.AsyncRelayContextKey) != "" {
 		return false

@@ -17,6 +17,11 @@ type permissionRoute struct {
 }
 
 func registerChannelRoutes(apiRouter *gin.RouterGroup) {
+	// 协议管理独立使用根用户鉴权，不继承普通渠道编辑权限。
+	protocolRoute := apiRouter.Group("/video-protocol", middleware.RootAuth())
+	protocolRoute.GET("/", controller.ListVideoProtocols)
+	protocolRoute.GET("/:id", controller.GetVideoProtocol)
+	protocolRoute.PUT("/:id", controller.SaveVideoProtocol)
 	channelRoute := apiRouter.Group("/channel")
 	channelRoute.Use(middleware.AdminAuth())
 

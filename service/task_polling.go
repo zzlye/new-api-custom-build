@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"io"
 	"net/http"
 	"sort"
@@ -456,6 +457,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	key := ch.Key
 
 	privateData := task.PrivateData
+	if configured, ok := adaptor.(interface{ SetVideoProtocol(*video_setting.Protocol) }); ok {
+		configured.SetVideoProtocol(privateData.VideoProtocol)
+	}
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
@@ -479,7 +483,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems taskdto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
+	if err = common.Unmarshal(responseBody, &responseItems); task.PrivateData.VideoProtocol == nil && err == nil && responseItems.IsSuccess() {
 		logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
 		t := responseItems.Data
 		taskResult.TaskID = t.TaskID
