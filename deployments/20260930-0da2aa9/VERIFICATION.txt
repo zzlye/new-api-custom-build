@@ -1,0 +1,65 @@
+NewAPI 更新验证（2026-09-30，再次更新）
+结果：新版已切换上线。镜像摘要 sha256:0da2aa9366aa7ea6f45441237ed67afb008f7eeb310e52317063b596fa347dd9；运行容器 new-api-blue；端口 3002。
+变更字段：new-api-blue.image、ports、NODE_NAME；旧服务 profiles=retired；Caddy 两条 API reverse_proxy 3001 -> 3002。
+HTTPS protocols 维持 h1 h2。Postgres、Redis、文运和 chatgpt2api 沿用运行中的容器。
+旧 new-api-green-20260922 保持运行供历史素材清理与回退；复核时在途异步任务 0，未过期终态记录 104。未重发任务、未更改任务归属。
+
+四份产物：
+MODIFIED_FILE=D:/tmp/newapi-update-20260930-0da2aa9/MODIFIED_FILE.json
+DIFF_FILE=D:/tmp/newapi-update-20260930-0da2aa9/DIFF_FILE.patch
+VERIFICATION.txt=D:/tmp/newapi-update-20260930-0da2aa9/VERIFICATION.txt
+ROLLBACK.sh=D:/tmp/newapi-update-20260930-0da2aa9/ROLLBACK.sh
+服务器对应目录：/opt/new-api/backups/update-20260930-0da2aa9/
+完整配置及备份仅留服务器私有目录；本地配置摘要和差异已脱敏。
+仓库交付：D:/xiangmu/newapi/new-api/deployments/20260930-0da2aa9/
+
+BASELINE
+命令：curl -fsS --max-time 10 http://127.0.0.1:3001/api/status | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["success"];print("BASELINE_START="+str(x["data"]["start_time"]))'
+输入：原实例 GET /api/status，无请求体。
+原样输出：BASELINE_START=1790048800
+退出码：0。
+
+MODIFIED
+命令：docker compose --project-directory /opt/new-api -p new-api -f /opt/new-api/backups/update-20260930-0da2aa9/compose.staging.yml up -d --no-deps new-api-blue
+输入：按现有生产配置复制生成的候选 Compose，固定新镜像摘要。
+结果：新容器成功创建并启动；退出码 0。
+命令：docker inspect new-api-blue --format 'HEALTH={{.State.Health.Status}} RESTARTS={{.RestartCount}} IMAGE={{.Image}}'
+原样输出：HEALTH=healthy RESTARTS=0 IMAGE=sha256:0da2aa9366aa7ea6f45441237ed67afb008f7eeb310e52317063b596fa347dd9
+退出码：0。
+切换命令：docker exec new-api-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+输入：经过验证、原位写入的 Caddyfile.modified；输出由验证脚本捕获，退出码 0。
+监测脚本原样输出：SWITCH=PASS
+监测脚本原样输出：CHECKS=24 FAILURES=0
+原样输出：http://127.0.0.1:3002/api/status NEW_INSTANCE=PASS
+原样输出：http://127.0.0.1:3000/api/status NEW_INSTANCE=PASS
+原样输出：https://api.zzlye.xyz/api/status NEW_INSTANCE=PASS
+原样输出：https://api.zzlye.site/api/status NEW_INSTANCE=PASS
+上述结果均校验 success=true、start_time=1790769996，脚本退出码 0。
+命令：docker exec wenyun-workshop node -e "fetch('http://new-api:3000/api/status').then(r=>r.json()).then(x=>{if(!x.success||x.data.start_time!==1790769996)process.exit(1);console.log('WORKSHOP_INTERNAL=PASS')}).catch(()=>process.exit(1))"
+输入：文运容器内部 GET 原有 API 地址，无请求体。
+原样输出：WORKSHOP_INTERNAL=PASS
+退出码：0。
+主页 GET 检查：WORKSHOP_HTTP=200；XIMILU_HTTP=200；退出码 0。
+匿名 GET /v1/tasks/deployment-status-probe 与 /v1/videos/deployment-status-probe 均 HTTP=401。
+启动日志扫描原样输出：STARTUP_PANIC=NO。
+
+ROLLBACK
+命令：/opt/new-api/backups/update-20260930-0da2aa9/ROLLBACK.sh --verify-copy
+输入：独立的修改后配置副本及更新前备份。
+原样输出：ROLLBACK_COPY=PASS
+退出码：0。
+恢复状态：副本恢复原始字节，Compose 与 Caddy 校验通过；未在线执行回退，线上保持新版。
+真实回退：直接执行同路径 ROLLBACK.sh。先检查配置未被后续部署更改，再启动并验证旧实例，热切回原入口，保留新版完成其在途任务，不回写数据库。
+
+备份
+数据库 pg_dump -Fc 完成，pg_restore -l 成功，输出 DATABASE_BACKUP=PASS。
+data.before.tar.gz 的 gzip 校验成功，输出 DATA_ARCHIVE_INTEGRITY=PASS。
+数据目录为在线备份，tar 报告有异步媒体文件在读取前被清理，退出码 1；不能据此声称全部临时媒体获得一致快照。
+未执行真实付费生成，本次验证涵盖启动、公开服务、鉴权和文运内部连通性。
+此次直接使用用户已构建镜像，未改业务源码、未重建镜像。
+
+SHA256
+compose.before.yml=fe0658eb8d0aa76499bf85df2126bdcea0bd893a0076436a4b6986401cb7c3f6
+compose.modified.yml=82d0066ea345d5404d8610db1699b4d4c225b20eac082558cabd70e9efd44d54
+Caddyfile.before=4d8a6a90c27b7c0b8cb847f6611bbafa68395658ceea90d5a09ea91ff4cef91f
+Caddyfile.modified=8b493771070d1d8defa749bdb78899bda1e9b9da70888729c0109549805f0af4

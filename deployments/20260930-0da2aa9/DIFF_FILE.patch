@@ -1,0 +1,24 @@
+--- BASELINE_FILE.json
++++ MODIFIED_FILE.json
+@@ -6,10 +6,20 @@
+         "127.0.0.1:3001:3000"
+       ],
+       "node_name": "new-api-node-green-20260922",
++      "profiles": [
++        "retired"
++      ]
++    },
++    "new-api-blue": {
++      "image": "ghcr.io/zzlye/new-api-custom-build@sha256:0da2aa9366aa7ea6f45441237ed67afb008f7eeb310e52317063b596fa347dd9",
++      "ports": [
++        "127.0.0.1:3002:3000"
++      ],
++      "node_name": "new-api-node-blue-20260930",
+       "profiles": []
+     }
+   },
+-  "proxy_port": 3001,
++  "proxy_port": 3002,
+   "https_protocols": [
+     "h1",
+     "h2"
