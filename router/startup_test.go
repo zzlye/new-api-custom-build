@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -172,4 +173,60 @@ func TestUnifiedTaskRoutesPreserveContracts(t *testing.T) {
 	var logCount int64
 	require.NoError(t, db.Model(&model.Task{}).Where("task_id = ?", internal.TaskID).Count(&logCount).Error)
 	assert.EqualValues(t, 1, logCount)
+
+	// 同一已归档视频的旧接口和官方内容接口必须读本地文件，并遵守相同保留期。
+	video := []byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 0, 0, 'm', 'p', '4', '2', 'i', 's', 'o', 'm'}
+	videoPath := filepath.Join(t.TempDir(), "generated.mp4")
+	require.NoError(t, os.WriteFile(videoPath, video, 0o600))
+	videoFiles, err := common.Marshal([]model.AsyncRelayMedia{{Path: videoPath, Kind: "video", ContentType: "video/mp4"}})
+	require.NoError(t, err)
+	parent := model.AsyncRelayTask{UserID: owner.Id, RequestFormat: "task", Status: model.AsyncRelayTaskStatusSucceeded, FinishedAt: now, ResultFiles: string(videoFiles)}
+	require.NoError(t, db.Create(&parent).Error)
+	require.NoError(t, db.Create(&model.Task{TaskID: parent.TaskID, UserId: owner.Id, Status: model.TaskStatusSuccess}).Error)
+	child := model.Task{TaskID: "task_native_video", UserId: owner.Id, AsyncParentID: parent.TaskID,
+		Status: model.TaskStatusSuccess, Action: constant.TaskActionTextToVideo,
+		PrivateData: model.TaskPrivateData{ResultURL: "data:video/mp4;base64,dXBzdHJlYW0="}}
+	require.NoError(t, db.Create(&child).Error)
+	paths := []string{
+		"/v1/video/" + parent.TaskID + "/content",
+		"/v1/videos/" + parent.TaskID + "/content",
+		"/v1/video/" + child.TaskID + "/content",
+		"/v1/videos/" + child.TaskID + "/content",
+		"/v1/tasks/" + child.TaskID + "/artifacts/video/content",
+	}
+	for _, path := range paths {
+		t.Run("archived_video_"+path, func(t *testing.T) {
+			w := request(path, "routeowner")
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			assert.Equal(t, "video/mp4", w.Header().Get("Content-Type"))
+			assert.Equal(t, video, w.Body.Bytes(), "归档后不应再次读取上游")
+			assert.Equal(t, http.StatusNotFound, request(path, "routeother").Code)
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				if method == http.MethodHead && (path == paths[0] || path == paths[2]) {
+					continue // 单数旧地址只约定 GET。
+				}
+				r := httptest.NewRequest(method, path, nil)
+				r.Header.Set("Authorization", "Bearer sk-routeowner")
+				if method == http.MethodGet {
+					r.Header.Set("Range", "bytes=4-7")
+				}
+				partial := httptest.NewRecorder()
+				engine.ServeHTTP(partial, r)
+				if method == http.MethodHead {
+					assert.Equal(t, http.StatusOK, partial.Code)
+					assert.Empty(t, partial.Body.Bytes())
+				} else {
+					assert.Equal(t, http.StatusPartialContent, partial.Code)
+					assert.Equal(t, "ftyp", partial.Body.String())
+				}
+			}
+		})
+	}
+	require.NoError(t, db.Model(&parent).Update("finished_at", now-common.AsyncMediaRetentionSeconds()-1).Error)
+	for _, path := range paths {
+		assert.Equal(t, http.StatusGone, request(path, "routeowner").Code, path)
+	}
+	assert.Equal(t, http.StatusOK, request("/v1/tasks/"+parent.TaskID, "routeowner").Code)
+	require.NoError(t, db.Model(&model.Task{}).Where("task_id IN ?", []string{parent.TaskID, child.TaskID}).Count(&logCount).Error)
+	assert.EqualValues(t, 2, logCount, "到期不能删除任务日志")
 }

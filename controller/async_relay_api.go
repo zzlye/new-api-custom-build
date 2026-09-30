@@ -140,6 +140,27 @@ func serveAsyncRelayMedia(c *gin.Context, task *model.AsyncRelayTask, indexValue
 	http.ServeContent(c.Writer, c.Request, "generated-media", info.ModTime(), file)
 }
 
+// serveArchivedAsyncVideo 供已经完成任务归属认证的内容入口共用，防止旧地址绕过归档和保留期。
+func serveArchivedAsyncVideo(c *gin.Context, child *model.Task) bool {
+	if child.AsyncParentID == "" || c.GetString(model.AsyncRelayContextKey) != "" {
+		return false
+	}
+	parent, err := model.GetAsyncRelayTaskByUserAndTaskID(child.UserId, child.AsyncParentID)
+	if err != nil || parent == nil {
+		videoProxyError(c, http.StatusNotFound, "invalid_request_error", "生成任务不存在")
+		return true
+	}
+	if parent.RequestFormat != string(relaytypes.RelayFormatTask) {
+		return false
+	}
+	// 后台首次归档仍可读取上游；归档成功或到期后所有公开视频入口共用本地规则。
+	if model.AsyncRelayTaskExpired(parent, common.GetTimestamp()) || parent.Status == model.AsyncRelayTaskStatusSucceeded {
+		serveAsyncRelayMedia(c, parent, "0")
+		return true
+	}
+	return false
+}
+
 // DeleteTaskLog 仅根用户能删除日志及其生成文件，运行中的任务先保留以保障扣费与退款一致。
 func DeleteTaskLog(c *gin.Context) {
 	if c.GetInt("role") != common.RoleRootUser {

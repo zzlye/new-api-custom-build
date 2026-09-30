@@ -342,6 +342,9 @@ func TaskArtifactContent(c *gin.Context) {
 			writeTaskArtifactError(c, http.StatusNotFound, "artifact_not_found", "Task or artifact not found")
 			return
 		}
+		if serveArchivedAsyncVideo(c, task) {
+			return
+		}
 		descriptor := &relaychannel.TaskContentRequest{
 			URL:            task.GetResultURL(),
 			Method:         c.Request.Method,
@@ -360,6 +363,9 @@ func TaskArtifactContent(c *gin.Context) {
 	found := false
 	for _, artifact := range artifacts {
 		if artifact.Key == artifactKey {
+			if artifact.Type == "video" && serveArchivedAsyncVideo(c, task) {
+				return
+			}
 			found = true
 			break
 		}

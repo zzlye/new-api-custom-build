@@ -67,6 +67,13 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
+	// 显式异步编号直接读取归档，不能当作官方任务汇总行重新代理上游。
+	if strings.HasPrefix(taskID, "async_") {
+		if task := loadAsyncRelayTask(c); task != nil {
+			serveAsyncRelayMedia(c, task, "0")
+		}
+		return
+	}
 	task, exists, err := getTaskForArtifactRequest(c, taskID)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
@@ -75,6 +82,9 @@ func VideoProxy(c *gin.Context) {
 	}
 	if !exists || task == nil {
 		videoProxyError(c, http.StatusNotFound, "invalid_request_error", "Task not found")
+		return
+	}
+	if serveArchivedAsyncVideo(c, task) {
 		return
 	}
 	if task.Status != model.TaskStatusSuccess {
