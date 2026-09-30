@@ -438,8 +438,8 @@ func newAuditTestDatabase(t *testing.T, kind, dsn string) (*gorm.DB, string) {
 	t.Helper()
 	if kind == "sqlite" {
 		path := t.TempDir() + "/audit.db"
-		// 与生产连接保持相同的立即事务、写锁等待和 WAL 设置，避免并发测试产生伪锁冲突。
-		dsn := path + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_txlock=immediate"
+		// 为并发测试启用 WAL 和写锁等待，让两个事务都能进入查询钩子后再竞争写锁。
+		dsn := path + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)"
 		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 		require.NoError(t, err)
 		// 先关闭连接再删除临时目录，避免 Windows 上数据库文件仍被占用。
