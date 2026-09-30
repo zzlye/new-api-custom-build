@@ -1,0 +1,31 @@
+{
+  "old": {
+    "running": false,
+    "exit": 0,
+    "image": "sha256:4ed4972ec000fa02432f3ab17a54f7c3f639012b77172120fbfde1947c270a80",
+    "health": "unhealthy",
+    "restart_count": 0,
+    "mounts": {
+      "/data": "/opt/new-api/data",
+      "/app/logs": "/opt/new-api/logs"
+    },
+    "restart_policy": "unless-stopped"
+  },
+  "new": {
+    "running": true,
+    "exit": 0,
+    "image": "sha256:0da2aa9366aa7ea6f45441237ed67afb008f7eeb310e52317063b596fa347dd9",
+    "health": "healthy",
+    "restart_count": 0,
+    "mounts": {
+      "/data": "/opt/new-api/data",
+      "/app/logs": "/opt/new-api/logs"
+    },
+    "restart_policy": "unless-stopped"
+  },
+  "handoff_count": 92,
+  "old_active_tasks": 0,
+  "routing": "new-api-blue:3002",
+  "public_start": 1790769996,
+  "stopped_at": 1790771236
+}

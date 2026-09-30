@@ -1,0 +1,65 @@
+NewAPI 收尾验证（2026-09-30）
+对象：38.244.15.80 / NewAPI 双实例收尾
+变更字段：
+- 容器：停止 new-api-green-20260922，退出码 0；保留 stopped 容器与镜像，供回退脚本使用。
+- 异步任务归属：92 条已完成且未过期记录的 async_relay_tasks.node_id 从 new-api-node-green-20260922 改为 new-api-node-blue-20260930；任务状态、计费字段、媒体内容和 result_expired_at 未改动。
+- 面板实例：删除已停止且超过 90 秒未上报的 system_instances 记录 new-api-node-green-20260922。
+- 线上入口：Caddy 仍指向 127.0.0.1:3002；HTTPS 仍为 h1、h2，HTTP/3 未重新启用。
+- 当前分支：new-api-blue / new-api-node-blue-20260930。
+
+四份产物：
+MODIFIED_FILE=D:/tmp/newapi-cleanup-20260930-green/MODIFIED_FILE.json
+DIFF_FILE=D:/tmp/newapi-cleanup-20260930-green/DIFF_FILE.patch
+VERIFICATION.txt=D:/tmp/newapi-cleanup-20260930-green/VERIFICATION.txt
+ROLLBACK.sh=D:/tmp/newapi-cleanup-20260930-green/ROLLBACK.sh
+服务器证据目录：/opt/new-api/backups/cleanup-20260930-green/
+代码仓库交付目录：D:/xiangmu/newapi/new-api/deployments/cleanup-20260930-green/
+
+BASELINE
+命令：python3 /opt/new-api/backups/cleanup-20260930-green/RETIRE.py
+输入：旧实例和新版均 healthy；旧实例 node_id；数据库任务状态；3001 连接；API 健康状态。
+原样输出：BASELINE=PASS OLD_ACTIVE_TASKS=0 OLD_SYSTEM_TASKS=0 OLD_CONNECTIONS=0
+原样输出：RETIRED=PASS OLD_EXIT=0 MEDIA_HANDOFF=92
+退出状态：0。
+基线含义：旧实例没有在途异步任务、系统任务或活动连接；新版共享同一 /opt/new-api/data 媒体目录。
+
+MODIFIED
+命令：docker stop -t 180 new-api-green-20260922
+输入：通过基线检查的旧实例。
+原样输出：容器停止成功；退出码 0。
+命令：DELETE ... FROM system_instances WHERE node_name='new-api-node-green-20260922' AND last_seen_at < now-90 RETURNING node_name
+输入：已停止且过期的旧实例面板记录。
+原样输出：DELETED_INSTANCE=new-api-node-green-20260922
+退出状态：0。
+命令：docker inspect new-api-green-20260922 new-api-blue --format '{{.Name}} RUNNING={{.State.Running}} EXIT={{.State.ExitCode}} RESTARTS={{.RestartCount}}'
+原样输出：
+/new-api-green-20260922 RUNNING=false EXIT=0 RESTARTS=0
+/new-api-blue RUNNING=true EXIT=0 RESTARTS=0
+命令：docker inspect new-api-blue --format 'FINAL_HEALTH={{.State.Health.Status}} RESTARTS={{.RestartCount}}'
+原样输出：FINAL_HEALTH=healthy RESTARTS=0
+退出状态：0。
+命令：docker exec new-api-postgres psql ... SELECT node_name,status,count(*) FROM async_relay_tasks ...
+原样输出：新版任务归属包含 failed=6、processing=17、succeeded=186；旧归属仅保留历史 failed=5514、succeeded=35781，旧实例不再处理任务。
+命令：docker exec new-api-postgres psql ... SELECT node_name FROM system_instances
+原样输出：new-api-node-blue-20260930
+退出状态：0。
+
+线上验证
+命令：访问 https://api.zzlye.xyz/api/status、https://api.zzlye.site/api/status、https://zzlye.xyz/、https://xn--v5z30ywuk.com/，以及文运容器内访问 http://new-api:3000/api/status。
+原样输出：四个公网入口 HTTP=200；WORKSHOP_INTERNAL=PASS。
+退出状态：0。
+Caddy 复核：HTTP/3 仍关闭，入口为 127.0.0.1:3002；旧端口 3001 无监听。
+原样输出：OLD_PORT_LISTENING=NO；COMPOSE_UNCHANGED=PASS；CADDY_UNCHANGED=PASS。
+
+ROLLBACK
+命令：/opt/new-api/backups/cleanup-20260930-green/ROLLBACK.sh --verify-copy
+输入：收尾前 Compose、Caddy 配置及 92 条任务归属快照的隔离副本。
+原样输出：ROLLBACK_COPY=PASS ROWS=92 OTHER_FIELDS_UNCHANGED=PASS
+退出状态：0。
+恢复行为：只在需要时启动停止的旧容器并把仍存在、仍属于新版的 92 条历史任务归属改回旧节点；不恢复媒体文件、不重发请求、不覆盖数据库配置；公网入口保持新版。
+线上未执行真实回退。
+
+最终状态
+新版 new-api-blue healthy，重启次数 0，公网和文运内部连接正常。
+旧版 new-api-green-20260922 stopped，退出码 0，不再显示在系统信息面板。
+服务器保留旧容器、旧镜像、数据库备份和回退脚本；旧容器不占用运行资源。
