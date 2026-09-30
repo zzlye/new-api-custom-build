@@ -1,0 +1,20 @@
+{
+  "server": "38.244.15.80",
+  "target": "/mnt/data100/chatgpt2api",
+  "removed": {
+    "containers": ["chatgpt2api", "chatgpt2api-migration-test"],
+    "images": ["chatgpt2api-local:1.8.0-41f5678"],
+    "systemd_units": [
+      "chatgpt2api-docker.service",
+      "chatgpt2api.service",
+      "chatgpt2api-rollback-docker-test.service",
+      "chatgpt2api-rollback-native-test.service"
+    ],
+    "deployment_directory": "/mnt/data100/chatgpt2api"
+  },
+  "preserved_services": {
+    "port_8080_owner": "wenyun-workshop",
+    "wenyun_version": "0.4.13",
+    "new_api": "new-api-blue"
+  }
+}

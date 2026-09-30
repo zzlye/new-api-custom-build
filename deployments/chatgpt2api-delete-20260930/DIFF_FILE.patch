@@ -1,0 +1,13 @@
+--- chatgpt2api before
++++ chatgpt2api after
+@@
+- container chatgpt2api: running, healthy
+- container chatgpt2api-migration-test: exited
+- image chatgpt2api-local:1.8.0-41f5678
+- systemd chatgpt2api-docker.service: enabled, active
+- deployment directory /mnt/data100/chatgpt2api: 740M
++ related containers: absent
++ related images: absent
++ systemd service file: absent
++ deployment directory: absent
++ port 8080 owner: wenyun-workshop
