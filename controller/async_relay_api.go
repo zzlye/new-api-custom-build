@@ -24,6 +24,10 @@ func loadAsyncRelayTask(c *gin.Context) *model.AsyncRelayTask {
 	if taskID == "" {
 		taskID = c.Param("task_id")
 	}
+	// 公共任务入口统一使用 key，后台和历史入口继续兼容原参数名。
+	if taskID == "" {
+		taskID = c.Param("key")
+	}
 	task, err := model.GetAsyncRelayTaskByTaskID(taskID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "读取任务失败"}})

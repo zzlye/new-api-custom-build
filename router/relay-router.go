@@ -68,14 +68,7 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 	}
 
-	// 异步图片和 Gemini 生图任务查询不经过模型分发，避免 GET 请求被当成缺少模型的请求。
-	asyncTaskRouter := router.Group("/v1")
-	asyncTaskRouter.Use(middleware.RouteTag("relay"))
-	asyncTaskRouter.Use(middleware.TokenAuthReadOnly())
-	{
-		asyncTaskRouter.GET("/tasks/:task_id", controller.GetAsyncRelayTask)
-		asyncTaskRouter.GET("/tasks/:task_id/media/:index", controller.GetAsyncRelayMedia)
-	}
+	// 任务查询和媒体读取统一由 SetTaskRouter 注册，避免与官方任务插件重复占用路径。
 
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

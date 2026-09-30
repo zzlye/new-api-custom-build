@@ -36,6 +36,11 @@ var (
 )
 
 func GetTask(c *gin.Context) {
+	// 内部异步编号采用独立前缀，保留既有状态、结果和媒体地址响应。
+	if strings.HasPrefix(c.Param("key"), "async_") {
+		GetAsyncRelayTask(c)
+		return
+	}
 	task, exists, err := model.GetByTaskId(c.GetInt("id"), c.Param("key"))
 	if err != nil {
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
