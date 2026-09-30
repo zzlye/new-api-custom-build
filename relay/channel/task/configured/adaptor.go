@@ -16,7 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
-	"github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -27,7 +26,6 @@ import (
 
 // 可配置适配器复用原视频计费约束，仅替换与渠道协议有关的请求和响应。
 type TaskAdaptor struct {
-	sora.TaskAdaptor
 	protocol    *video_setting.Protocol
 	baseURL     string
 	key         string
@@ -35,7 +33,6 @@ type TaskAdaptor struct {
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
-	a.TaskAdaptor.Init(info)
 	a.protocol = info.VideoProtocol
 	a.baseURL = info.ChannelBaseUrl
 	a.key = info.ApiKey
@@ -173,27 +170,30 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, bod
 	return channel.DoTaskApiRequest(a, c, info, body)
 }
 
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (string, []byte, *dto.TaskError) {
-	defer resp.Body.Close()
+// 解析阶段不写客户端，只有宿主完成持久化及结算后才返回公开编号。
+func (a *TaskAdaptor) ParseResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*channel.TaskSubmitResponse, *dto.TaskError) {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusBadGateway)
+		return nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusBadGateway)
 	}
 	id := video_setting.Read(data, a.protocol.Response.ID)
 	if id == "" {
-		return "", nil, service.TaskErrorWrapperLocal(fmt.Errorf("渠道响应未包含配置的任务 ID，请核对提交结果后再操作"), "invalid_video_response", http.StatusBadGateway)
+		return nil, service.TaskErrorWrapperLocal(fmt.Errorf("渠道响应未包含配置的任务 ID，请核对提交结果后再操作"), "invalid_video_response", http.StatusBadGateway)
 	}
-	// 创建成功后只返回公开任务 ID；上游原始响应和协议快照留在服务端。
-	c.JSON(http.StatusOK, gin.H{"id": info.PublicTaskID, "object": "video", "status": "queued"})
-	return id, data, nil
+	return &channel.TaskSubmitResponse{UpstreamTaskID: id, TaskData: data,
+		ClientResponse: gin.H{"id": info.PublicTaskID, "object": "video", "status": "queued"}}, nil
 }
 
-func (a *TaskAdaptor) FetchTask(base, key string, body map[string]any, proxy string) (*http.Response, error) {
+func (a *TaskAdaptor) FetchTask(base, key string, task *model.Task, proxy string) (*http.Response, error) {
 	a.baseURL = base
+	// 查询使用任务受理时保存的协议，后续修改设置不影响在途任务。
+	if task != nil && task.PrivateData.VideoProtocol != nil {
+		a.protocol = task.PrivateData.VideoProtocol
+	}
 	if a.protocol == nil {
 		return nil, fmt.Errorf("任务缺少视频协议快照")
 	}
-	id, _ := body["task_id"].(string)
+	id := task.GetUpstreamTaskID()
 	endpoint, err := video_setting.Endpoint(base, a.protocol.PollPath, id)
 	if err != nil {
 		return nil, err
@@ -231,7 +231,7 @@ func (a *TaskAdaptor) FetchTask(base, key string, body map[string]any, proxy str
 	return resp, nil
 }
 
-func (a *TaskAdaptor) ParseTaskResult(data []byte) (*relaycommon.TaskInfo, error) {
+func (a *TaskAdaptor) ParseTaskResult(_ *model.Task, _ *http.Response, data []byte) (*relaycommon.TaskInfo, error) {
 	if a.protocol == nil {
 		return nil, fmt.Errorf("任务缺少视频协议快照")
 	}
@@ -282,3 +282,39 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	}
 	return common.Marshal(response)
 }
+
+// 沿用既有时长与尺寸倍率，统一交给宿主结算。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	// remix 路径的 OtherRatios 已在 ResolveOriginTask 中设置
+	if info.Action == constant.TaskActionRemix {
+		return nil
+	}
+
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+
+	seconds := taskcommon.NormalizeVideoDurationSeconds(req.Duration, 4)
+
+	size := req.Size
+	if size == "" {
+		size = "720x1280"
+	}
+
+	ratios := map[string]float64{
+		"seconds": float64(seconds),
+		"size":    1,
+	}
+	if size == "1792x1024" || size == "1024x1792" {
+		ratios["size"] = 1.666667
+	}
+	return ratios
+}
+
+func (a *TaskAdaptor) GetModelList() []string { return nil }
+func (a *TaskAdaptor) GetChannelName() string { return "configured_video" }
+func (a *TaskAdaptor) AdjustBillingOnSubmit(_ *relaycommon.RelayInfo, _ []byte) map[string]float64 {
+	return nil
+}
+func (a *TaskAdaptor) AdjustBillingOnComplete(_ *model.Task, _ *relaycommon.TaskInfo) int { return 0 }

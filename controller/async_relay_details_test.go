@@ -208,7 +208,7 @@ func TestAsyncTaskListShowsInterfaceAndGenerationDurationWithoutInputBody(t *tes
 	require.NoError(t, task.SyncLog(model.DB))
 	var log model.Task
 	require.NoError(t, model.DB.First(&log, task.LogID).Error)
-	items := tasksToDto([]*model.Task{&log}, false)
+	items := tasksToDto([]*model.Task{&log}, false, common.RoleCommonUser)
 	require.Len(t, items, 1)
 	assert.Equal(t, task.RequestPath, items[0].RequestPath)
 	assert.Equal(t, "gpt-image-2", items[0].ModelName)

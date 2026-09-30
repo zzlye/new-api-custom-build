@@ -37,6 +37,7 @@ const asyncFixturePNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 func prepareAsyncMediaController(t *testing.T) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	previousWorkers := gopool.WorkerCount()
 	previousDB, previousLogDB := model.DB, model.LOG_DB
 	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
 	previousRedis, previousMemory, previousBatch := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled
@@ -61,8 +62,8 @@ func prepareAsyncMediaController(t *testing.T) {
 	common.OptionMap = map[string]string{common.AsyncMediaRetentionOption: "2"}
 	common.OptionMapRWMutex.Unlock()
 	t.Cleanup(func() {
-		// 后台统计与心跳结束后再恢复全局配置，避免测试清理和异步采样发生数据竞争。
-		require.Eventually(t, func() bool { return gopool.WorkerCount() == 0 }, 5*time.Second, time.Millisecond, "后台采样或心跳尚未结束")
+		// 只等待本用例新增的后台工作，不等待其他官方用例启动的常驻工作协程。
+		require.Eventually(t, func() bool { return gopool.WorkerCount() <= previousWorkers }, 5*time.Second, time.Millisecond, "后台采样或心跳尚未结束")
 		model.DB, model.LOG_DB = previousDB, previousLogDB
 		common.SetDatabaseTypes(previousMainType, previousLogType)
 		if common.RedisEnabled != previousRedis {

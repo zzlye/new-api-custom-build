@@ -106,7 +106,10 @@ export function HomeSakura({ className }: HomeSakuraProps) {
 
         // 飘落物理模拟
         p.y += p.speedY * p.z
-        p.x += (p.speedX + Math.sin(time * p.swaySpeed + p.swayPhase) * p.swayAmplitude) * p.z
+        p.x +=
+          (p.speedX +
+            Math.sin(time * p.swaySpeed + p.swayPhase) * p.swayAmplitude) *
+          p.z
         p.rotation += p.rotationSpeed
         p.flip += p.flipSpeed
 

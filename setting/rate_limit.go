@@ -9,6 +9,16 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+// maxRateLimitDurationSeconds is the largest window the count cap is computed
+// against (24h). Token-bucket capacity is count*duration; this keeps that
+// product inside int64 when the window is at most a day.
+const maxRateLimitDurationSeconds = 24 * 60 * 60
+
+// maxModelRequestRateLimitCount is math.MaxInt64 / maxRateLimitDurationSeconds.
+// It is the largest count that cannot overflow int64(count)*duration for a
+// window of at most 24 hours.
+const maxModelRequestRateLimitCount int64 = math.MaxInt64 / maxRateLimitDurationSeconds
+
 var ModelRequestRateLimitEnabled = false
 var ModelRequestRateLimitDurationMinutes = 1
 var ModelRequestRateLimitCount = 0
@@ -23,21 +33,17 @@ func ModelRequestRateLimitGroup2JSONString() string {
 
 	jsonBytes, err := common.Marshal(ModelRequestRateLimitGroup)
 	if err != nil {
-		common.SysLog("error marshalling model request group rate limit: " + err.Error())
+		common.SysLog("error marshalling model ratio: " + err.Error())
 	}
 	return string(jsonBytes)
 }
 
 func UpdateModelRequestRateLimitGroupByJSONString(jsonStr string) error {
-	limits, err := parseModelRequestRateLimitMap(jsonStr, "group")
-	if err != nil {
-		return err
-	}
+	ModelRequestRateLimitMutex.RLock()
+	defer ModelRequestRateLimitMutex.RUnlock()
 
-	ModelRequestRateLimitMutex.Lock()
-	defer ModelRequestRateLimitMutex.Unlock()
-	ModelRequestRateLimitGroup = limits
-	return nil
+	ModelRequestRateLimitGroup = make(map[string][2]int)
+	return common.Unmarshal([]byte(jsonStr), &ModelRequestRateLimitGroup)
 }
 
 func GetGroupRateLimit(group string) (totalCount, successCount int, found bool) {
@@ -56,19 +62,31 @@ func GetGroupRateLimit(group string) (totalCount, successCount int, found bool) 
 }
 
 func CheckModelRequestRateLimitGroup(jsonStr string) error {
-	_, err := parseModelRequestRateLimitMap(jsonStr, "group")
-	return err
+	checkModelRequestRateLimitGroup := make(map[string][2]int)
+	err := common.Unmarshal([]byte(jsonStr), &checkModelRequestRateLimitGroup)
+	if err != nil {
+		return err
+	}
+	for group, limits := range checkModelRequestRateLimitGroup {
+		if limits[0] < 0 || limits[1] < 1 {
+			return fmt.Errorf("group %s has negative rate limit values: [%d, %d]", group, limits[0], limits[1])
+		}
+		if int64(limits[0]) > maxModelRequestRateLimitCount || int64(limits[1]) > maxModelRequestRateLimitCount {
+			return fmt.Errorf("group %s [%d, %d] exceeds max rate limit %d", group, limits[0], limits[1], maxModelRequestRateLimitCount)
+		}
+	}
+
+	return nil
 }
 
 func ModelRequestRateLimitModel2JSONString() string {
 	ModelRequestRateLimitMutex.RLock()
 	defer ModelRequestRateLimitMutex.RUnlock()
-
-	jsonBytes, err := common.Marshal(ModelRequestRateLimitModel)
+	b, err := common.Marshal(ModelRequestRateLimitModel)
 	if err != nil {
-		common.SysLog("error marshalling model request model rate limit: " + err.Error())
+		common.SysLog("error marshalling model rate limit: " + err.Error())
 	}
-	return string(jsonBytes)
+	return string(b)
 }
 
 func UpdateModelRequestRateLimitModelByJSONString(jsonStr string) error {
@@ -76,7 +94,6 @@ func UpdateModelRequestRateLimitModelByJSONString(jsonStr string) error {
 	if err != nil {
 		return err
 	}
-
 	ModelRequestRateLimitMutex.Lock()
 	defer ModelRequestRateLimitMutex.Unlock()
 	ModelRequestRateLimitModel = limits
@@ -86,11 +103,6 @@ func UpdateModelRequestRateLimitModelByJSONString(jsonStr string) error {
 func GetModelRateLimit(model string) (totalCount, successCount int, found bool) {
 	ModelRequestRateLimitMutex.RLock()
 	defer ModelRequestRateLimitMutex.RUnlock()
-
-	if ModelRequestRateLimitModel == nil {
-		return 0, 0, false
-	}
-
 	limits, found := ModelRequestRateLimitModel[model]
 	if !found {
 		return 0, 0, false
@@ -111,23 +123,13 @@ func parseModelRequestRateLimitMap(jsonStr, scopeType string) (map[string][2]int
 	if rawLimits == nil {
 		return nil, fmt.Errorf("%s rate limits must be a JSON object", scopeType)
 	}
-
-	limitsByScope := make(map[string][2]int, len(rawLimits))
-	for scope, limits := range rawLimits {
-		if strings.TrimSpace(scope) == "" {
-			return nil, fmt.Errorf("%s rate limit target cannot be empty", scopeType)
+	limits := make(map[string][2]int, len(rawLimits))
+	for scope, values := range rawLimits {
+		if strings.TrimSpace(scope) == "" || len(values) != 2 || values[0] < 0 || values[1] < 1 ||
+			values[0] > math.MaxInt32 || values[1] > math.MaxInt32 {
+			return nil, fmt.Errorf("invalid %s rate limit for %q", scopeType, scope)
 		}
-		if len(limits) != 2 {
-			return nil, fmt.Errorf("%s %s rate limit must contain exactly two values", scopeType, scope)
-		}
-		if limits[0] < 0 || limits[1] < 1 {
-			return nil, fmt.Errorf("%s %s has invalid rate limit values: [%d, %d]", scopeType, scope, limits[0], limits[1])
-		}
-		if limits[0] > math.MaxInt32 || limits[1] > math.MaxInt32 {
-			return nil, fmt.Errorf("%s %s [%d, %d] has max rate limits value 2147483647", scopeType, scope, limits[0], limits[1])
-		}
-		limitsByScope[scope] = [2]int{limits[0], limits[1]}
+		limits[scope] = [2]int{values[0], values[1]}
 	}
-
-	return limitsByScope, nil
+	return limits, nil
 }

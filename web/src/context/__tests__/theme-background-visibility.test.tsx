@@ -46,6 +46,7 @@ const { createRoot } = await import('react-dom/client')
 const { ThemeCustomizationProvider, useThemeCustomization } =
   await import('../theme-customization-provider')
 const { THEME_COOKIE_KEYS } = await import('@/lib/theme-customization')
+const { THEME_STORAGE_KEYS } = await import('@/lib/theme-storage')
 
 ;(
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -75,6 +76,7 @@ function BackgroundPreferenceProbe() {
 }
 
 function clearBackgroundPreference() {
+  window.localStorage.removeItem(THEME_STORAGE_KEYS.backgroundVisible)
   document.cookie = `${THEME_COOKIE_KEYS.backgroundVisible}=; path=/; max-age=0`
 }
 
@@ -114,7 +116,10 @@ describe('个人背景显示偏好', () => {
         ?.textContent,
       'false'
     )
-    assert.match(document.cookie, /theme_background_visible=false/)
+    assert.equal(
+      window.localStorage.getItem(THEME_STORAGE_KEYS.backgroundVisible),
+      'false'
+    )
 
     await act(async () => root.unmount())
     root = createRoot(container)
@@ -136,7 +141,7 @@ describe('个人背景显示偏好', () => {
   })
 
   test('重置主题设置后恢复显示背景并删除偏好', async () => {
-    document.cookie = `${THEME_COOKIE_KEYS.backgroundVisible}=false; path=/`
+    window.localStorage.setItem(THEME_STORAGE_KEYS.backgroundVisible, 'false')
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -159,7 +164,10 @@ describe('个人背景显示偏好', () => {
         ?.textContent,
       'true'
     )
-    assert.doesNotMatch(document.cookie, /theme_background_visible=/)
+    assert.equal(
+      window.localStorage.getItem(THEME_STORAGE_KEYS.backgroundVisible),
+      null
+    )
 
     await act(async () => root.unmount())
     container.remove()

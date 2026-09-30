@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/video_setting"
@@ -116,6 +117,10 @@ func PrepareVideoChannelSelection(c *gin.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	// 没有定制规则时让官方插件直接接管；冻结任务仍必须使用受理时的候选。
+	if _, frozen := c.Get(VideoAdapterSnapshotKey); !frozen && len(registry.Rules) == 0 {
+		return nil
+	}
 	channels, err := VideoCandidates(c, name)
 	if err != nil {
 		return err
@@ -182,6 +187,8 @@ func PrepareVideoChannelSelection(c *gin.Context, name string) error {
 		}
 		return fmt.Errorf("没有兼容本次参数的渠道")
 	}
+	// 在选优先级之前与插件、协议等官方约束求交集。
+	GetChannelConstraints(c).AddFilter(dto.ChannelFilter{Kind: dto.FilterAllowedChannels, AllowedChannelIDs: allowed})
 	c.Set(VideoAllowedChannelsKey, allowed)
 	c.Set(VideoAdapterSnapshotKey, snapshots)
 	return nil

@@ -11,7 +11,86 @@ permissions:
   packages: write
 
 jobs:
+  compatibility:
+    name: 官方更新兼容性验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: compatibility-test-only
+          MYSQL_DATABASE: newapi_compat
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pcompatibility-test-only"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: compatibility-test-only
+          POSTGRES_DB: newapi_compat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      GOWORK: 'off'
+      TEST_MYSQL_DSN: 'root:compatibility-test-only@tcp(127.0.0.1:3306)/newapi_compat?charset=utf8mb4&parseTime=True&loc=Local'
+      TEST_POSTGRES_DSN: 'postgres://postgres:compatibility-test-only@127.0.0.1:5432/newapi_compat?sslmode=disable'
+      AUDIT_MYSQL_DSN: 'root:compatibility-test-only@tcp(127.0.0.1:3306)/newapi_compat?charset=utf8mb4&parseTime=True&loc=Local'
+      AUDIT_POSTGRES_DSN: 'postgres://postgres:compatibility-test-only@127.0.0.1:5432/newapi_compat?sslmode=disable'
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 配置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            relaykit/go.sum
+      - name: 验证数据库迁移、定制功能与官方功能
+        run: |
+          mkdir -p web/dist
+          touch web/dist/index.html
+          go test -v -p 2 -timeout 20m ./...
+      - name: 独立验证协议模块
+        working-directory: relaykit
+        run: |
+          go build ./...
+          go test ./...
+
+  frontend:
+    name: 前端兼容性验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      - name: 配置 Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 验证前端
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run test
+          bun run build
+
   build:
+    # 三种数据库与前端测试通过后才允许发布同版本镜像。
+    needs: [compatibility, frontend]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source

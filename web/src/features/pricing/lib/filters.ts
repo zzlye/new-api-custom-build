@@ -25,6 +25,7 @@ import {
   type QuotaTypeOption,
 } from '../constants'
 import type { PricingModel } from '../types'
+import { hasTaskUsageSchema } from './dynamic-price'
 import { isPerSecondModel } from './model-helpers'
 
 // ----------------------------------------------------------------------------
@@ -80,6 +81,11 @@ export function filterByQuotaType(
   quotaType: string
 ): PricingModel[] {
   if (quotaType === QUOTA_TYPES.ALL) return models
+  if (quotaType === QUOTA_TYPES.TASK) {
+    return models.filter(
+      (model) => hasTaskUsageSchema(model) && !isPerSecondModel(model)
+    )
+  }
   if (quotaType === QUOTA_TYPES.SECOND) {
     return models.filter(isPerSecondModel)
   }
@@ -87,12 +93,15 @@ export function filterByQuotaType(
     return models.filter(
       (model) =>
         model.quota_type === QUOTA_TYPE_VALUES.REQUEST &&
-        !isPerSecondModel(model)
+        !isPerSecondModel(model) &&
+        !hasTaskUsageSchema(model)
     )
   }
   return models.filter(
     (model) =>
-      model.quota_type === QUOTA_TYPE_VALUES.TOKEN && !isPerSecondModel(model)
+      model.quota_type === QUOTA_TYPE_VALUES.TOKEN &&
+      !isPerSecondModel(model) &&
+      !hasTaskUsageSchema(model)
   )
 }
 
@@ -104,6 +113,7 @@ export function getVisibleQuotaTypes(
     QUOTA_TYPES.ALL,
     QUOTA_TYPES.TOKEN,
     QUOTA_TYPES.REQUEST,
+    QUOTA_TYPES.TASK,
   ]
 
   if (models.some(isPerSecondModel)) {

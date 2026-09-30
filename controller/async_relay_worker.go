@@ -393,6 +393,15 @@ func executeAsyncRelayRequest(ctx context.Context, task *model.AsyncRelayTask, w
 	if metadata.VideoAdapters != nil {
 		worker.Set(service.VideoAdapterSnapshotKey, metadata.VideoAdapters)
 	}
+	// 重建官方协议解析和插件绑定，再走原有渠道选择及独立后台执行。
+	middleware.PinTaskPluginEndpoint()(worker)
+	if worker.IsAborted() {
+		return fmt.Errorf("恢复任务插件匹配失败")
+	}
+	middleware.PrepareTaskPluginEndpoint()(worker)
+	if worker.IsAborted() {
+		return fmt.Errorf("恢复任务插件参数失败")
+	}
 	middleware.Distribute()(worker)
 	if worker.IsAborted() {
 		return fmt.Errorf("执行时模型或分组渠道不可用")
@@ -409,7 +418,7 @@ func executeAsyncRelayRequest(ctx context.Context, task *model.AsyncRelayTask, w
 	case relaytypes.RelayFormatMjProxy:
 		RelayMidjourney(worker)
 	default:
-		Relay(worker, relaytypes.RelayFormat(task.RequestFormat))
+		RelayTaskPluginEndpoint(worker, func(c *gin.Context) { Relay(c, relaytypes.RelayFormat(task.RequestFormat)) })
 	}
 	return nil
 }

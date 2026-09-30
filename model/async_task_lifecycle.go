@@ -97,14 +97,22 @@ func ClaimAsyncRelayTaskForNode(nodeID, workerID string) (*AsyncRelayTask, error
 }
 
 // AttachAsyncRelayNativeTask 原子关联已提交的原生视频任务，重启后继续查询而非重复提交。
-func AttachAsyncRelayNativeTask(parentID string, child *Task) error {
+func AttachAsyncRelayNativeTask(parentID string, child *Task, omitColumns ...string) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		child.AsyncParentID = parentID
-		if err := tx.Create(child).Error; err != nil {
+		if err := tx.Omit(omitColumns...).Create(child).Error; err != nil {
 			return err
 		}
-		result := tx.Model(&AsyncRelayTask{}).Where("task_id = ? AND status = ?", parentID, AsyncRelayTaskStatusProcessing).
-			Updates(map[string]any{"linked_task_id": child.TaskID, "updated_at": common.GetTimestamp()})
+		// 视频后台按编号继续查询；同步图片插件由工作协程保存最终响应。
+		var parent AsyncRelayTask
+		if err := tx.Select("request_format").Where("task_id = ? AND status = ?", parentID, AsyncRelayTaskStatusProcessing).First(&parent).Error; err != nil {
+			return err
+		}
+		updates := map[string]any{"updated_at": common.GetTimestamp()}
+		if parent.RequestFormat == "task" {
+			updates["linked_task_id"] = child.TaskID
+		}
+		result := tx.Model(&AsyncRelayTask{}).Where("task_id = ? AND status = ?", parentID, AsyncRelayTaskStatusProcessing).Updates(updates)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -179,13 +187,16 @@ func ExpireAsyncRelayTaskFiles(task *AsyncRelayTask) error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		// 上游子记录可能内含图片或视频的内嵌数据，到期时一并移除但保留计费快照。
-		if task.RequestFormat == "task" {
+		if task.RequestFormat != "mj_proxy" {
 			var children []*Task
 			if err := tx.Where("async_parent_id = ?", task.TaskID).Find(&children).Error; err != nil {
 				return err
 			}
 			for _, child := range children {
 				child.PrivateData.ResultURL = ""
+				// 插件查询入口也必须失效，避免从插件状态重新生成已过期的媒体地址。
+				child.PrivateData.PluginState = nil
+				child.PrivateData.ResultDiscarded = true
 				if err := tx.Model(child).Updates(map[string]any{"data": nil, "private_data": child.PrivateData}).Error; err != nil {
 					return err
 				}

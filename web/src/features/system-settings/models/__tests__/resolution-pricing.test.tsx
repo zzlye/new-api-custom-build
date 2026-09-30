@@ -54,6 +54,11 @@ const { act, createRef } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
+const { QueryClient, QueryClientProvider } =
+  await import('@tanstack/react-query')
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+})
 const { ModelPricingEditorPanel } = await import('../model-pricing-sheet')
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({
@@ -92,9 +97,11 @@ after(async () => {
 async function render(data = fixture) {
   await act(async () =>
     root.render(
-      <I18nextProvider i18n={i18n}>
-        <ModelPricingEditorPanel ref={ref} editData={data} />
-      </I18nextProvider>
+      <QueryClientProvider client={queryClient}>
+        <I18nextProvider i18n={i18n}>
+          <ModelPricingEditorPanel ref={ref} editData={data} />
+        </I18nextProvider>
+      </QueryClientProvider>
     )
   )
 }

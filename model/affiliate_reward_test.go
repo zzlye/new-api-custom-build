@@ -73,3 +73,57 @@ func TestReconcileAffiliateDataMigratesLegacyRewardsOnce(t *testing.T) {
 	assert.Equal(t, 150, got.AffHistoryQuota)
 	assert.Equal(t, 1, got.AffCount)
 }
+
+// 钱包已满时升级不丢弃待转奖励，零奖励注册仍能记录邀请人数。
+func TestAffiliateMigrationPreservesRewardsAboveWalletLimit(t *testing.T) {
+	truncateTables(t)
+	user := User{Username: "full-wallet-inviter", AffCode: "FULL-WALLET", Quota: common.MaxWalletQuota, AffQuota: 150}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, reconcileAffiliateData(DB))
+	require.NoError(t, reconcileAffiliateData(DB))
+	require.NoError(t, inviteUser(user.Id, 0))
+	var got User
+	require.NoError(t, DB.First(&got, user.Id).Error)
+	assert.Equal(t, common.MaxWalletQuota, got.Quota)
+	assert.Equal(t, 150, got.AffQuota)
+	assert.Equal(t, 1, got.AffCount)
+}
+
+// 支付重复通知与返佣在同一事务内完成，余额超限时整笔订单保持待支付。
+func TestRechargeEpayInviteCommissionIsAtomicAndIdempotent(t *testing.T) {
+	for _, overflow := range []bool{false, true} {
+		t.Run(map[bool]string{false: "重复通知仅返佣一次", true: "返佣超限回滚订单"}[overflow], func(t *testing.T) {
+			truncateTables(t)
+			ratio, quotaUnit := common.InviteTopUpCommissionRatio, common.QuotaPerUnit
+			common.InviteTopUpCommissionRatio, common.QuotaPerUnit = 0.15, 500000
+			t.Cleanup(func() { common.InviteTopUpCommissionRatio, common.QuotaPerUnit = ratio, quotaUnit })
+			inviter := &User{Id: 850, Username: "payment-inviter", AffCode: "PAYMENT-INVITER", Quota: 100, Status: common.UserStatusEnabled}
+			invitee := &User{Id: 851, Username: "payment-invitee", AffCode: "PAYMENT-INVITEE", Status: common.UserStatusEnabled}
+			require.NoError(t, DB.Create(inviter).Error)
+			require.NoError(t, DB.Create(invitee).Error)
+			if overflow {
+				require.NoError(t, DB.Model(&inviter).Update("quota", common.MaxWalletQuota).Error)
+			}
+			require.NoError(t, DB.Model(&invitee).Update("inviter_id", inviter.Id).Error)
+			order := createEpayTestOrder(t, invitee.Id, "INVITE-PAYMENT-ONCE", PaymentProviderEpay, common.TopUpStatusPending)
+			done, err := RechargeEpay(order.TradeNo, "alipay", "")
+			if overflow {
+				require.Error(t, err)
+				assert.Equal(t, common.TopUpStatusPending, GetTopUpByTradeNo(order.TradeNo).Status)
+				assert.Zero(t, getUserQuotaForPaymentGuardTest(t, invitee.Id))
+				assert.Equal(t, common.MaxWalletQuota, getUserQuotaForPaymentGuardTest(t, inviter.Id))
+				return
+			}
+			require.NoError(t, err)
+			assert.False(t, done)
+			done, err = RechargeEpay(order.TradeNo, "alipay", "")
+			require.NoError(t, err)
+			assert.True(t, done)
+			assert.Equal(t, 1000000, getUserQuotaForPaymentGuardTest(t, invitee.Id))
+			var got User
+			require.NoError(t, DB.First(&got, inviter.Id).Error)
+			assert.Equal(t, 150100, got.Quota)
+			assert.Equal(t, 150000, got.AffHistoryQuota)
+		})
+	}
+}

@@ -212,6 +212,8 @@ function findButton(
 }
 const completedLog = {
   id: 23,
+  group: 'default',
+  quota: 0,
   user_id: 1,
   task_id: 'async_fixture',
   platform: 'internal',
@@ -238,7 +240,7 @@ async function renderDelete(role: number, status = 'SUCCESS') {
 
 // 使用真实的结果列验证日志展示，文件过期提示不应覆盖生成失败原因。
 function TaskDetailsCellFixture(props: { log: TaskLog }) {
-  const columns = useTaskLogsColumns(false)
+  const columns = useTaskLogsColumns(false, false)
   const data = useMemo(() => [props.log], [props.log])
   const table = useReactTable({
     data,

@@ -19,10 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 
 import { useStatus } from '@/hooks/use-status'
-import {
-  normalizeAppearance,
-  type AppearanceConfig,
-} from '@/lib/appearance'
+import { normalizeAppearance, type AppearanceConfig } from '@/lib/appearance'
 
 /** 读取站点外观配置（来自 /api/status） */
 export function useAppearance(): AppearanceConfig {
