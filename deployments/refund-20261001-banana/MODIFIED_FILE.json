@@ -1,0 +1,22 @@
+{
+  "batch": "banana-20261001-before1730-v1",
+  "records": 69,
+  "users": 13,
+  "quota": 2625000,
+  "display_amount": "5.25 HUHN",
+  "models": {
+    "nano-banana-2": {
+      "records": 42,
+      "quota": 1470000
+    },
+    "nano-banana-pro": {
+      "records": 24,
+      "quota": 1080000
+    },
+    "xin-nano-banana-2": {
+      "records": 3,
+      "quota": 75000
+    }
+  },
+  "original_logs_unchanged": true
+}

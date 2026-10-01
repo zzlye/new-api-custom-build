@@ -1,0 +1,68 @@
+香蕉2及Pro费用补偿记录（2026-10-01）
+
+结果：已提交并核验真实数据库退款。13个账户、69笔消费，合计退回2,625,000配额，即站点显示的5.25 HUHN。
+范围：北京时间2026-10-01 00:00（含）至17:30（不含），按实际消费流水时间筛选。Unix窗口为[1790784000,1790847000)。
+批次：banana-20261001-before1730-v1。
+模型：nano-banana-2（42笔，1,470,000配额）；xin-nano-banana-2（3笔，75,000配额）；nano-banana-pro（24笔，1,080,000配额）。
+香蕉2合计45笔、3.09 HUHN；Pro合计24笔、2.16 HUHN。站点QuotaPerUnit=500000，自定义货币HUHN，展示汇率=1。
+全部为钱包实际扣费，13个账户包含12个普通账户及1个管理账户；没有订阅额度退款或已删除账户。
+
+真实变更字段：
+- users.quota总增量+2,625,000，users.used_quota总增量-2,625,000。
+- tokens.remain_quota总增量+2,625,000，tokens.used_quota总增量-2,625,000。
+- channels.used_quota总增量-2,625,000。
+- logs新增69条type=6退款流水，关联原消费id、原请求id及唯一批次；原type=2消费记录不删除、不改金额。
+- 请求次数不变，模型价格不变，17:30以后及其他模型不处理。
+- 数据库行锁及单事务提交；同步缓存只施加原子增量，不覆盖进行中的预扣余额。1个已热缓存完成增量同步，26个冷缓存由数据库水合。
+
+主要产物（本地）：
+MODIFIED_FILE=D:/tmp/newapi-banana-refund-20261001-before1730/MODIFIED_FILE.json
+DIFF_FILE=D:/tmp/newapi-banana-refund-20261001-before1730/DIFF_FILE.patch
+VERIFICATION.txt=D:/tmp/newapi-banana-refund-20261001-before1730/VERIFICATION.txt
+ROLLBACK.sh=D:/tmp/newapi-banana-refund-20261001-before1730/ROLLBACK.sh
+服务器目录：/opt/new-api/backups/refund-banana-20261001-before1730/
+客户账务快照和事务内前后余额仅保存在上述服务器私有目录，未提交到代码仓库。
+原始快照SHA256：c6ec5cedbd19b360f8d93a3643e8393c8d3b9d369093ade94352f5b80731caec。
+
+BASELINE
+命令：python3 /opt/new-api/backups/refund-banana-20261001-before1730/REFUND.py snapshot
+输入：确认的三个模型名、上述时间窗口、实际消费流水及原资金来源。
+原样输出：BASELINE=PASS USERS=13 RECORDS=69 QUOTA=2625000 PRIOR_REFUNDS=0
+退出码：0。首次快照已保存；后续调用不会覆盖该快照。
+
+隔离验证
+命令：python3 /opt/new-api/backups/refund-banana-20261001-before1730/REFUND.py test
+输入：真实69笔记录的Postgres临时表副本，不操作生产余额。
+原样输出：TEST=PASS RECORDS=69 QUOTA=2625000 IDEMPOTENT_SECOND_APPLY=0 ROLLBACK_COPY=PASS
+退出码：0。首次模拟补回全部金额，第二次模拟增量为0；用户、令牌、渠道副本恢复原始余额。
+命令：python3 /opt/new-api/backups/refund-banana-20261001-before1730/TEST_CACHE.py
+输入：隔离Redis测试键，结束后删除本次测试键。
+原样输出：CACHE_TEST=PASS ATOMIC_DELTA=PASS DUPLICATE_NOOP=PASS COLD_HASH_NOT_CREATED=PASS REVERSE_COPY=PASS
+退出码：0。
+
+MODIFIED
+命令：python3 /opt/new-api/backups/refund-banana-20261001-before1730/REFUND.py apply
+输入：原始快照、固定退款批次、通过验证的事务及缓存增量逻辑。
+原样输出：APPLY=COMMITTED RECORDS=69 QUOTA=2625000
+原样输出：CACHE_SYNC={"cold-database-authoritative": 26, "applied": 1}
+原样输出：VERIFY=PASS USERS=13 REFUND_RECORDS=69 QUOTA=2625000 DISPLAY_AMOUNT=5.25_HUHN ORIGINAL_LOGS_PRESERVED=TRUE
+退出码：0。
+
+独立对账
+命令：python3 /opt/new-api/backups/refund-banana-20261001-before1730/REFUND.py verify
+输入：已提交的生产退款流水和不可变原消费快照。
+原样输出：VERIFY=PASS USERS=13 REFUND_RECORDS=69 QUOTA=2625000 DISPLAY_AMOUNT=5.25_HUHN ORIGINAL_LOGS_PRESERVED=TRUE
+退出码：0。
+进一步按事务内前后快照对账：用户余额与令牌剩余额度各增加2,625,000，已用额度各减少2,625,000，请求次数不变。
+原样输出：COVERAGE=PASS UNREFUNDED=0 OUT_OF_SCOPE=0 NET_CHARGE=0
+原样输出：SERVICE=PASS NO_RESTART=TRUE
+退出码：0。没有漏退、没有超范围退款，本批次用户净支出为0；NewAPI没有重启。
+
+ROLLBACK
+命令：/opt/new-api/backups/refund-banana-20261001-before1730/ROLLBACK.sh
+输入：隔离临时表中的消费、用户、令牌与渠道副本。
+预期及已验证脚本输出：TEST=PASS RECORDS=69 QUOTA=2625000 IDEMPOTENT_SECOND_APPLY=0 ROLLBACK_COPY=PASS
+退出码：0。
+恢复状态：只验证副本恢复原始余额，不从客户真实账户重新扣款，不撤销已发放补偿。生产账本保持已退款状态。
+
+交付不包含Docker构建、服务重启或前端功能修改。

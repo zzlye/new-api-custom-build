@@ -1,0 +1,17 @@
+--- 退款前账务
++++ 退款后账务
+@@ -1,7 +1,7 @@
+-batch.refund_records=0
++batch.refund_records=69
+-batch.refund_quota=0
++batch.refund_quota=2625000
+-batch.net_charge=2625000
++batch.net_charge=0
+-users.quota.delta=0
++users.quota.delta=2625000
+-users.used_quota.delta=0
++users.used_quota.delta=-2625000
+-tokens.remain_quota.delta=0;tokens.used_quota.delta=0
++tokens.remain_quota.delta=2625000;tokens.used_quota.delta=-2625000
+-channels.used_quota.delta=0
++channels.used_quota.delta=-2625000
