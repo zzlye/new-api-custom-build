@@ -1,0 +1,5 @@
+--- before
++++ modified
+@@ -1 +1 @@
+-services.new-api-blue.image=ghcr.io/zzlye/new-api-custom-build@sha256:10c40ebc7e667f7d8b1f6e1084867038e5d1891f10b4711b632ffff5cd6c46f6
++services.new-api-blue.image=ghcr.io/zzlye/new-api-custom-build@sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687

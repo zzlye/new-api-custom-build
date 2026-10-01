@@ -1,0 +1,32 @@
+{
+  "build_commit": "a1e318e6833488eeaa31aa2b38a8d5fb86e89068",
+  "source_commit": "c114df87f1bd190c26ec232f0de2d9d74f03552f",
+  "changed_field": "services.new-api-blue.image",
+  "old_image": "ghcr.io/zzlye/new-api-custom-build@sha256:10c40ebc7e667f7d8b1f6e1084867038e5d1891f10b4711b632ffff5cd6c46f6",
+  "new_image": "ghcr.io/zzlye/new-api-custom-build@sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687",
+  "old_image_id": "sha256:10c40ebc7e667f7d8b1f6e1084867038e5d1891f10b4711b632ffff5cd6c46f6",
+  "new_image_id": "sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687",
+  "node_name": "new-api-node-blue-20260930",
+  "port": "127.0.0.1:3002",
+  "version_unchanged": true,
+  "compose_before_sha256": "1d8627315cf2bcabdd50dd20db662630a47bdc2ced7223ed760079469cc07d25",
+  "compose_modified_sha256": "e1da41f450a044be1a50fd7b50605bae7254d5b0b97ebadf025c62f2f3ebe307",
+  "caddy_sha256": "8b493771070d1d8defa749bdb78899bda1e9b9da70888729c0109549805f0af4",
+  "availability": {
+    "checks": 124,
+    "non_200": 13,
+    "code_counts": {
+      "200": 111,
+      "502": 13
+    },
+    "first_non_200": "2026-10-01T23:39:56+08:00",
+    "last_non_200": "2026-10-01T23:39:59+08:00",
+    "first_recovered_200": "2026-10-01T23:39:59+08:00",
+    "observed_non_200_span_seconds": 3.03,
+    "time_to_recovered_200_seconds": 3.28
+  },
+  "public_and_internal_checks": "PASS",
+  "database_restore_performed": false,
+  "media_volumes_unchanged": true,
+  "old_image_rollback_copy_test": "PASS"
+}

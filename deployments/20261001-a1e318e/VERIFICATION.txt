@@ -1,0 +1,117 @@
+NewAPI 镜像更新验证记录
+目标：38.244.15.80，仅更新已构建的 NewAPI 镜像。
+变更字段：services.new-api-blue.image
+构建仓库分支：zzlye/new-api-custom-build main
+构建提交：a1e318e6833488eeaa31aa2b38a8d5fb86e89068
+来源提交：c114df87f1bd190c26ec232f0de2d9d74f03552f
+GitHub Actions：36881653280，completed / success
+运行版本字段保持原值（空字符串）；不使用文运的版本号。
+数据库、媒体卷、节点名称、环境变量、端口均不改动；没有还原数据库，也没有重复执行退款。
+未调用收费生成接口；此记录证明发布与运行健康，不代替上游生成功能验收。
+
+交付文件（本地及服务器均已重新打开核验）：
+D:\xiangmu\newapi\new-api\deployments\20261001-a1e318e\MODIFIED_FILE.json
+/opt/new-api/backups/update-20261001-a1e318e/MODIFIED_FILE.json
+D:\xiangmu\newapi\new-api\deployments\20261001-a1e318e\DIFF_FILE.patch
+/opt/new-api/backups/update-20261001-a1e318e/DIFF_FILE.patch
+D:\xiangmu\newapi\new-api\deployments\20261001-a1e318e\VERIFICATION.txt
+/opt/new-api/backups/update-20261001-a1e318e/VERIFICATION.txt
+D:\xiangmu\newapi\new-api\deployments\20261001-a1e318e\ROLLBACK.sh
+/opt/new-api/backups/update-20261001-a1e318e/ROLLBACK.sh
+
+原始配置及快照哈希：
+1d8627315cf2bcabdd50dd20db662630a47bdc2ced7223ed760079469cc07d25  /opt/new-api/backups/update-20261001-a1e318e/compose.before.yml
+8b493771070d1d8defa749bdb78899bda1e9b9da70888729c0109549805f0af4  /opt/new-api/backups/update-20261001-a1e318e/Caddyfile.before
+14e4fe5978ccdb6500dc31e9f08de1077c2acdcbdc8318111407eb08903e32f7  /opt/new-api/backups/update-20261001-a1e318e/database.before.dump
+
+BASELINE
+命令：bash /opt/new-api/backups/update-20261001-a1e318e/BACKUP.sh
+输入：当前生产 Compose、Caddy 与 PostgreSQL；旧镜像 ghcr.io/zzlye/new-api-custom-build@sha256:10c40ebc7e667f7d8b1f6e1084867038e5d1891f10b4711b632ffff5cd6c46f6
+ROLLBACK
+命令：/opt/new-api/backups/update-20261001-a1e318e/ROLLBACK.sh --verify-copy
+输入：修改后配置的独立副本；无网络、无生产卷的旧镜像临时容器。
+BASELINE / PREPARE / ROLLBACK 的原始输出及退出状态：
+/opt/new-api/docker-compose.yml: OK
+/opt/new-api/caddy/Caddyfile: OK
+BASELINE=PASS VERSION_EMPTY=UNCHANGED START_TIME=1790854692
+DATABASE_BACKUP=PASS
+MEDIA_VOLUMES=UNCHANGED_NO_DUPLICATE_ARCHIVE
+BACKUP=PASS
+PREPARE=PASS ONLY_IMAGE_CHANGED=TRUE NODE_PORT_VOLUMES_ENV_UNCHANGED=TRUE
+{"build_commit": "a1e318e6833488eeaa31aa2b38a8d5fb86e89068", "source_commit": "c114df87f1bd190c26ec232f0de2d9d74f03552f", "changed_field": "services.new-api-blue.image", "old_image": "ghcr.io/zzlye/new-api-custom-build@sha256:10c40ebc7e667f7d8b1f6e1084867038e5d1891f10b4711b632ffff5cd6c46f6", "new_image": "ghcr.io/zzlye/new-api-custom-build@sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687", "old_image_id": "sha256:10c40ebc7e667f7d8b1f6e1084867038e5d1891f10b4711b632ffff5cd6c46f6", "new_image_id": "sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687", "node_name": "new-api-node-blue-20260930", "port": "127.0.0.1:3002", "version_unchanged": true, "compose_before_sha256": "1d8627315cf2bcabdd50dd20db662630a47bdc2ced7223ed760079469cc07d25", "compose_modified_sha256": "e1da41f450a044be1a50fd7b50605bae7254d5b0b97ebadf025c62f2f3ebe307", "caddy_sha256": "8b493771070d1d8defa749bdb78899bda1e9b9da70888729c0109549805f0af4"}
+ROLLBACK_COPY=PASS_CONFIG_HASH_RESTORED_OLD_IMAGE_AVAILABLE
+ROLLBACK_RUNTIME=PASS_OLD_IMAGE_HTTP_200_VERSION_UNCHANGED
+
+EXIT 0
+
+MODIFIED
+命令：python3 /opt/new-api/backups/update-20261001-a1e318e/DEPLOY.py（已停止等待自然空闲，改为暂缓新请求后发布；实际执行 python3 /opt/new-api/backups/update-20261001-a1e318e/DEPLOY.py）
+输入：经摘要校验的 ghcr.io/zzlye/new-api-custom-build@sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687
+原始输出及退出状态：
+PREFLIGHT_ACTIVE_TASK_ROWS=22
+DRAINING_TASK_ROWS=22 NEW_WRITES=PAUSED READS=AVAILABLE
+DRAINING_TASK_ROWS=4 NEW_WRITES=PAUSED READS=AVAILABLE
+DRAIN=PASS ACTIVE_GENERATION_TASKS=0
+Container new-api-blue Recreate
+ Container new-api-blue Recreated
+ Container new-api-blue Starting
+ Container new-api-blue Started
+MODIFIED=PASS HEALTH=healthy RESTARTS=0 VERSION_UNCHANGED=TRUE NODE_ID_UNCHANGED=TRUE
+CADDY=RESTORED HTTP3=OFF
+MONITOR_CHECKS=124 NON_200=13
+DEPLOY=PASS
+
+EXIT 0
+
+发布后检查
+命令：python3 /opt/new-api/backups/update-20261001-a1e318e/CHECK.py
+输入：本机、Caddy、公网域名、文运内部访问与无凭据鉴权请求。
+原始输出及退出状态：
+http://127.0.0.1:3000/api/status SAME_NEW_INSTANCE=PASS
+https://api.zzlye.xyz/api/status SAME_NEW_INSTANCE=PASS
+https://api.zzlye.site/api/status SAME_NEW_INSTANCE=PASS
+https://zzlye.xyz/ HTTP=200
+https://xn--v5z30ywuk.com/ HTTP=200
+WORKSHOP_INTERNAL=PASS
+/v1/videos/deployment-probe AUTH_HTTP=401
+/v1/tasks/deployment-probe AUTH_HTTP=401
+/v1/models AUTH_HTTP=401
+HEALTH=healthy RESTARTS=0 STARTUP_PANIC=NO NODE_ID_UNCHANGED=TRUE HTTP3=OFF
+START_TIME=1790869196 IMAGE=sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687
+CHECK=PASS
+
+EXIT 0
+
+最终状态
+命令：bash /opt/new-api/backups/update-20261001-a1e318e/FINAL_CHECK.sh
+原始输出及退出状态：
+FINAL_CHECK=PASS
+RUNNING_NEWAPI_INSTANCES=1 HEALTH=healthy RESTARTS=0
+ENV_PORT_NETWORK_MOUNTS_RESTART_POLICY=UNCHANGED
+IMAGE=sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687
+STARTED_AT=2026-10-01T15:39:56.542527031Z
+HTTP3=OFF CADDY=RESTORED VERSION=UNCHANGED
+COMPOSE_SHA256=e1da41f450a044be1a50fd7b50605bae7254d5b0b97ebadf025c62f2f3ebe307
+CADDY_SHA256=8b493771070d1d8defa749bdb78899bda1e9b9da70888729c0109549805f0af4
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1        29G   25G  4.7G  84% /
+
+EXIT 0
+
+可用性采样：
+{
+  "checks": 124,
+  "non_200": 13,
+  "code_counts": {
+    "200": 111,
+    "502": 13
+  },
+  "first_non_200": "2026-10-01T23:39:56+08:00",
+  "last_non_200": "2026-10-01T23:39:59+08:00",
+  "first_recovered_200": "2026-10-01T23:39:59+08:00",
+  "observed_non_200_span_seconds": 3.03,
+  "time_to_recovered_200_seconds": 3.28
+}
+
+恢复结果：回退副本恢复原 Compose 哈希，旧镜像独立启动返回 HTTP 200；生产没有回退，最终保留新镜像。Caddy 恢复原配置，HTTP/3 仍关闭。
+回退命令仅用于后续人工确认回退时执行，恢复应用镜像，不自动恢复数据库。
