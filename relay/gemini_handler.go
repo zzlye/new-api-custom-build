@@ -41,7 +41,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return newConvertRequestFailedError(c, info, err)
 	}
 
-	adaptor := GetAdaptor(info.ApiType)
+	adaptor := getGeminiRequestAdaptor(info, request)
 	if adaptor == nil {
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
