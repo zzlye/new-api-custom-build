@@ -118,9 +118,27 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		}
 	}
 	if _, exists := c.Get("task_request"); !exists {
+		// 先保留完整字段并复位请求体，避免旧表单校验消费原文后丢失参数或文件。
+		var original map[string]any
+		if err := common.UnmarshalBodyReusable(c, &original); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
 		if taskErr := relaycommon.ValidateBasicTaskRequest(c, info, "image_to_video"); taskErr != nil {
 			return taskErr
 		}
+		validated, _ := c.Get("task_request")
+		request := jsonValue(validated).(map[string]any)
+		// 固定结构体只负责兼容校验；插件仍接收分辨率、宽高比、参考图对象及扩展字段。
+		// 时长和 metadata 保留旧入口已完成的归一化，避免改变计费和字符串对象兼容。
+		for key, value := range original {
+			if key == "duration" || key == "metadata" {
+				if _, normalized := request[key]; normalized {
+					continue
+				}
+			}
+			request[key] = value
+		}
+		c.Set("task_request", request)
 	}
 	request, hasRequest := c.Get("task_request")
 	hasUsageProfiles := len(a.plugin.Meta.UsageProfiles) > 0
