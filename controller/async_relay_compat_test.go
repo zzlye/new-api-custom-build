@@ -2,11 +2,18 @@ package controller
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +30,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // prepareAsyncCompatRelay 让兼容性测试经过真实队列、鉴权、渠道选择和结算，但只访问本地替身。
@@ -320,4 +328,164 @@ func TestAsyncRelayDefaultPreservesNativeVideoSubmissionAndFetch(t *testing.T) {
 	assert.Equal(t, submitted.ID, polled.ID)
 	assert.Equal(t, "video", polled.Object)
 	assert.NotContains(t, fetch.Body.String(), "poll_url")
+}
+
+// 同提示词的两张不同参考图同时经过真实入队、文件恢复、渠道映射和回传，防止参考图丢失或串任务。
+func TestAsyncRelayGeminiConcurrentReferenceIntegrity(t *testing.T) {
+	for _, tc := range []struct {
+		channelType     int
+		alias, upstream string
+	}{
+		{constant.ChannelTypeGemini, "nano-banana-2", "gemini-3.1-flash-image-preview"},
+		{constant.ChannelTypeGemini, "nano-banana-pro", "gemini-3-pro-image-preview"},
+		{constant.ChannelTypeOpenAI, "nano-banana-2", "gemini-3.1-flash-image-preview"},
+		{constant.ChannelTypeOpenAI, "nano-banana-pro", "gemini-3-pro-image-preview"},
+	} {
+		t.Run(fmt.Sprintf("channel_%d/%s", tc.channelType, tc.alias), func(t *testing.T) {
+			channelType, modelAlias, actualModel := tc.channelType, tc.alias, tc.upstream
+			const prompt = "只提升参考图的清晰度，不改变主体、数量、颜色和构图。"
+			type captured struct{ path, body string }
+			captures := make(chan captured, 2)
+			release := make(chan struct{})
+			var releaseOnce sync.Once
+			user, token := prepareAsyncCompatRelay(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				raw, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				captures <- captured{r.URL.Path, string(raw)}
+				select {
+				case <-release:
+				case <-r.Context().Done():
+					return
+				}
+				// 上游替身原样回显收到的参考图，任何队列串图都会体现在对应客户端结果中。
+				data := gjson.GetBytes(raw, "contents.0.parts.1.inlineData.data").String()
+				w.Header().Set("Content-Type", "application/json")
+				_, err = fmt.Fprintf(w, "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":%q}}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"totalTokenCount\":2}}", data)
+				assert.NoError(t, err)
+			}), modelAlias)
+			t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+			require.NoError(t, model.DB.Model(&model.Channel{}).Where("models = ?", modelAlias).Updates(map[string]any{"type": channelType, "model_mapping": fmt.Sprintf("{%q:%q}", modelAlias, actualModel)}).Error)
+
+			// 使用确定性的大图，覆盖实际客户几十万字节的参考图，而不是只测试几个字符的占位数据。
+			refs := make([][]byte, 2)
+			bodies := make([]string, 2)
+			expected := make(map[[32]byte]bool)
+			for i := range refs {
+				picture := image.NewNRGBA(image.Rect(0, 0, 512, 512))
+				for y := range 512 {
+					for x := range 512 {
+						v := uint32(x+y*512+1) * uint32(2654435761+2*i)
+						picture.SetNRGBA(x, y, color.NRGBA{R: byte(v), G: byte(v >> 8), B: byte(v >> 16), A: 255})
+					}
+				}
+				var encoded bytes.Buffer
+				encoder := png.Encoder{CompressionLevel: png.NoCompression}
+				require.NoError(t, encoder.Encode(&encoded, picture))
+				refs[i] = encoded.Bytes()
+				require.Greater(t, len(refs[i]), 600000)
+				expected[sha256.Sum256(refs[i])] = true
+				bodies[i] = fmt.Sprintf("{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":%q},{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":%q}}]}],\"generationConfig\":{\"responseModalities\":[\"IMAGE\"],\"imageConfig\":{\"aspectRatio\":\"3:4\",\"imageSize\":\"4K\"}}}", prompt, base64.StdEncoding.EncodeToString(refs[i]))
+			}
+			require.Len(t, expected, 2)
+			router := gin.New()
+			router.POST("/v1beta/models/*path", middleware.TokenAuth(), middleware.Distribute(), func(c *gin.Context) {
+				defer common.CleanupBodyStorage(c)
+				Relay(c, relaytypes.RelayFormatGemini)
+			})
+			gateway := httptest.NewServer(router)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			t.Cleanup(func() {
+				releaseOnce.Do(func() { close(release) })
+				cancel()
+				gateway.Close()
+			})
+			type result struct {
+				index, status int
+				body          []byte
+				taskID        string
+				err           error
+			}
+			results := make(chan result, 2)
+			for i, body := range bodies {
+				go func() {
+					req, err := http.NewRequestWithContext(ctx, http.MethodPost, gateway.URL+"/v1beta/models/"+modelAlias+":generateContent", strings.NewReader(body))
+					if err != nil {
+						results <- result{index: i, err: err}
+						return
+					}
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Authorization", "Bearer sk-"+token.Key)
+					req.Header.Set("x-goog-api-key", "sk-"+token.Key)
+					response, err := http.DefaultClient.Do(req)
+					if err != nil {
+						results <- result{index: i, err: err}
+						return
+					}
+					defer response.Body.Close()
+					raw, err := io.ReadAll(response.Body)
+					results <- result{index: i, status: response.StatusCode, body: raw, taskID: response.Header.Get("X-New-Api-Task-Id"), err: err}
+				}()
+			}
+			require.Eventually(t, func() bool {
+				var count int64
+				return model.DB.Model(&model.AsyncRelayTask{}).Where("user_id = ?", user.Id).Count(&count).Error == nil && count == 2
+			}, 5*time.Second, time.Millisecond, "两个请求都应进入后台队列")
+			workers := make(chan error, 2)
+			for range 2 {
+				go func() { _, err := ProcessAsyncRelayTasks(ctx, 1); workers <- err }()
+			}
+			for range 2 {
+				select {
+				case got := <-captures:
+					assert.Equal(t, "/v1beta/models/"+actualModel+":generateContent", got.path)
+					assert.Equal(t, prompt, gjson.Get(got.body, "contents.0.parts.0.text").String())
+					assert.Equal(t, "image/png", gjson.Get(got.body, "contents.0.parts.1.inlineData.mimeType").String())
+					assert.Equal(t, "3:4", gjson.Get(got.body, "generationConfig.imageConfig.aspectRatio").String())
+					assert.Equal(t, "4K", gjson.Get(got.body, "generationConfig.imageConfig.imageSize").String())
+					assert.Equal(t, "IMAGE", gjson.Get(got.body, "generationConfig.responseModalities.0").String())
+					assert.False(t, gjson.Get(got.body, "messages").Exists())
+					reference, err := base64.StdEncoding.DecodeString(gjson.Get(got.body, "contents.0.parts.1.inlineData.data").String())
+					require.NoError(t, err)
+					digest := sha256.Sum256(reference)
+					assert.True(t, expected[digest], "出站参考图必须和一个原始输入逐字节一致，且不得重复另一个任务的图片")
+					delete(expected, digest)
+					t.Logf("实际出站图片：%d 字节，SHA256=%x", len(reference), digest)
+				case <-ctx.Done():
+					t.Fatal("上游替身没有同时收到两张参考图")
+				}
+			}
+			assert.Empty(t, expected)
+			releaseOnce.Do(func() { close(release) })
+			for range 2 {
+				select {
+				case err := <-workers:
+					require.NoError(t, err)
+				case <-ctx.Done():
+					t.Fatal("后台工作未按时结束")
+				}
+			}
+			seenTasks := make(map[string]bool)
+			for range 2 {
+				got := <-results
+				require.NoError(t, got.err)
+				require.Equal(t, http.StatusOK, got.status, string(got.body))
+				assert.NotEmpty(t, got.taskID)
+				assert.False(t, seenTasks[got.taskID], "并发请求必须返回不同任务")
+				seenTasks[got.taskID] = true
+				output, err := base64.StdEncoding.DecodeString(gjson.GetBytes(got.body, "candidates.0.content.parts.0.inlineData.data").String())
+				require.NoError(t, err)
+				assert.Equal(t, sha256.Sum256(refs[got.index]), sha256.Sum256(output), "客户端必须收到自己的参考图对应结果")
+				var task model.AsyncRelayTask
+				require.NoError(t, model.DB.Where("task_id = ?", got.taskID).First(&task).Error)
+				assert.Equal(t, model.AsyncRelayTaskStatusSucceeded, task.Status, task.Error)
+				// 直接读取结果清单，检查落盘结果和回传结果也完全一致。
+				path := gjson.Get(task.ResultFiles, "0.path").String()
+				stored, err := os.ReadFile(path)
+				require.NoError(t, err)
+				assert.Equal(t, sha256.Sum256(output), sha256.Sum256(stored))
+			}
+			assert.Empty(t, captures, "每个任务只向上游提交一次")
+		})
+	}
 }

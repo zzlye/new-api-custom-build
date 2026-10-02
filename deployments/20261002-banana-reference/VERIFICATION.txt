@@ -1,7 +1,7 @@
 香蕉参考图编辑异常排查
 日期：2026-10-02（Asia/Shanghai）
 目标：仅检查客户反馈的参考人物被替换、输出无关内容；按用户要求不排查图片加载失败。
-生产源码、渠道配置、容器、数据库结构及客户余额均未修改。
+生产业务源码、渠道配置、容器及数据库结构未修改；未手动调整余额，真实调用按现有规则计费。
 
 历史故障证据
 客户任务：async_XiAt77AubNEviY0S2J9Q0ZBkSVLNp3WN。
@@ -70,3 +70,94 @@ D:\tmp\banana-reference-20261002\camel-0.png | aae987dc062c16c10064635df69485a9c
 D:\tmp\banana-reference-20261002\snake-0.png | 6753d2bc3054f81aa1c902167433b236a2be243d8f53f695805c784db2fc7fdd
 D:\tmp\banana-reference-20261002\gateway148-0.png | efde3226437868a757f23bd58bd0ea6d0e7e5901366808fc24c573db1000c5b9
 D:\tmp\banana-reference-20261002\gateway143-0.png | 1a6b8b2fc6a50a9b14f99b2893b8e6e2174bedb3c05895f62d8eed8c2999559b
+
+
+第二阶段：客户真实调用方式、并发串图与上游日志继续核查
+日期：2026-10-02，分支 main；本阶段开始提交 ce37d3fdb。
+
+新的关键证据
+1. 使用当前渠道已有凭据，仅读取上游 /api/log/token；返回HTTP200、success=true。
+2. 客户故障时段及本轮成功请求的上游日志均明确记录：
+   request_conversion = ["Google Gemini", "OpenAI Compatible"]
+   上游又把 gemini-3.1-flash-image-preview 映射到 gemini-3.1-flash-image-preview-4k；Pro也有对应-4k映射。
+3. 我方故障记录仅记录Google Gemini。说明昨天我方原生修复已上线，但接收我方请求的上游仍存在另一层协议转换。
+4. 按模型、时间、token数和请求顺序关联到以下故障时段记录；两端不是同一个request_id，不能把时序关联说成已验证的端到端trace。
+{"created_at": 1790920572, "model_name": "gemini-3.1-flash-image-preview", "request_id": "202610020555319353823398268d9d6kdmRU5KR", "prompt_tokens": 462, "completion_tokens": 1290, "request_conversion": ["Google Gemini", "OpenAI Compatible"], "upstream_model_name": "gemini-3.1-flash-image-preview-4k"}
+{"created_at": 1790920403, "model_name": "gemini-3.1-flash-image-preview", "request_id": "202610020552428483341568268d9d6LLAd1adK", "prompt_tokens": 464, "completion_tokens": 1290, "request_conversion": ["Google Gemini", "OpenAI Compatible"], "upstream_model_name": "gemini-3.1-flash-image-preview-4k"}
+{"created_at": 1790920319, "model_name": "gemini-3.1-flash-image-preview", "request_id": "202610020551132395252248268d9d6lkJlGSqN", "prompt_tokens": 464, "completion_tokens": 1290, "request_conversion": ["Google Gemini", "OpenAI Compatible"], "upstream_model_name": "gemini-3.1-flash-image-preview-4k"}
+
+归因结论及边界
+- 已确认：客户原始参考图及完整提示词正确到达我方；错误结果存在于保存的接口原始响应，响应图片与最终媒体文件SHA256一致。
+- 已确认：上游还进行Gemini到OpenAI协议转换；这不是文运前端转换，也不是我方昨天修复没有部署。
+- 尚未确认：上游转换时丢图、上游进一步路由错误、模型本身忽略参考图，三者尚无最终出站正文证据加以区分。
+- “进行了转换”不等于“转换一定导致这次错图”。成功请求同样存在该转换，故不能仅凭该字段把根因定死。
+- 历史故障最终出站正文未保留，当前本地回归通过也不能倒推历史每次转发绝对正确。
+- 当前证据优先指向上游参考图处理或其后续路由的间歇性异常；不是已确认的我方源码错误，不宣称已修复错图。
+
+本阶段新增8次真实生图，无自动重试
+所有经过文运或我方NewAPI的本阶段请求，使用用户此次提供的确切Key；直连上游使用该渠道既有Key。密钥不保存到文件或Git。
+第1组4次：文运代理+客户人物原图、文运代理+几何图（并发）、公网API+人物原图、文运代理+Banana Pro人物原图。
+第2组4次：同一“仅提高分辨率”提示词配不同参考图，文运代理并发2次、绕过文运及我方NewAPI直连上游并发2次。
+8张结果全部重新打开视觉核对，人物均保留银发兽耳男性，几何图均保留红方块、绿圆、蓝三角。本轮未复现客户错图。
+加上前阶段4次，共12次真实生成；“未复现”不等于历史故障不存在或已经修好。
+本阶段经我方网关6个任务均复查为succeeded、实际渠道148。直连上游2次不创建我方任务。
+真实结果、响应ID、输入/输出SHA256：D:/tmp/banana-reference-20261002/paid_round1.jsonl 与 paid_round2.jsonl。
+不根据SSH大图片传输耗时判断上游速度，本任务不排查图片加载失败。
+
+本次代码变更
+仅在 controller/async_relay_compat_test.go 增加 TestAsyncRelayGeminiConcurrentReferenceIntegrity。
+不改生产转发逻辑、不改渠道配置、不更新镜像；文运源码没有本阶段改动。
+覆盖Banana2及Pro、Gemini及OpenAI类型渠道；两份787365字节PNG、相同提示词同时经过鉴权、分发、落盘入队、后台恢复、实际HTTP出站、原响应回传、媒体落盘。
+校验映射后模型、3:4/4K、IMAGE输出、参考图MIME及SHA256、任务归属和单次提交；没有把只返回HTTP200当成成功。
+故障注入只通过Go overlay把临时Gemini处理器的InlineData设为nil，回归测试按预期失败，证明它能识别真正漏传参考图。
+
+精确验证记录（命令执行目录 D:/xiangmu/newapi/new-api）
+BASELINE
+命令：D:/tools/go/bin/go.exe test -overlay=D:/tmp/banana-reference-20261002/baseline-overlay.json ./controller -run '^TestAsyncRelayDefault' -count=1
+输入：ORIGINAL_FILE.go，已有默认异步兼容用例。
+ok  	github.com/QuantumNous/new-api/controller	0.390s
+退出状态：0
+
+MODIFIED
+命令：D:/tools/go/bin/go.exe test -overlay=D:/tmp/banana-reference-20261002/modified-overlay.json ./controller -run '^TestAsyncRelay(Default|GeminiConcurrentReferenceIntegrity)' -count=1
+输入：新增并发参考图验证的测试文件；本地上游替身，不产生外部费用。
+ok  	github.com/QuantumNous/new-api/controller	1.431s
+退出状态：0
+
+FAULT_INJECTION
+命令：D:/tools/go/bin/go.exe test -overlay=D:/tmp/banana-reference-20261002/fault-overlay.json ./controller -run '^TestAsyncRelayGeminiConcurrentReferenceIntegrity$' -count=1
+输入：仅临时副本清除InlineData；实际业务文件从未被注入故障。
+字面结果：出站参考图必须和一个原始输入逐字节一致，且不得重复另一个任务的图片；实际出站图片：0 字节。FAIL。
+退出状态：1（预期失败）。完整输出：D:/tmp/banana-reference-20261002/FAULT_INJECTION.log
+
+ROLLBACK
+命令：& "C:/Program Files/Git/bin/bash.exe" -c 'chmod +x /d/tmp/banana-reference-20261002/ROLLBACK.sh && /d/tmp/banana-reference-20261002/ROLLBACK.sh /d/tmp/banana-reference-20261002/ROLLBACK_COPY.go'
+输入：在另一份ROLLBACK_COPY.go上恢复原始测试文件；不覆盖工作区修改。
+命令：D:/tools/go/bin/go.exe test -overlay=D:/tmp/banana-reference-20261002/rollback-overlay.json ./controller -run '^TestAsyncRelayDefault' -count=1
+ROLLBACK_RESTORED
+27f6cedad421424ee7ebf9b3837a60940247bc503a46e9581630c3e691ec2825 */d/tmp/banana-reference-20261002/ROLLBACK_COPY.go
+ok  	github.com/QuantumNous/new-api/controller	0.364s
+退出状态：0；已恢复原文件SHA256和原有用例通过状态；MODIFIED_FILE.go及工作区保留新增测试。
+
+FINAL
+命令：D:/tools/go/bin/go.exe test ./controller ./relay -run '^TestAsyncRelay(Default|GeminiConcurrentReferenceIntegrity)|^TestGemini(HelperNativeImage|ImageNative)' -count=1
+ok  	github.com/QuantumNous/new-api/controller	1.467s
+ok  	github.com/QuantumNous/new-api/relay	0.212s
+退出状态：0
+竞态检测尝试：加-race的命令退出2，原文“go: -race requires cgo; enable cgo by setting CGO_ENABLED=1”。当前没有声明竞态检测通过。
+
+四个复查文件
+MODIFIED_FILE：D:/tmp/banana-reference-20261002/MODIFIED_FILE.go
+DIFF_FILE：D:/tmp/banana-reference-20261002/DIFF_FILE.patch
+VERIFICATION：D:/tmp/banana-reference-20261002/VERIFICATION.txt
+ROLLBACK：D:/tmp/banana-reference-20261002/ROLLBACK.sh
+ORIGINAL_FILE.go SHA256=27f6cedad421424ee7ebf9b3837a60940247bc503a46e9581630c3e691ec2825
+MODIFIED_FILE.go SHA256=7110193f153c647bf702565b2f40691afc7dd37b75969b645765a4a7e9410626
+ROLLBACK_COPY.go SHA256=27f6cedad421424ee7ebf9b3837a60940247bc503a46e9581630c3e691ec2825
+
+给上游的排查要点（可复制）
+2026-10-02，北京时间约13:50—13:56，gemini-3.1-flash-image-preview，3:4、4K，参考图编辑被生成为无关女性。
+我方收到的参考图是1536×2048 JPEG，622301字节，SHA256=6134cd3e8cfb0adbaff948505777c3655ff7587dbfc6bcb27bd6d0c8a103997c。
+请按上述上游request_id核对：Gemini转OpenAI之后是否仍含完整参考图、图片字节指纹是否一致、-4k模型映射是否进入正确的图生图渠道、最终模型是否实际接收到图片。
+不要仅以HTTP200或有返回图片认定正常。本轮重试已正常，但客户历史错误图片与原接口响应相符。
+优先核查上游转换层；若继续转换，应先证明图片字段完整保留，再判断是否需要采用原生Gemini路径。没有证据支持继续盲改我方前端字段。
