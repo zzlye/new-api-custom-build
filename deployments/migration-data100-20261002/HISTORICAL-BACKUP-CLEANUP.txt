@@ -1,0 +1,31 @@
+历史备份清理核验
+日期：2026-10-02（Asia/Shanghai）
+用户明确要求：删除已核对的约4.9G历史备份。
+目录：/mnt/data100/new-api/backups（同一目录入口 /opt/new-api/backups）。
+清理对象：185个历史备份及记录文件，包括旧媒体压缩包、数据库快照、旧配置和退款运维记录。
+清理前核实：目录不含符号链接及内部挂载点，容器未挂载此备份目录，清单和大小均与只读核查一致。
+清理方式：仅删除此目录内已核对的全部条目，保留空目录和原有权限，未创建新回退副本。
+当前运行数据、数据库、媒体文件及容器镜像未改变；未重启任何容器。
+这是迁移完成后的后续清理，替代原迁移记录中“保留历史备份”的最终状态。
+下面为远程操作实际输出，执行退出状态为0：
+BASELINE_API=PASS
+BASELINE_BACKUP_FILES=185
+DELETED_LOGICAL_BYTES=5187868427
+DELETED_ALLOCATED_BYTES=5188395008
+HISTORICAL_BACKUPS=DELETED EMPTY_DIRECTORY_RETAINED=TRUE
+DIRECT_API=PASS success=true
+DOMAIN_API=PASS success=true
+CONTAINERS=PASS NO_RESTART SAME_IMAGES
+Filesystem     Type  Size  Used Avail Use% Mounted on
+/dev/vda1      ext4   29G   12G   18G  41% /
+/dev/vdb1      ext4   98G  9.3G   84G  10% /mnt/data100
+4.0K	/opt/new-api/backups
+9.3G	/mnt/data100/new-api
+wenyun-workshop Up 4 hours (healthy)
+new-api-blue Up 13 minutes (healthy)
+new-api-caddy Up 13 minutes
+new-api-postgres Up 13 minutes (healthy)
+new-api-redis Up 11 days
+DELETE_AND_VERIFY=PASS
+
+EXIT 0
