@@ -1,0 +1,87 @@
+香蕉2及Pro站内退款核验记录（2026-10-02）
+
+结果：10个账户、119笔实际消费，退回3,610,000配额，即7.22 HUHN。
+范围：北京时间2026-10-02 00:00:00（含）至15:59:57（不含），固定窗口[1790870400,1790927997)。之后的新增消费不属于本批次。
+批次：banana-20261002-snapshot-v1。全部119笔来源均为钱包；包含9个普通账户与1个管理账户。
+模型：nano-banana-2，34笔，1,045,000配额，2.09 HUHN；nano-banana-pro，85笔，2,565,000配额，5.13 HUHN。xin-nano-banana-2在本窗口无实扣。
+站点QuotaPerUnit=500000，币种HUHN；成功与失败不作为筛选条件，仅按实际消费流水和确定的香蕉模型名筛选。
+
+实际变更字段：
+users.quota +3,610,000；users.used_quota -3,610,000。
+tokens.remain_quota +3,610,000；tokens.used_quota -3,610,000。
+channels.used_quota -3,610,000；所有请求次数不变。
+logs新增119条type=6退款流水，逐条关联原type=2消费ID及原请求ID；原始消费流水保留。
+真实事务使用行锁、批次互斥与完整窗口检查；退款快照固定并核验SHA256。
+3项热缓存完成原子增量同步；19项冷缓存由数据库加载；独立复核22项状态全部完成。
+
+四个本地产物：
+MODIFIED_FILE=D:/tmp/newapi-banana-refund-20261002/MODIFIED_FILE.json
+DIFF_FILE=D:/tmp/newapi-banana-refund-20261002/DIFF_FILE.patch
+VERIFICATION.txt=D:/tmp/newapi-banana-refund-20261002/VERIFICATION.txt
+ROLLBACK.sh=D:/tmp/newapi-banana-refund-20261002/ROLLBACK.sh
+服务器目录：/opt/new-api/backups/refund-banana-20261002/
+仓库审计目录：D:/xiangmu/newapi/new-api/deployments/refund-20261002-banana/
+明细快照与事务内前后余额仅保存在服务器私有目录，未进入Git。
+原脚本SHA256：c796fe0dff7f3cef2d9a2156e00ced4fa719b6658e9f9b10a0927e5795fd6ff0。
+本次脚本SHA256：4e10e93503e1d17398376cfcb738467272fd32424259eb16f40974cda0134f7c。
+原消费快照SHA256：7435334d711d87a45135412f3d30aa0437b8d5ea11f939039ba225a0f159c6c5。
+
+BASELINE
+命令：python3 /opt/new-api/backups/refund-banana-20261002/REFUND.py snapshot
+输入：上述固定时间窗口、香蕉模型白名单和生产实际消费记录。
+退出码：0；原样输出见下方BASELINE_TEST记录。
+隔离演练命令：python3 /opt/new-api/backups/refund-banana-20261002/REFUND.py test
+输入：119笔消费和用户、令牌、渠道的PostgreSQL临时表副本。
+退出码：0；首次模拟退款成功，第二次模拟增量为0；副本恢复退款前余额。
+缓存演练命令：python3 /opt/new-api/backups/refund-banana-20261002/TEST_CACHE.py
+输入：独立Redis测试键，测试结束删除。退出码：0。
+
+MODIFIED
+命令：python3 /opt/new-api/backups/refund-banana-20261002/REFUND.py apply
+输入：不可变原消费快照、唯一批次和已经演练的退款事务。
+远端退出码：0，退款真实提交成功且就地核验通过，原样输出见APPLY记录。
+本地SSH包装器随后下载汇总时SFTP连接中断，包装器退出1；该下载故障发生在远端EXIT 0之后，不回滚退款。没有再次执行apply。通过新连接独立verify读取汇总并恢复本地文件。
+
+独立核验命令：python3 /opt/new-api/backups/refund-banana-20261002/REFUND.py verify
+输入：已提交的生产退款流水与不可变原消费快照。退出码：0。
+另外逐账户、令牌和渠道检查事务内前后增量，确认完整窗口无漏退、无超范围退款、净扣费为0；昨日批次未变，服务未重启，HTTP状态200且API返回success=true。
+
+ROLLBACK
+命令：/opt/new-api/backups/refund-banana-20261002/ROLLBACK.sh
+输入：退款前快照播种的PostgreSQL临时表副本。
+原样输出：TEST=PASS RECORDS=119 QUOTA=3610000 IDEMPOTENT_SECOND_APPLY=0 ROLLBACK_COPY=PASS
+退出码：0，已验证服务器脚本可执行。
+恢复状态：仅恢复隔离副本中的用户、令牌、渠道余额；真实客户补偿保持到账，不撤销真实退款。
+
+本次没有改动价格、生产业务代码、渠道、容器镜像或服务状态。
+仅提交脱敏审计产物；controller/async_relay_compat_test.go已有未提交改动保持原样，不纳入本次提交。
+
+BASELINE_TEST原样记录
+4e10e93503e1d17398376cfcb738467272fd32424259eb16f40974cda0134f7c  /opt/new-api/backups/refund-banana-20261002/REFUND.py
+BASELINE=PASS USERS=10 RECORDS=119 QUOTA=3610000 PRIOR_REFUNDS=0
+TEST=PASS RECORDS=119 QUOTA=3610000 IDEMPOTENT_SECOND_APPLY=0 ROLLBACK_COPY=PASS
+CACHE_TEST=PASS ATOMIC_DELTA=PASS DUPLICATE_NOOP=PASS COLD_HASH_NOT_CREATED=PASS REVERSE_COPY=PASS
+7435334d711d87a45135412f3d30aa0437b8d5ea11f939039ba225a0f159c6c5
+
+EXIT 0
+
+APPLY远端原样记录
+APPLY=COMMITTED RECORDS=119 QUOTA=3610000
+CACHE_SYNC={"cold-database-authoritative": 19, "applied": 3}
+VERIFY=PASS USERS=10 REFUND_RECORDS=119 QUOTA=3610000 DISPLAY_AMOUNT=7.22_HUHN ORIGINAL_LOGS_PRESERVED=TRUE
+
+EXIT 0
+
+VERIFY原样记录
+VERIFY=PASS USERS=10 REFUND_RECORDS=119 QUOTA=3610000 DISPLAY_AMOUNT=7.22_HUHN ORIGINAL_LOGS_PRESERVED=TRUE
+TEST=PASS RECORDS=119 QUOTA=3610000 IDEMPOTENT_SECOND_APPLY=0 ROLLBACK_COPY=PASS
+RECONCILIATION=PASS USERS_DELTA=3610000 TOKENS_DELTA=3610000 CHANNEL_USED_DELTA=-3610000 REQUEST_COUNT_UNCHANGED=TRUE
+COVERAGE=PASS UNREFUNDED=0 OUT_OF_SCOPE=0 NET_CHARGE=0
+CACHE_VERIFY=PASS {"cold-done": 19, "done": 3}
+PREVIOUS_DAY=UNCHANGED RECORDS=69 QUOTA=2625000
+SERVICE=PASS NO_RESTART=TRUE
+HTTP_STATUS=200 API_SUCCESS=TRUE
+SUMMARY={  "batch": "banana-20261002-snapshot-v1",  "records": 119,  "users": 10,  "quota": 3610000,  "display_amount": "7.22 HUHN",  "models": {    "nano-banana-2": {      "records": 34,      "quota": 1045000    },    "nano-banana-pro": {      "records": 85,      "quota": 2565000    },    "xin-nano-banana-2": {      "records": 0,      "quota": 0    }  },  "original_logs_unchanged": true}
+SNAPSHOT_SHA256=7435334d711d87a45135412f3d30aa0437b8d5ea11f939039ba225a0f159c6c5
+
+EXIT 0

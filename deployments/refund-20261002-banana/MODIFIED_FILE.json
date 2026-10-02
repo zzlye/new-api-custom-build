@@ -1,0 +1,30 @@
+{
+  "batch": "banana-20261002-snapshot-v1",
+  "records": 119,
+  "users": 10,
+  "quota": 3610000,
+  "display_amount": "7.22 HUHN",
+  "models": {
+    "nano-banana-2": {
+      "records": 34,
+      "quota": 1045000
+    },
+    "nano-banana-pro": {
+      "records": 85,
+      "quota": 2565000
+    },
+    "xin-nano-banana-2": {
+      "records": 0,
+      "quota": 0
+    }
+  },
+  "original_logs_unchanged": true,
+  "start_beijing_inclusive": "2026-10-02T00:00:00+08:00",
+  "end_beijing_exclusive": "2026-10-02T15:59:57+08:00",
+  "timezone": "Asia/Shanghai",
+  "credit_destination": "站内钱包余额",
+  "unrefunded": 0,
+  "duplicate_refunds": 0,
+  "net_charge": 0,
+  "service_restarted": false
+}
