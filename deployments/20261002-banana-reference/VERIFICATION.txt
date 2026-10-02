@@ -1,0 +1,72 @@
+香蕉参考图编辑异常排查
+日期：2026-10-02（Asia/Shanghai）
+目标：仅检查客户反馈的参考人物被替换、输出无关内容；按用户要求不排查图片加载失败。
+生产源码、渠道配置、容器、数据库结构及客户余额均未修改。
+
+历史故障证据
+客户任务：async_XiAt77AubNEviY0S2J9Q0ZBkSVLNp3WN。
+提交于 2026-10-02 13:50:58，2026-10-02 13:51:47 完成；nano-banana-2，渠道148，Gemini格式，最终模型gemini-3.1-flash-image-preview。
+提示词是修改参考人物肤色；原图为1536×2048 JPEG，622301字节；服务端正确保存了参考图和完整提示词。
+参考图SHA256：6134cd3e8cfb0adbaff948505777c3655ff7587dbfc6bcb27bd6d0c8a103997c。
+参数：3:4、4K。原响应与保存结果内的图片均为3584×4800 PNG，19841580字节。
+原响应图片及保存结果SHA256相同：42b67369d2779fe13c1bc317197010d54c63fbe7c2d5588f427fceac7c125abb。
+因此已排除该任务在媒体保存环节替换成另一张图片；客户错图与接口返回的内容一致。
+同客户在13:43至13:55附近的4个任务中，分别用过渠道143及148；参考图均成功保存。仅凭这些记录，不把每条任务都判定成视觉错误。
+
+昨天修复与当前部署
+NewAPI本地基线：4285b0505。
+运行镜像：sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687；2026-10-01 23:39:56 +08:00 启动。
+与昨日发布记录相符，来源提交c114df87f包含4f339bee3的香蕉原生转发修复。
+故障任务日志request_conversion仅为Google Gemini；不是再次转成OpenAI Chat的证据。
+渠道143和148当前使用同一上游及同一密钥摘要；模型映射一致，参数覆盖、系统提示、请求头覆盖均为空。渠道143类型1，148类型24。
+
+真实调用对照
+使用客户原图的同一份字节、保存的完整提示词、3:4及4K；合计4次POST，无自动重试。
+两次绕过文运与NewAPI，直接请求原渠道上游；两次通过生产NewAPI异步入口，使用站长账号现有令牌，不向客户账号新增收费任务。
+A：直连，上游inlineData/mimeType，HTTP200，42.55秒；req_473b3dbccc0e4433b5587290f09857d1。
+B：直连，上游inline_data/mime_type，HTTP200，45.05秒；req_b268b9a2132e421f8925909a5c54c442。
+C：线上NewAPI；async_zLoB39QWWPz9Acm7UwUx0XYhxxJCjZdl，实际渠道148；44.0秒轮询到succeeded。
+D：线上NewAPI；async_QQy0MCRgXHtfTucobKXBJ3fvQWs7yPL7，实际渠道148；44.0秒轮询到succeeded。
+四份结果已打开进行视觉核对，均保留原参考图的银发兽耳男性、服装和构图，没有变成客户截图中的女性或无关机械/卡通场景。
+大小写两种参考字段均成功；这些结果不支持目前存在固定的字段大小写丢图问题。
+D的脚本原意指定143，但服务端记录实际使用148，不能把D描述为渠道143实测通过。
+
+额外发现（不作为此次错图的原因）
+认证中指定渠道已改为GetChannelConstraints(c).AddPin，而异步入队仍从旧specific_channel_id读取；重新执行任务时可能丢失指定渠道。
+上述D实际未进入143，是这一风险的运行证据。该问题与客户错图尚无因果证据，本次未改动它。
+
+结论与证据边界
+1. 历史反馈真实存在：原图、提示词已到NewAPI，且返回的错误人物不是本地缩略图或保存文件串错造成。
+2. 当前同输入4次对照均正常，不等于历史故障已经根治；未复现当时的人物替换。
+3. 上游当时的参考图处理/模型路由异常是待核实方向，不能凭当前4次正常就确认全部责任在上游，也不能认定NewAPI永久无问题。
+4. 原任务完成后请求文件已清理，且未记录最终出站请求正文与参考图摘要；现存日志不足以逐字节还原2026-10-02 13:50:58实际发往上游的请求。这是最终归因缺少的证据。
+5. 本次只验证客户这一张参考图及提示词，不扩大为所有香蕉模型和所有提示词正常。
+6. 没有通过反复换协议重新提交客户任务、没有改提示词后声称原问题修好。
+
+建议后续定位动作
+先让上游按故障时间、模型和参考图/结果摘要核对记录；本次直连请求ID可作对照。
+若继续出现，优先增加按任务启用的脱敏出站记录：请求路径、实际模型、参考图数量/MIME/字节数/SHA256、生成参数、上游请求ID；不记录密钥或完整图片Base64。
+这比继续盲改前端、只增加提示词或反复重试收费生成更容易确认故障位置。本次未启用全局调试日志。
+
+本地原修复回归
+命令：D:/tools/go/bin/go.exe test ./relay -run '^TestGemini(HelperNativeImage|ImageNative)' -count=1
+字面输出：ok  github.com/QuantumNous/new-api/relay  0.304s
+退出状态：0。本轮未运行全量套件，不以专项通过代替历史问题已定位。
+
+诊断脚本命令（已执行；带提交标记，不重复发收费请求）
+D:/tools/python-3.12.10-embed/python.exe D:/tmp/banana-reference-20261002/probe_runner.py
+D:/tools/python-3.12.10-embed/python.exe D:/tmp/banana-reference-20261002/probe_runner.py gateway_probe
+D:/tools/python-3.12.10-embed/python.exe D:/tmp/banana-reference-20261002/probe_runner.py gateway143_probe
+三个进程退出状态均为0，原始摘要见同目录direct_probe.jsonl、gateway_probe.jsonl、gateway143_probe.jsonl。
+所用凭据仅在进程内读取，不写入脚本/报告，也不提交客户原图和完整响应。
+
+本地证据目录：D:/tmp/banana-reference-20261002。
+本次仅提交脱敏诊断记录；不推送、不构建、不部署、不修改生产业务逻辑。
+
+诊断起始源码提交：4285b05053998e3e2e398bf89f5be7bdf544bee5
+
+已重新打开并校验的测试结果：
+D:\tmp\banana-reference-20261002\camel-0.png | aae987dc062c16c10064635df69485a9c7e670bd6e0759f34b93a296f734f5aa
+D:\tmp\banana-reference-20261002\snake-0.png | 6753d2bc3054f81aa1c902167433b236a2be243d8f53f695805c784db2fc7fdd
+D:\tmp\banana-reference-20261002\gateway148-0.png | efde3226437868a757f23bd58bd0ea6d0e7e5901366808fc24c573db1000c5b9
+D:\tmp\banana-reference-20261002\gateway143-0.png | 1a6b8b2fc6a50a9b14f99b2893b8e6e2174bedb3c05895f62d8eed8c2999559b
