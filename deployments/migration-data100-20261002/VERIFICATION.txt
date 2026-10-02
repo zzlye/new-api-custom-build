@@ -1,0 +1,52 @@
+NewAPI 100G 数据盘迁移与清理核验
+日期：2026-10-02（Asia/Shanghai）
+
+最终状态
+- 运行数据：/mnt/data100/new-api。
+- 原路径 /opt/new-api 通过绑定挂载保留，实际设备 /dev/vdb1。
+- 数据盘仍挂载于 /mnt/data100。
+- 迁移保持现有镜像、账户、余额和业务配置，不涉及版本升级。
+- 原迁移记录：切换耗时 88 秒；最终同步 checksum 无差异；数据库恢复前后核验一致。
+
+用户要求的旧副本清理
+- 清理前 archive.exit=0，state=completed，归档已结束。
+- 核实目标为真实目录，无内部挂载点，无容器引用。
+- 仅删除 /mnt/data100/.deployment-backups/newapi-migration-20261002/original-root-copy。
+- /opt/new-api.root-backup-20261002 已不存在。
+- 未删除运行目录及 /opt/new-api/backups 中 4.9G 原有历史业务备份。
+- 本次迁移完整回退副本已按用户要求删除；保留轻量部署核验记录。
+
+核验命令与实际结果
+命令：findmnt -T /opt/new-api
+结果：/opt/new-api /dev/vdb1[/new-api] ext4 rw,relatime
+
+命令：df -hT / /mnt/data100
+结果：系统盘 /dev/vda1 29G，已用12G，可用18G，40%。
+结果：数据盘 /dev/vdb1 98G，已用15G，可用78G，17%。
+
+命令：du -x -h --max-depth=1 /mnt/data100
+结果：new-api 15G；wenyun-assets 324K；.deployment-backups 176K；lost+found 16K。
+
+命令：find /mnt/data100/wenyun-assets -maxdepth 1 -type f -printf '%f %s bytes\n'
+结果：home-streamer-d482b116.webp 324138 bytes。
+
+命令：docker ps --format '{{.Names}} {{.Status}}'
+结果：new-api-blue、new-api-postgres、wenyun-workshop 均 healthy；Caddy、Redis 运行。
+
+命令：curl -fsS --max-time 20 http://127.0.0.1:3002/api/status
+命令：curl -fsS --max-time 20 --resolve api.zzlye.xyz:443:127.0.0.1 https://api.zzlye.xyz/api/status
+结果：两次命令成功，响应 JSON 均 success=true。
+
+核验：通过容器 PID 的 /proc/<pid>/root 路径查询数据实际设备。
+结果：NewAPI /data 与 PostgreSQL /var/lib/postgresql/data 均位于 /dev/vdb1。
+
+清理脚本实际输出
+MIGRATION_ROLLBACK_COPY=REMOVED
+LIVE_DATA_AND_HISTORICAL_BACKUPS=UNCHANGED
+DIRECT_API=PASS success=true
+DOMAIN_API=PASS success=true
+CLEANUP=PASS
+EXIT 0
+
+本地原始核验日志：D:/tmp/newapi-disk-migration-20261002/FINAL-CLEANUP.txt
+说明：本记录不含口令、令牌、环境凭据或用户业务数据。
