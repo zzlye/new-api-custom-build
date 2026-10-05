@@ -92,6 +92,22 @@ function requestValues(req, model) {
   return values;
 }
 
+// 统一视频入口使用 image_urls；Sora 上游仍使用单个 input_reference。
+// 这里只接受一个参考图，避免把多图请求静默截断成单图。
+function normalizeOpenAIVideoRequest(req, model) {
+  const values = Object.assign({}, req || {}, { model: model });
+  if (values.image_urls !== undefined) {
+    if (!Array.isArray(values.image_urls) || values.image_urls.length > 1) throw new Error("image_urls must contain at most one image");
+    if (values.image_urls.length === 1 && values.input_reference === undefined && values.image === undefined) {
+      values.input_reference = values.image_urls[0];
+    }
+    delete values.image_urls;
+  }
+  if (values.seconds === undefined && values.duration !== undefined) values.seconds = values.duration;
+  delete values.duration;
+  return values;
+}
+
 export function buildSubmitRequest(ctx) {
   const req = ctx.requestBody || {};
   if (!String(req.prompt || "").trim()) throw new Error("field prompt is required");
@@ -265,11 +281,12 @@ protocols.openai_video = {
       const seconds = req.seconds === undefined ? req.duration : req.seconds;
       if (seconds !== undefined && (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0 || Number(seconds) > 3600))
         throw new Error("seconds must be between 1 and 3600");
+      const requestBody = normalizeOpenAIVideoRequest(req, ctx.model);
       return {
         kind: "submit",
         model: ctx.model,
-        action: req.input_reference || req.image ? "image_to_video" : "text_to_video",
-        requestBody: Object.assign({}, req, { model: ctx.model }),
+        action: requestBody.input_reference || requestBody.image ? "image_to_video" : "text_to_video",
+        requestBody: requestBody,
       };
     }
     const first = function (name) {
@@ -303,11 +320,12 @@ protocols.openai_video = {
     const seconds = req.seconds === undefined ? req.duration : req.seconds;
     if (seconds !== undefined && (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0 || Number(seconds) > 3600))
       throw new Error("seconds must be between 1 and 3600");
+    const requestBody = normalizeOpenAIVideoRequest(req, ctx.model);
     return {
       kind: "submit",
       model: ctx.model,
-      action: hasInputReferenceFile || req.input_reference || req.image ? "image_to_video" : "text_to_video",
-      requestBody: Object.assign({}, req, { model: ctx.model }),
+      action: hasInputReferenceFile || requestBody.input_reference || requestBody.image ? "image_to_video" : "text_to_video",
+      requestBody: requestBody,
     };
   },
   render: function (ctx, task) {
