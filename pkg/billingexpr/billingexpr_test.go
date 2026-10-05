@@ -61,7 +61,7 @@ func TestFixedPriceRejectsInvalidLeavesIncludingUnselectedBranches(t *testing.T)
 	}
 }
 
-func TestFixedPriceQuotaBoundariesAndUnsupportedTaskSnapshots(t *testing.T) {
+func TestFixedPriceQuotaBoundariesAndTaskSnapshots(t *testing.T) {
 	for _, tc := range []struct {
 		name, expression string
 		group            float64
@@ -87,8 +87,9 @@ func TestFixedPriceQuotaBoundariesAndUnsupportedTaskSnapshots(t *testing.T) {
 				require.NoError(t, err)
 			}
 			snap.TaskUsageBilling = true
-			_, err = billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{})
-			require.ErrorContains(t, err, "task usage")
+			taskResult, err := billingexpr.ComputeTieredQuota(snap, billingexpr.TokenParams{})
+			require.NoError(t, err)
+			assert.Equal(t, result, taskResult)
 		})
 	}
 	const optimized = `true ? tier("tokens", p) : tier("request", fixed(0.01))`

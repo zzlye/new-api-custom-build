@@ -143,7 +143,7 @@ func TaskExprCompatible(expression string, schema map[string]jsplugin.UsageField
 			return false
 		}
 	}
-	return !billingexpr.UsesFixedPricing(expression)
+	return true
 }
 
 func GetBuiltinBillingExprCopy() map[string]string {
@@ -236,9 +236,6 @@ func smokeTestExpr(exprStr string) error {
 func SmokeTestTaskExpr(exprStr string, schema map[string]jsplugin.UsageFieldSchema) error {
 	if _, err := billingexpr.CompileFromCache(exprStr); err != nil {
 		return err
-	}
-	if billingexpr.UsesFixedPricing(exprStr) {
-		return fmt.Errorf("fixed pricing is not supported for task usage expressions")
 	}
 	for key := range billingexpr.UsedUsageKeys(exprStr) {
 		if _, declared := schema[key]; !declared {

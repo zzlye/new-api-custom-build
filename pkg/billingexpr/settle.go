@@ -1,16 +1,14 @@
 package billingexpr
 
-import (
-	"fmt"
-
-	"github.com/QuantumNous/new-api/common"
-)
+import "github.com/QuantumNous/new-api/common"
 
 // quotaConversion converts raw expression output to quota based on the
 // expression version. This is the central dispatch point for future versions
 // that may use a different conversion formula.
-func quotaConversion(exprOutput float64, snap *BillingSnapshot) float64 {
-	if snap.TaskUsageBilling {
+func quotaConversion(exprOutput float64, snap *BillingSnapshot, unit BillingUnit) float64 {
+	// 用量任务的普通分支直接返回美元；fixed 分支仍返回百万倍美元。
+	// 必须依据本次命中的分支换算，不能因为其他分支含 fixed 就统一除以百万。
+	if snap.TaskUsageBilling && unit != BillingUnitRequest {
 		return exprOutput * snap.QuotaPerUnit
 	}
 	switch snap.ExprVersion {
@@ -26,15 +24,12 @@ func ComputeTieredQuota(snap *BillingSnapshot, params TokenParams) (TieredResult
 }
 
 func ComputeTieredQuotaWithRequest(snap *BillingSnapshot, params TokenParams, request RequestInput) (TieredResult, error) {
-	if snap.TaskUsageBilling && UsesFixedPricingByHash(snap.ExprString, snap.ExprHash) {
-		return TieredResult{}, fmt.Errorf("fixed pricing is not supported for task usage expressions")
-	}
 	cost, trace, err := RunExprByHashWithRequest(snap.ExprString, snap.ExprHash, params, request)
 	if err != nil {
 		return TieredResult{}, err
 	}
 
-	quotaBeforeGroup := quotaConversion(cost, snap)
+	quotaBeforeGroup := quotaConversion(cost, snap, trace.BillingUnit)
 	afterGroup, clamp := common.QuotaRoundChecked(quotaBeforeGroup * snap.GroupRatio)
 	crossed := trace.MatchedTier != snap.EstimatedTier
 

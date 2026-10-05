@@ -15,10 +15,13 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -623,6 +626,136 @@ export function buildQueryRequest(){throw new Error("completed submissions must 
 func TestAcceptedSubmitStreamNeverRetries(t *testing.T) {
 	c := taskSubmissionTestContext()
 	assert.Equal(t, service.PolicyDecision{Action: "stop", Reason: "task_accepted", Source: "system"}, decideTaskRetry(c, &dto.TaskError{StatusCode: 502, LocalError: true, NoRetry: true}, 3))
+}
+
+// 覆盖真实预扣、上游提交、任务落库、结算与日志，防止按次视频被时长或分辨率再次放大。
+func TestVideoTaskFixedBillingDatabase(t *testing.T) {
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Channel{}, &model.Task{}, &model.Log{})
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
+	oldRedis, oldMemory, oldBatch, oldConsume, oldExport := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled, common.DataExportEnabled
+	model.DB, model.LOG_DB = db, db
+	common.SetDatabaseTypes(dialect, dialect)
+	common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled, common.DataExportEnabled = false, false, false, true, false
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		savedConfig[key] = value
+		return nil
+	}))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = oldDB, oldLogDB
+		common.SetDatabaseTypes(oldMain, oldLog)
+		common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled, common.LogConsumeEnabled, common.DataExportEnabled = oldRedis, oldMemory, oldBatch, oldConsume, oldExport
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+	const source = `
+export const meta={apiVersion:1,key:"video-price-regression",name:"Video price",version:"1.0.0",author:{name:"Test"},models:["video-price"],fetchMode:"per_task",usageSchema:{seconds:{type:"number",unit:"second"}}};
+export function buildSubmitRequest(ctx){return {url:ctx.baseUrl+"/submit",body:ctx.requestBody,action:"text_to_video"};}
+export function parseSubmitResponse(ctx,resp){return {taskId:"vendor-video",taskData:resp.body,immediate:{status:resp.body.status}};}
+export function extractUsage(ctx){return {seconds:ctx.requestBody.seconds,resolution:ctx.requestBody.ratio};}
+export function extractUsageOnSubmit(ctx,body){return {seconds:body.seconds,resolution:body.ratio};}
+export function extractUsageOnComplete(ctx,result,body){return {seconds:body.seconds};}
+export function buildQueryRequest(){return {url:"https://provider.example/query"};}
+export function parseTaskResult(){return {status:"SUCCESS"};}
+`
+	plugin, err := pluginruntime.CompilePlugin(source, pluginruntime.Options{})
+	require.NoError(t, err)
+	for index, tc := range []struct {
+		name, mode, expression, status        string
+		seconds, ratio, group, price, wantUSD float64
+	}{
+		{"按次四秒", "ratio", "", "SUCCESS", 4, 1, 1, 2.5, 2.5},
+		{"按次八秒高分辨率", "ratio", "", "SUCCESS", 8, 2, 1, 2.5, 2.5},
+		{"按次分组折扣", "ratio", "", "SUCCESS", 8, 2, 0.5, 2.5, 1.25},
+		{"按次失败全退", "ratio", "", "FAILURE", 8, 2, 1, 2.5, 0},
+		{"按次零价", "ratio", "", "SUCCESS", 8, 2, 1, 0, 0},
+		{"按秒四秒", "per_second", "", "SUCCESS", 4, 1, 1, 2.5, 10},
+		{"按秒八秒", "per_second", "", "SUCCESS", 8, 1, 1, 2.5, 20},
+		{"按秒分辨率倍率", "per_second", "", "SUCCESS", 4, 2, 0.5, 2.5, 10},
+		{"固定表达式不随完成时长变动", "tiered_expr", `tier("request", fixed(2.5))`, "SUCCESS", 4, 2, 1, 2.5, 2.5},
+		{"固定表达式分组折扣", "tiered_expr", `tier("request", fixed(2.5))`, "SUCCESS", 8, 2, 0.5, 2.5, 1.25},
+		{"固定表达式失败全退", "tiered_expr", `tier("request", fixed(2.5))`, "FAILURE", 8, 2, 1, 2.5, 0},
+		{"固定表达式零价", "tiered_expr", `tier("request", fixed(0))`, "SUCCESS", 8, 2, 1, 2.5, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings := map[string]string{}
+			for key, value := range map[string]any{
+				"billing_setting.billing_mode":    map[string]string{"video-price": tc.mode},
+				"billing_setting.billing_expr":    map[string]string{"video-price": tc.expression},
+				"group_ratio_setting.group_ratio": map[string]float64{"default": tc.group},
+			} {
+				raw, err := common.Marshal(value)
+				require.NoError(t, err)
+				settings[key] = string(raw)
+			}
+			require.NoError(t, config.GlobalConfig.LoadFromDB(settings))
+			prices, err := common.Marshal(map[string]float64{"video-price": tc.price})
+			require.NoError(t, err)
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(prices)))
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				body, _ := common.Marshal(map[string]any{"status": tc.status, "seconds": tc.seconds * 2, "ratio": tc.ratio})
+				_, _ = w.Write(body)
+			}))
+			defer server.Close()
+			initial := common.QuotaRound(1000 * common.QuotaPerUnit)
+			user := model.User{Username: fmt.Sprintf("video_user_%d", index), AffCode: fmt.Sprintf("video_aff_%d", index), Quota: initial}
+			require.NoError(t, db.Create(&user).Error)
+			ch := model.Channel{Name: "test video", Type: constant.ChannelTypeTaskPlugin}
+			require.NoError(t, db.Create(&ch).Error)
+			c := taskSubmissionTestContext()
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+			c.Set("group", "default")
+			c.Set("username", user.Username)
+			c.Set("task_request", map[string]any{"model": "video-price", "seconds": tc.seconds, "ratio": tc.ratio})
+			c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{Plugin: plugin})
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, "video-price")
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, server.URL)
+			common.SetContextKey(c, constant.ContextKeyChannelId, ch.Id)
+			common.SetContextKey(c, constant.ContextKeyChannelType, ch.Type)
+			info := taskSubmissionRelayInfo(nil)
+			info.UserId, info.OriginModelName = user.Id, "video-price"
+			info.UserGroup, info.UsingGroup = "default", "default"
+			info.IsPlayground = true
+			info.UserSetting.BillingPreference = "wallet_only"
+			info.PublicTaskID, info.LockedChannel = model.GenerateTaskID(), &ch
+			outcome, taskErr := executeTaskSubmission(c, info)
+			require.Nil(t, taskErr, "%+v", taskErr)
+			require.NotNil(t, outcome)
+			want := common.QuotaRound(tc.wantUSD * common.QuotaPerUnit)
+			assert.Equal(t, want, outcome.Result.Quota)
+			var stored model.Task
+			require.NoError(t, db.Where("task_id = ?", info.PublicTaskID).First(&stored).Error)
+			assert.Equal(t, want, stored.Quota)
+			assert.Equal(t, model.TaskStatus(tc.status), stored.Status)
+			var updated model.User
+			require.NoError(t, db.First(&updated, user.Id).Error)
+			assert.Equal(t, initial-want, updated.Quota)
+			assert.Equal(t, want, updated.UsedQuota)
+			var logs []model.Log
+			require.NoError(t, db.Where("user_id = ?", user.Id).Find(&logs).Error)
+			require.Len(t, logs, 1)
+			assert.Equal(t, want, logs[0].Quota)
+			if tc.mode == "tiered_expr" {
+				require.NotNil(t, stored.PrivateData.BillingContext.TieredSnapshot)
+				assert.Equal(t, billingexpr.BillingUnitRequest, stored.PrivateData.BillingContext.TieredSnapshot.EstimatedBillingUnit)
+				var other map[string]any
+				require.NoError(t, common.UnmarshalJsonStr(logs[0].Other, &other))
+				assert.Equal(t, "request", other["billing_unit"])
+				assert.Contains(t, other, "fixed_price")
+			} else if tc.mode == "ratio" {
+				assert.Empty(t, stored.PrivateData.BillingContext.OtherRatios)
+			}
+			if info.Billing != nil {
+				require.NoError(t, info.Billing.Settle(want))
+				info.Billing.Refund(c)
+				require.NoError(t, db.First(&updated, user.Id).Error)
+				assert.Equal(t, initial-want, updated.Quota)
+			}
+		})
+	}
 }
 
 // Local task rejections carry a message but no cause; the response and the

@@ -1026,50 +1026,46 @@ export const ModelPricingEditorPanel = forwardRef<
                         {t('Per-token (deprecated)')}
                       </TabsTrigger>
                       <TabsTrigger value='per-request'>
-                        {t('Per-request (deprecated)')}
+                        {t('Per-request')}
                       </TabsTrigger>
                     </TabsList>
 
-                    {pricingMode !== 'tiered_expr' &&
-                      pricingMode !== 'per-second' && (
-                        <Alert className='border-amber-500/40 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-100'>
-                          <AlertTriangle
-                            aria-hidden='true'
-                            className='size-5'
-                          />
-                          <AlertDescription className='space-y-3 text-sm text-inherit'>
-                            <p className='font-medium'>
+                    {pricingMode === 'per-token' && (
+                      <Alert className='border-amber-500/40 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-100'>
+                        <AlertTriangle aria-hidden='true' className='size-5' />
+                        <AlertDescription className='space-y-3 text-sm text-inherit'>
+                          <p className='font-medium'>
+                            {t(
+                              'Legacy pricing is deprecated. Convert the current prices to an expression draft, then save to apply it.'
+                            )}
+                          </p>
+                          <Button
+                            type='button'
+                            className='w-full sm:w-auto'
+                            disabled={
+                              conversion.isPending ||
+                              Boolean(billingExpr.trim())
+                            }
+                            onClick={() => void convertPricing()}
+                          >
+                            {conversion.isPending
+                              ? t('Preparing conversion...')
+                              : t('Convert to expression')}
+                          </Button>
+                          {billingExpr.trim() && (
+                            <p>
                               {t(
-                                'Legacy pricing is deprecated. Convert the current prices to an expression draft, then save to apply it.'
+                                'An expression draft already exists. Open the Expression tab to keep editing it.'
                               )}
                             </p>
-                            <Button
-                              type='button'
-                              className='w-full sm:w-auto'
-                              disabled={
-                                conversion.isPending ||
-                                Boolean(billingExpr.trim())
-                              }
-                              onClick={() => void convertPricing()}
-                            >
-                              {conversion.isPending
-                                ? t('Preparing conversion...')
-                                : t('Convert to expression')}
-                            </Button>
-                            {billingExpr.trim() && (
-                              <p>
-                                {t(
-                                  'An expression draft already exists. Open the Expression tab to keep editing it.'
-                                )}
-                              </p>
-                            )}
-                            {conversionReason && (
-                              <p role='status'>{t(conversionReason)}</p>
-                            )}
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                    {(pricingMode !== 'tiered_expr' || wasConverted) && (
+                          )}
+                          {conversionReason && (
+                            <p role='status'>{t(conversionReason)}</p>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {(pricingMode === 'per-token' || wasConverted) && (
                       <p className='text-muted-foreground text-xs'>
                         {t(
                           'After conversion, expression reservation and rounding rules apply. Effective unit prices are preserved; individual rounded charges may differ.'

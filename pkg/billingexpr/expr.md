@@ -96,7 +96,8 @@ Anthropic 的独立缓存计数语义不采用这一 OpenAI 图片拆分。
 
 ### 旧定价转换
 
-旧倍率和旧按次模式仍可运行，管理界面标记为弃用，新建定价默认使用表达式。
+旧倍率模式仍可运行，管理界面标记为弃用，新建定价默认使用表达式。按次模式继续支持，
+视频按次价格为每条任务固定金额，不再叠加秒数、分辨率或提交后倍率；按秒模式保留时长计价。
 `POST /api/option/model_pricing/convert` 接收 `{model_name, pricing}`，其中 `pricing`
 为完整的旧定价草稿，缺少的键继承运行时默认值。接口返回表达式及本次转换使用的生效定价快照，或具体不支持原因，不写数据库。
 管理界面先用该快照显示左右对照预览，确认后才更新草稿；取消不改变原草稿。
@@ -207,8 +208,9 @@ tier("base", p * 0.43 + c * 3.06 + img * 0.78 + ai * 3.81 + ao * 15.11)
 with a $0.01 base price for one successful HTTP/SSE request. Other leaves may
 still use token pricing. Group ratios and request multipliers continue to apply;
 existing tool surcharges are calculated separately and added as before. A stream
-does not incur a fixed fee per chunk. Realtime and task usage expressions reject
-`fixed()` before upstream submission or reservation.
+does not incur a fixed fee per chunk. Realtime rejects `fixed()` before upstream
+submission or reservation. 任务表达式支持固定价：`tier("request", fixed(2.5))`
+表示每条成功任务 $2.50，不乘秒数；失败沿用任务退款流程。
 
 The amount must be a finite, non-negative numeric literal whose v1 scaled value
 is finite. Explicit `fixed(0)` is valid and stays free. Expressions using `fixed`
@@ -360,7 +362,11 @@ task quota = expression output in USD * QuotaPerUnit * groupRatio
 token quota = expression output in $/1M tokens / 1,000,000 * QuotaPerUnit * groupRatio
 ```
 
-In other words, a task expression already returns the request's dollar cost.
+任务表达式命中 `fixed()` 分支时，其引擎输出同样先除以 1,000,000。
+换算依据实际命中分支的 `billing_unit`，因此同一条件表达式中的固定价分支与用量分支
+都使用各自单位。预扣与完成结算共用这一换算，日志保存实际固定单价与计费单位。
+
+In other words, an ordinary task usage expression already returns the request's dollar cost.
 For example, `u("seconds") * 0.4` means $0.40 per second. Engine semantics do
 not divide task output by one million.
 

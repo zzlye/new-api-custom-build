@@ -51,6 +51,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		other.SetPublic("billing_mode", "tiered_expr")
 		other.SetPublic("expr_b64", base64.StdEncoding.EncodeToString([]byte(snap.ExprString)))
 		other.SetPublic("matched_tier", snap.EstimatedTier)
+		if snap.EstimatedBillingUnit == billingexpr.BillingUnitRequest && snap.EstimatedFixedPrice != nil {
+			other.SetPublic("billing_unit", snap.EstimatedBillingUnit)
+			other.SetPublic("fixed_price", *snap.EstimatedFixedPrice)
+		}
 		if len(snap.UsageFacts) > 0 {
 			other.SetPublic("usage_facts", snap.UsageFacts)
 		}
@@ -149,6 +153,10 @@ func taskBillingOther(task *model.Task) *model.LogOther {
 			other.SetPublic("billing_mode", "tiered_expr")
 			other.SetPublic("expr_b64", base64.StdEncoding.EncodeToString([]byte(snap.ExprString)))
 			other.SetPublic("matched_tier", snap.EstimatedTier)
+			if snap.EstimatedBillingUnit == billingexpr.BillingUnitRequest && snap.EstimatedFixedPrice != nil {
+				other.SetPublic("billing_unit", snap.EstimatedBillingUnit)
+				other.SetPublic("fixed_price", *snap.EstimatedFixedPrice)
+			}
 			if len(snap.UsageFacts) > 0 {
 				other.SetPublic("usage_facts", snap.UsageFacts)
 			}
@@ -437,7 +445,9 @@ func taskConsumptionLogContent(info *relaycommon.RelayInfo) string {
 		logContent += "，按秒计费"
 	}
 	// 保留官方用量明细，按秒标记优先于旧按次补丁。
-	if !info.PriceData.PerSecondBilling && common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	if !info.PriceData.PerSecondBilling && (common.StringsContains(constant.TaskPricePatches, info.OriginModelName) ||
+		(info.PriceData.UsePrice && len(info.PriceData.OtherRatios()) == 0) ||
+		(info.TieredBillingSnapshot != nil && info.TieredBillingSnapshot.EstimatedBillingUnit == billingexpr.BillingUnitRequest)) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
 		var contents []string

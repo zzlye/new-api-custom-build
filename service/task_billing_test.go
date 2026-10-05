@@ -1442,6 +1442,63 @@ func TestSettle_PerCallBilling_SkipsAdaptorAdjust(t *testing.T) {
 	assert.Equal(t, int64(0), countLogs(t))
 }
 
+// 轮询完成时固定价保持单次金额，失败时资金、令牌和用量均只退还一次。
+func TestSettleTaskFixedPriceCompletionAndRefund(t *testing.T) {
+	for _, tc := range []struct {
+		name, expression, status string
+	}{
+		{"普通按次成功", "", model.TaskStatusSuccess},
+		{"普通按次失败", "", model.TaskStatusFailure},
+		{"表达式按次成功", `tier("request", fixed(2.5))`, model.TaskStatusSuccess},
+		{"表达式按次失败", `tier("request", fixed(2.5))`, model.TaskStatusFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			const userID, tokenID, channelID = 91, 91, 91
+			const initial, charged = 10000000, 1250000
+			seedUser(t, userID, initial-charged)
+			seedToken(t, tokenID, userID, "sk-fixed-task", initial-charged)
+			seedChannel(t, channelID)
+			seedChargedAccounting(t, userID, channelID, tokenID, charged, 1)
+			task := makeTask(userID, channelID, charged, tokenID, BillingSourceWallet, 0)
+			task.Status = model.TaskStatus(tc.status)
+			task.PrivateData.BillingContext.PerCallBilling = true
+			if tc.expression != "" {
+				task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
+					ExprString: tc.expression, ExprHash: billingexpr.ExprHashString(tc.expression),
+					GroupRatio: 1, QuotaPerUnit: 500000, TaskUsageBilling: true,
+					UsageFacts: map[string]any{"seconds": float64(4)},
+				}
+			}
+			require.NoError(t, model.DB.Create(task).Error)
+			handled := settleTaskBillingOnComplete(context.Background(), &mockAdaptor{adjustReturn: 9000000}, task, &relaycommon.TaskInfo{
+				Status: tc.status, TotalTokens: 9999, UsageFacts: map[string]any{"seconds": float64(16)},
+			})
+			want := charged
+			if tc.status == model.TaskStatusFailure {
+				assert.False(t, handled)
+				require.True(t, RefundTaskQuota(context.Background(), task, "生成失败"))
+				require.True(t, RefundTaskQuota(context.Background(), task, "重复完成通知"))
+				want = 0
+				assert.Equal(t, int64(1), countLogs(t))
+			} else {
+				assert.Equal(t, tc.expression != "", handled)
+				assert.Equal(t, int64(0), countLogs(t))
+				if tc.expression != "" {
+					assert.Equal(t, billingexpr.BillingUnitRequest, task.PrivateData.BillingContext.TieredSnapshot.EstimatedBillingUnit)
+				}
+			}
+			assert.Equal(t, want, task.Quota)
+			assert.Equal(t, initial-want, getUserQuota(t, userID))
+			assert.Equal(t, initial-want, getTokenRemainQuota(t, tokenID))
+			used, requests := getUserUsageAccounting(t, userID)
+			assert.Equal(t, want, used)
+			assert.Equal(t, 1, requests)
+			assert.Equal(t, int64(want), getChannelUsedQuota(t, channelID))
+		})
+	}
+}
+
 func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

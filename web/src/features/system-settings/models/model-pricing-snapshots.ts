@@ -93,7 +93,7 @@ export const getModeLabel = (mode?: string) => {
 export const getModeVariant = (
   mode?: string
 ): 'warning' | 'info' | 'success' => {
-  if (mode === 'per-request') return 'warning'
+  if (mode === 'per-request') return 'info'
   if (mode === 'per-second') return 'info'
   if (mode === 'tiered_expr') return 'info'
   return 'success'

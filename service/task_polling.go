@@ -686,6 +686,8 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		}
 		bc.TieredSnapshot.UsageFacts = usageFacts
 		bc.TieredSnapshot.EstimatedTier = result.MatchedTier
+		bc.TieredSnapshot.EstimatedBillingUnit = result.BillingUnit
+		bc.TieredSnapshot.EstimatedFixedPrice = result.FixedPrice
 		RecalculateTaskQuota(ctx, task, result.ActualQuotaAfterGroup, "任务用量表达式结算", result.Clamp)
 		return true
 	}

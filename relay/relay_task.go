@@ -308,10 +308,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if useTiered {
 		provider, supported := adaptor.(channel.TaskUsageFactsProvider)
-		if billingexpr.UsesFixedPricing(exprStr) {
-			return nil, service.TaskErrorWrapper(fmt.Errorf("fixed pricing is not supported for task usage expressions"), "model_price_error", http.StatusBadRequest)
-		}
-		if !exists || !supported {
+		// 纯固定价不依赖用量采集，配置式视频适配器也能使用；用量表达式仍须有计量器。
+		fixedWithoutUsage := billingexpr.UsesFixedPricing(exprStr) && len(billingexpr.UsedUsageKeys(exprStr)) == 0
+		if !exists || (!supported && !fixedWithoutUsage) {
 			return nil, service.TaskErrorWrapper(fmt.Errorf("task model %s has no usage expression or meter", modelName), "model_price_error", http.StatusBadRequest)
 		}
 		sharedModel := pinnedPlugin.Generation.SharedModel(modelName) || pinnedPlugin.Generation.SharedModel(info.UpstreamModelName)
@@ -327,21 +326,27 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			if err != nil {
 				return nil, service.TaskErrorWrapperLocal(err, "plugin_usage_invalid", http.StatusBadRequest)
 			}
-		} else {
+		} else if supported {
 			facts = provider.ExtractUsageFacts(c, info)
 		}
-		cost, trace, runErr := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: facts})
-		if runErr != nil || cost < 0 {
-			if runErr == nil {
-				runErr = fmt.Errorf("negative task expression result")
-			}
+		groupRatioInfo := helper.HandleGroupRatio(c, info)
+		snap := &billingexpr.BillingSnapshot{
+			BillingMode: billing_setting.BillingModeTieredExpr, ModelName: modelName,
+			ExprString: exprStr, ExprHash: billingexpr.ExprHashString(exprStr),
+			GroupRatio: groupRatioInfo.GroupRatio, QuotaPerUnit: common.QuotaPerUnit,
+			ExprVersion: billingexpr.ExprVersion(exprStr), TaskUsageBilling: true, UsageFacts: facts,
+		}
+		// 预扣与完成结算共用换算，避免固定价被错误放大一百万倍。
+		estimate, _, runErr := service.EvaluateTaskCompletionUsage(snap, nil)
+		if runErr != nil {
 			return nil, service.TaskErrorWrapper(runErr, "model_price_error", http.StatusBadRequest)
 		}
-		groupRatioInfo := helper.HandleGroupRatio(c, info)
-		quota, clamp := common.QuotaRoundChecked(cost * common.QuotaPerUnit * groupRatioInfo.GroupRatio)
-		noteTaskQuotaClamp(info, clamp)
+		quota := estimate.ActualQuotaAfterGroup
+		noteTaskQuotaClamp(info, estimate.Clamp)
 		priceData = types.PriceData{Quota: quota, QuotaToPreConsume: quota, GroupRatioInfo: groupRatioInfo}
-		info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{BillingMode: billing_setting.BillingModeTieredExpr, ModelName: modelName, ExprString: exprStr, ExprHash: billingexpr.ExprHashString(exprStr), GroupRatio: groupRatioInfo.GroupRatio, EstimatedQuotaBeforeGroup: cost * common.QuotaPerUnit, EstimatedQuotaAfterGroup: quota, EstimatedTier: trace.MatchedTier, QuotaPerUnit: common.QuotaPerUnit, ExprVersion: billingexpr.ExprVersion(exprStr), TaskUsageBilling: true, UsageFacts: facts}
+		snap.EstimatedQuotaBeforeGroup, snap.EstimatedQuotaAfterGroup = estimate.ActualQuotaBeforeGroup, quota
+		snap.EstimatedTier, snap.EstimatedBillingUnit, snap.EstimatedFixedPrice = estimate.MatchedTier, estimate.BillingUnit, estimate.FixedPrice
+		info.TieredBillingSnapshot = snap
 	} else {
 		priceData, err = helper.ModelPriceHelperPerCall(c, info)
 		if err != nil {
@@ -349,6 +354,17 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 	info.PriceData = priceData
+	// 视频按次是每条任务的固定金额，不叠加秒数、分辨率或适配器的提交后倍率。
+	// 仅修正视频，保留图片按张及其他任务原有的用量计费。
+	isVideo := service.IsVideoAdapterPath(c.Request.URL.Path)
+	switch constant.NormalizeTaskAction(info.Action) {
+	case constant.TaskActionImageToVideo, constant.TaskActionTextToVideo, constant.TaskActionFirstTailToVideo, constant.TaskActionReferenceToVideo, constant.TaskActionRemix:
+		isVideo = true
+	}
+	perCallVideo := isVideo && priceData.UsePrice && !priceData.PerSecondBilling
+	if perCallVideo {
+		info.PriceData.ReplaceOtherRatios(nil)
+	}
 
 	// 6. 将 OtherRatios 应用到基础额度（饱和转换，防止溢出成负数）
 	if info.TieredBillingSnapshot == nil && (!common.StringsContains(constant.TaskPricePatches, modelName) || info.PriceData.PerSecondBilling) {
@@ -411,10 +427,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 				finalQuota = settlement.ActualQuotaAfterGroup
 				snap.UsageFacts = facts
 				snap.EstimatedTier = settlement.MatchedTier
+				snap.EstimatedBillingUnit = settlement.BillingUnit
+				snap.EstimatedFixedPrice = settlement.FixedPrice
 				noteTaskQuotaClamp(info, settlement.Clamp)
 			}
 		}
-	} else {
+	} else if !perCallVideo {
 		if adjustedRatios := adaptor.AdjustBillingOnSubmit(info, parsed.TaskData); len(adjustedRatios) > 0 {
 			if adjustedQuota, ok := recalcQuotaFromRatios(info, adjustedRatios); ok {
 				// 基于调整后的 ratios 重新计算 quota

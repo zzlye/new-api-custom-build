@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/video_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -342,7 +343,7 @@ func TestSharedTaskBillingExpressionSelectionAndFrozenSettlement(t *testing.T) {
 		{name: "mapped override precedes model fallback", plugin: "billing-beta", model: "alias-model", mapping: `{"alias-model":"declared-model"}`, modelExpr: baseExpr, mode: "tiered_expr", variants: map[string]string{"billing-beta::declared-model": betaExpr}, wantExpr: betaExpr},
 		{name: "unconfigured plugin cannot use another schema", plugin: "billing-beta", model: "declared-model", modelExpr: baseExpr, mode: "tiered_expr", wantPriceError: true},
 		{name: "missing usage in skipped branch remains incompatible", plugin: "billing-beta", model: "declared-model", modelExpr: `true ? tier("free", 0) : tier("missing", u("seconds"))`, mode: "tiered_expr", wantPriceError: true},
-		{name: "fixed pricing is still rejected", plugin: "billing-beta", model: "declared-model", variants: map[string]string{"billing-beta::declared-model": `tier("fixed", fixed(1))`}, wantPriceError: true},
+		{name: "fixed pricing stays fixed at completion", plugin: "billing-beta", model: "declared-model", variants: map[string]string{"billing-beta::declared-model": `tier("fixed", fixed(1))`}, wantExpr: `tier("fixed", fixed(1))`},
 		{name: "endpoint mapping keeps the declared profile", plugin: "billing-beta", model: "declared-model", mapping: `{"declared-model":"ep-endpoint"}`, modelExpr: baseExpr, mode: "tiered_expr", variants: map[string]string{"billing-beta::declared-model": betaExpr}, wantExpr: betaExpr, profiled: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -401,7 +402,12 @@ func TestSharedTaskBillingExpressionSelectionAndFrozenSettlement(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, float64(4), usage[field])
 			assert.Equal(t, float64(2), info.TieredBillingSnapshot.UsageFacts[field])
-			assert.Equal(t, 2*info.TieredBillingSnapshot.EstimatedQuotaAfterGroup, result.ActualQuotaAfterGroup)
+			if result.BillingUnit == billingexpr.BillingUnitRequest {
+				assert.Equal(t, common.QuotaRound(common.QuotaPerUnit), result.ActualQuotaAfterGroup)
+				assert.Equal(t, info.TieredBillingSnapshot.EstimatedQuotaAfterGroup, result.ActualQuotaAfterGroup)
+			} else {
+				assert.Equal(t, 2*info.TieredBillingSnapshot.EstimatedQuotaAfterGroup, result.ActualQuotaAfterGroup)
+			}
 			assert.Equal(t, tc.wantExpr, info.TieredBillingSnapshot.ExprString)
 		})
 	}
@@ -464,6 +470,61 @@ export function parseTaskResult() { return {status:"SUCCESS"}; }
 			require.NotNil(t, result)
 			assert.Equal(t, "job-42", result.UpstreamTaskID)
 			assert.JSONEq(t, `{"status":`+strconv.Itoa(tc.status)+`}`, string(result.TaskData))
+		})
+	}
+}
+
+func TestConfiguredVideoFixedExpressionWithoutUsageMeter(t *testing.T) {
+	service.InitHttpClient()
+	for _, tc := range []struct {
+		name, expression string
+		quota            int
+		reject           bool
+	}{
+		{"固定价无需插件计量器", `tier("request", fixed(2.5))`, 1250000, false},
+		{"零价无需插件计量器", `tier("request", fixed(0))`, 0, false},
+		{"用量表达式仍须计量器", `tier("seconds", u("seconds") * 2.5)`, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			saveBillingConfig(t)
+			expressions, err := common.Marshal(map[string]string{"configured-video": tc.expression})
+			require.NoError(t, err)
+			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+				"billing_setting.billing_mode":    `{"configured-video":"tiered_expr"}`,
+				"billing_setting.billing_expr":    string(expressions),
+				"group_ratio_setting.group_ratio": `{"default":1}`,
+			}))
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				assert.False(t, tc.reject, "价格校验失败时不应提交上游")
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"configured-job","status":"queued"}`))
+			}))
+			defer server.Close()
+			c, info := newTaskSubmitContext(t, "configured-video", "")
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(`{"model":"configured-video","prompt":"镜头前进","seconds":8}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			defer common.CleanupBodyStorage(c)
+			protocol := video_setting.Presets()["standard"]
+			protocol.Enabled = true
+			c.Set(service.VideoAdapterSnapshotKey, map[int]service.VideoAdapterSnapshot{0: {Model: "configured-video", Protocol: &protocol}})
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, server.URL)
+			c.Set("group", "default")
+			info.OriginModelName = "configured-video"
+			info.UserGroup, info.UsingGroup = "default", "default"
+			info.Billing = &imageReservation{limit: 1 << 30}
+			result, taskErr := RelayTaskSubmit(c, info)
+			if tc.reject {
+				require.NotNil(t, taskErr)
+				assert.Equal(t, "model_price_error", taskErr.Code)
+				return
+			}
+			require.Nil(t, taskErr, "%+v", taskErr)
+			assert.Equal(t, tc.quota, result.Quota)
+			assert.Equal(t, "configured-job", result.UpstreamTaskID)
+			require.NotNil(t, info.TieredBillingSnapshot)
+			completion, _, err := service.EvaluateTaskCompletionUsage(info.TieredBillingSnapshot, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tc.quota, completion.ActualQuotaAfterGroup)
 		})
 	}
 }
