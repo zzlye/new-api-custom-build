@@ -47,6 +47,7 @@ for (const key of domGlobals) {
   })
 }
 
+let docsLink: string | undefined = 'https://docs.example.test'
 let parallaxEnabled = true
 let animationFrameId = 0
 const pendingAnimationFrames = new Map<number, FrameRequestCallback>()
@@ -130,7 +131,7 @@ mock.module('@/components/ui/button', () => ({
   },
 }))
 mock.module('@/hooks/use-status', () => ({
-  useStatus: () => ({ status: { docs_link: 'https://docs.example.test' } }),
+  useStatus: () => ({ status: { docs_link: docsLink } }),
 }))
 mock.module('@/hooks/use-appearance', () => ({
   useAppearance: () => ({
@@ -182,12 +183,45 @@ const { Hero } = await import('../hero')
 
 describe('单屏主页 Hero', () => {
   beforeEach(() => {
+    docsLink = 'https://docs.example.test'
     parallaxEnabled = true
     pendingAnimationFrames.clear()
     document.body.replaceChildren()
   })
 
   after(() => domWindow.close())
+
+  test('文档按钮替换旧默认地址并保留自定义地址', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    try {
+      for (const [input, expected] of [
+        [undefined, 'https://zzlye.site/docs/index.html#/'],
+        ['', 'https://zzlye.site/docs/index.html#/'],
+        ['https://docs.newapi.pro', 'https://zzlye.site/docs/index.html#/'],
+        ['https://docs.newapi.ai/api/', 'https://zzlye.site/docs/index.html#/'],
+        ['https://docs.example.test', 'https://docs.example.test'],
+        ['/help', '/help'],
+      ]) {
+        docsLink = input
+        await act(async () => {
+          root.render(
+            <I18nextProvider i18n={i18n}>
+              <Hero />
+            </I18nextProvider>
+          )
+        })
+        const link = [...container.querySelectorAll('a')].find(
+          (item) => item.textContent === 'Docs'
+        )
+        assert.equal(link?.getAttribute('href'), expected, String(input))
+      }
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+    }
+  })
 
   test('保留主要操作和 API 演示，并移除冗余介绍', async () => {
     const container = document.createElement('div')

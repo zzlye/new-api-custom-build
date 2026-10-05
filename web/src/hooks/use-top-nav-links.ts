@@ -20,6 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import { resolveDocsLink } from '@/lib/docs-link'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -55,8 +56,8 @@ export function useTopNavLinks(): TopNavLink[] {
     )
   }, [status])
 
-  // Documentation link (may be external)
-  const docsLink: string | undefined = status?.docs_link as string | undefined
+  // 统一文档入口，并兼容管理员配置的站内地址。
+  const docsLink = resolveDocsLink(status?.docs_link)
 
   const isAuthed = !!auth?.user
 
@@ -88,11 +89,11 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Docs (supports external links)
   if (modules?.docs !== false) {
-    if (docsLink) {
-      links.push({ title: t('Docs'), href: docsLink, external: true })
-    } else {
-      links.push({ title: t('Docs'), href: '/docs' })
-    }
+    links.push({
+      title: t('Docs'),
+      href: docsLink,
+      external: docsLink.startsWith('http'),
+    })
   }
 
   // About

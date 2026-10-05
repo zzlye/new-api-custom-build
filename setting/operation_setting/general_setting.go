@@ -22,9 +22,12 @@ type GeneralSetting struct {
 	CustomCurrencyExchangeRate float64 `json:"custom_currency_exchange_rate"`
 }
 
+// DefaultDocsLink 是站点默认文档入口。
+const DefaultDocsLink = "https://zzlye.site/docs/index.html#/"
+
 // 默认配置
 var generalSetting = GeneralSetting{
-	DocsLink:                   "https://docs.newapi.pro",
+	DocsLink:                   DefaultDocsLink,
 	PingIntervalEnabled:        false,
 	PingIntervalSeconds:        60,
 	QuotaDisplayType:           QuotaDisplayTypeUSD,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -450,6 +451,14 @@ func updateOptionMap(key string, value string) (err error) {
 	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	// 兼容已保存的官方文档地址，保证设置页与公开入口使用同一地址。
+	if key == "general_setting.docs_link" {
+		value = strings.TrimSpace(value)
+		docsURL, parseErr := url.Parse(value)
+		if value == "" || (parseErr == nil && (strings.EqualFold(docsURL.Hostname(), "docs.newapi.pro") || strings.EqualFold(docsURL.Hostname(), "docs.newapi.ai"))) {
+			value = operation_setting.DefaultDocsLink
+		}
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,4 +178,29 @@ func TestRetiredThemeOptionIsPersistedButNotPublished(t *testing.T) {
 	assert.Equal(t, "default", requireOptionValue(t, db, retiredThemeOptionKey))
 	_, published := common.OptionMap[retiredThemeOptionKey]
 	assert.False(t, published)
+}
+
+// 旧配置同步后，设置页与公开状态都必须返回新的文档入口。
+func TestDocsLinkOptionCompatibility(t *testing.T) {
+	previousMap := common.OptionMap
+	previousDocs := operation_setting.GetGeneralSetting().DocsLink
+	t.Cleanup(func() {
+		common.OptionMap = previousMap
+		operation_setting.GetGeneralSetting().DocsLink = previousDocs
+	})
+	common.OptionMap = map[string]string{}
+	for _, tc := range []struct{ input, want string }{
+		{"", "https://zzlye.site/docs/index.html#/"},
+		{"https://docs.newapi.pro", "https://zzlye.site/docs/index.html#/"},
+		{" https://docs.newapi.ai/api/ ", "https://zzlye.site/docs/index.html#/"},
+		{"https://custom.example/docs#start", "https://custom.example/docs#start"},
+		{"/help", "/help"},
+		{"https://docs.newapi.pro.example/docs", "https://docs.newapi.pro.example/docs"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			require.NoError(t, updateOptionMap("general_setting.docs_link", tc.input))
+			assert.Equal(t, tc.want, common.OptionMap["general_setting.docs_link"])
+			assert.Equal(t, tc.want, operation_setting.GetGeneralSetting().DocsLink)
+		})
+	}
 }
