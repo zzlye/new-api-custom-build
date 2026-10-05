@@ -1,0 +1,42 @@
+38服务器 NewAPI 拉取切换记录
+日期：2026-10-05（Asia/Shanghai）
+用户要求：镜像已构建，直接拉取并更新服务器 NewAPI。
+镜像仓库：ghcr.io/zzlye/new-api-custom-build
+旧镜像：sha256:e91378faa1236bab122271c475bb73e00b807ebe4a947444d93a87d772e42687
+新镜像：sha256:a9349eddf2fec7d48878b52c6ab13103acb88f362c152e50a1594fddba91f90d
+来源：拉取latest，随后在Compose中固定此次实际拉取的digest。
+构建记录：https://github.com/zzlye/new-api-custom-build/actions/runs/37289942154（success）
+
+变更：/opt/new-api/docker-compose.yml 仅 new-api-blue.image 字段修改。
+执行：docker pull ghcr.io/zzlye/new-api-custom-build:latest
+执行：docker compose up -d --no-deps --pull never new-api-blue
+只重建NewAPI应用容器，沿用已有180秒停止宽限配置。
+未重新构建镜像、未复制数据库、未增加大型回退副本。
+
+初次部署后整体数组比较断言未通过，脚本退出1；未据此宣称核验完成。
+随后独立重新核验实际镜像、健康状态、Compose环境变量、语义挂载集合、端口及接口，全部通过，退出0。
+镜像默认环境变量无变化，Compose环境配置无不匹配项。
+数据位于/dev/vdb1[/new-api]，原路径/opt/new-api保留。
+PostgreSQL、Redis、Caddy和文运启动时间均早于本次更新，无重启。
+
+最终实际核验输出：
+STATE={"image": "sha256:a9349eddf2fec7d48878b52c6ab13103acb88f362c152e50a1594fddba91f90d", "status": "running", "health": "healthy", "mounts": [{"Type": "bind", "Source": "/opt/new-api/data", "Destination": "/data", "Mode": "rw", "RW": true, "Propagation": "rprivate"}, {"Type": "bind", "Source": "/opt/new-api/logs", "Destination": "/app/logs", "Mode": "rw", "RW": true, "Propagation": "rprivate"}], "ports": {"3000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "3002"}]}}
+COMPOSE_ENV_MISMATCH_NAMES=[]
+IMAGE_DEFAULT_ENV_CHANGED_NAMES=[]
+DIRECT_API=PASS success=true
+DOMAIN_API=PASS success=true
+NEW_API_CONFIG_AND_HEALTH=PASS
+OTHER_CONTAINER={"name": "new-api-postgres", "started_at": "2026-10-02T12:33:31.77756224Z", "health": "healthy", "image": "postgres:15"}
+OTHER_CONTAINER={"name": "new-api-redis", "started_at": "2026-09-21T11:12:45.972532645Z", "health": null, "image": "redis:latest"}
+OTHER_CONTAINER={"name": "new-api-caddy", "started_at": "2026-10-02T12:33:33.509451891Z", "health": null, "image": "caddy:2-alpine"}
+OTHER_CONTAINER={"name": "wenyun-workshop", "started_at": "2026-10-04T05:26:00.964304045Z", "health": "healthy", "image": "ghcr.io/zzlye/wenyun-workshop:0.4.13"}
+TARGET       SOURCE              FSTYPE OPTIONS
+/opt/new-api /dev/vdb1[/new-api] ext4   rw,relatime
+new-api-blue Up About a minute (healthy)
+wenyun-workshop Up 28 hours (healthy)
+new-api-caddy Up 2 days
+new-api-postgres Up 2 days (healthy)
+new-api-redis Up 13 days
+UPDATE_VERIFIED=PASS
+
+EXIT 0
