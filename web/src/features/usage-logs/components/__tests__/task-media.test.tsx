@@ -429,7 +429,7 @@ describe('任务生成结果', () => {
       '内容审核',
       '输出格式',
       '开始生成时间',
-      '参考图',
+      '参考素材',
     ]) {
       assert.ok(dialog.textContent?.includes(label), `缺少中文字段：${label}`)
     }
@@ -491,6 +491,52 @@ describe('任务生成结果', () => {
     )
     assert.deepEqual(getCalls, ['/api/task/async_fixture/details'])
     assert.equal(document.querySelectorAll('img').length, 0)
+  })
+  test('生成中的任务同时展示参考图片、视频和音频，过期后保留文字记录', async () => {
+    taskDetails.status = 'processing'
+    taskDetails.media = []
+    taskDetails.references.push(
+      {
+        url: '/api/task/async_fixture/reference/1',
+        kind: 'video',
+        content_type: 'video/mp4',
+        role: 'reference',
+        name: '动作.mp4',
+      },
+      {
+        url: '/api/task/async_fixture/reference/2',
+        kind: 'audio',
+        content_type: 'audio/flac',
+        role: 'reference',
+        name: '音乐.flac',
+      }
+    )
+    await renderTaskDetails()
+    await openTaskDetails()
+    const references = document.querySelector(
+      'section[aria-label="Reference media"]'
+    )
+    assert.ok(references)
+    assert.ok(references.querySelector('img[alt="Reference image 1"]'))
+    assert.ok(
+      references.querySelector('video[aria-label="Reference video"][controls]')
+    )
+    assert.ok(
+      references.querySelector('audio[aria-label="Reference audio"][controls]')
+    )
+    assert.ok(references.textContent?.includes('Reference video 2'))
+    assert.ok(references.textContent?.includes('Reference audio 3'))
+    assert.ok(references.textContent?.includes('音乐.flac'))
+    assert.ok(getCalls.includes('/api/task/async_fixture/reference/2'))
+    await act(async () => {
+      taskDetails = { ...taskDetails, media_expired: true, expires_at: 1 }
+      await client.invalidateQueries()
+    })
+    assert.equal(document.querySelectorAll('img, video, audio').length, 0)
+    assert.ok(document.body.textContent?.includes('保持人物，背景改成晴天'))
+    assert.ok(
+      document.body.textContent?.includes('Reference media have expired')
+    )
   })
   test('失败任务超过文件保存期限后仍展示失败原因', async () => {
     const failure = 'upstream generation failed'

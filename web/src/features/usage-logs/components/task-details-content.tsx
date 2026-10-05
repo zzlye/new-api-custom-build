@@ -52,6 +52,13 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelled',
 }
 
+// 标签跟随素材类型，视频和音频不会再显示成参考图片。
+const REFERENCE_LABELS: Record<TaskMedia['kind'], string> = {
+  image: 'Reference image {{number}}',
+  video: 'Reference video {{number}}',
+  audio: 'Reference audio {{number}}',
+}
+
 function TaskMediaGallery(props: {
   media: TaskMedia[]
   expiresAt?: number
@@ -78,7 +85,9 @@ function TaskMediaGallery(props: {
             >
               {media.role === 'mask'
                 ? t('Mask image')
-                : t('Reference image {{number}}', { number: index + 1 })}
+                : t(REFERENCE_LABELS[media.kind] || REFERENCE_LABELS.image, {
+                    number: index + 1,
+                  })}
               {media.name && ` · ${media.name}`}
             </figcaption>
           )}
@@ -244,8 +253,8 @@ export function TaskDetailsContent(props: { taskId: string }) {
           </dl>
         </section>
       )}
-      <section className='grid gap-3' aria-label={t('Reference images')}>
-        <h3 className='text-sm font-semibold'>{t('Reference images')}</h3>
+      <section className='grid gap-3' aria-label={t('Reference media')}>
+        <h3 className='text-sm font-semibold'>{t('Reference media')}</h3>
         {details.media_expired && details.references.length > 0 ? (
           <p className='text-muted-foreground text-sm'>
             {t('Reference media have expired')}
@@ -261,8 +270,8 @@ export function TaskDetailsContent(props: { taskId: string }) {
           <p className='text-muted-foreground text-sm'>
             {t(
               details.input_available
-                ? 'No reference images'
-                : 'Reference images were not recorded for this historical task.'
+                ? 'No reference media recorded'
+                : 'Reference media were not recorded for this historical task.'
             )}
           </p>
         )}

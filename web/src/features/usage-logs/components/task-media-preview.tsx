@@ -98,6 +98,18 @@ export function TaskMediaPreview(props: TaskMediaPreviewProps) {
       </p>
     )
   }
+  // 音频参考使用播放控件，沿用媒体鉴权、到期释放和单次读取逻辑。
+  if (props.media.kind === 'audio') {
+    return (
+      <audio
+        src={url}
+        controls
+        preload='metadata'
+        aria-label={t(props.media.role ? 'Reference audio' : 'Generated audio')}
+        className='w-full'
+      />
+    )
+  }
   if (props.media.kind === 'video') {
     return (
       <video

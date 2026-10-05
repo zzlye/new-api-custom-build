@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Reference media": "參考素材",
+    "No reference media recorded": "未記錄參考素材",
+    "Reference media were not recorded for this historical task.": "這筆歷史任務未記錄參考素材資訊。",
+    "Reference audio": "參考音訊",
+    "Generated audio": "產生的音訊",
+    "Reference video {{number}}": "參考影片 {{number}}",
+    "Reference audio {{number}}": "參考音訊 {{number}}",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"",
     "#1 App": "#1 套用程式",
     "#1 Model": "#1 模型",

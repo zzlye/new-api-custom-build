@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Reference media": "Nội dung tham chiếu",
+    "No reference media recorded": "Chưa ghi nhận nội dung tham chiếu",
+    "Reference media were not recorded for this historical task.": "Nội dung tham chiếu của tác vụ cũ này chưa được ghi lại.",
+    "Reference audio": "Âm thanh tham chiếu",
+    "Generated audio": "Âm thanh đã tạo",
+    "Reference video {{number}}": "Video tham chiếu {{number}}",
+    "Reference audio {{number}}": "Âm thanh tham chiếu {{number}}",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"",
     "#1 App": "#1 Ứng dụng",
     "#1 Model": "#1 Mô hình",

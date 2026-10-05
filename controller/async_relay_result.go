@@ -24,6 +24,7 @@ type asyncMediaSource struct {
 	Value       string
 	ContentType string
 	Base64      bool
+	AllowAudio  bool
 }
 
 // 只识别结果文本中的 Markdown 图片，不把普通超链接当成生成文件。
@@ -204,6 +205,11 @@ func collectAsyncStreamMediaEvent(data string, sources *[]asyncMediaSource, diag
 
 // inspectAsyncMedia 使用文件头识别可展示的媒体，不把上游返回的网页或脚本当作图片。
 func inspectAsyncMedia(path string) (string, string, error) {
+	return inspectAsyncMediaWithAudio(path, false)
+}
+
+// 音频只用于参考素材预览，不放宽图片和视频生成结果的类型校验。
+func inspectAsyncMediaWithAudio(path string, allowAudio bool) (string, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", "", err
@@ -218,6 +224,20 @@ func inspectAsyncMedia(path string) (string, string, error) {
 		return "", "", fmt.Errorf("生成媒体文件为空")
 	}
 	contentType := http.DetectContentType(prefix[:n])
+	if allowAudio {
+		if strings.HasPrefix(contentType, "audio/") {
+			return contentType, "audio", nil
+		}
+		if n >= 42 && string(prefix[:4]) == "fLaC" {
+			return "audio/flac", "audio", nil
+		}
+		if contentType == "application/ogg" {
+			return "audio/ogg", "audio", nil
+		}
+		if n >= 12 && string(prefix[4:8]) == "ftyp" && (string(prefix[8:12]) == "M4A " || string(prefix[8:12]) == "M4B ") {
+			return "audio/mp4", "audio", nil
+		}
+	}
 	switch contentType {
 	case "image/png", "image/jpeg", "image/gif", "image/webp":
 		return contentType, "image", nil
@@ -302,7 +322,7 @@ func saveAsyncMediaSource(ctx context.Context, source asyncMediaSource) (model.A
 	if err := file.Close(); err != nil {
 		return model.AsyncRelayMedia{}, err
 	}
-	contentType, kind, err := inspectAsyncMedia(path)
+	contentType, kind, err := inspectAsyncMediaWithAudio(path, source.AllowAudio)
 	if err != nil {
 		return model.AsyncRelayMedia{}, err
 	}

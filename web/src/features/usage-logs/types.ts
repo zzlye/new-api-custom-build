@@ -324,7 +324,7 @@ export interface TaskMedia {
   role?: string
   error?: string
   url: string
-  kind: 'image' | 'video'
+  kind: 'image' | 'video' | 'audio'
   content_type: string
 }
 

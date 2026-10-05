@@ -12,9 +12,17 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 )
 
 var asyncRequestParameterNames = []string{"model", "size", "quality", "n", "output_format", "response_format", "background", "moderation", "seconds", "duration", "aspect_ratio", "resolution", "seed", "negative_prompt", "stream"}
+
+// 只采集协议明确的素材字段，普通提示词、回调地址和鉴权字段不会成为参考素材。
+var asyncReferenceFields = []string{
+	"image", "images", "image_url", "image_urls", "input_image", "input_reference", "reference_image", "reference_images", "first_frame", "last_frame", "image_end", "mask",
+	"video", "videos", "video_url", "video_urls", "input_video", "reference_video", "reference_videos",
+	"audio", "audios", "audio_url", "audio_urls", "input_audio", "reference_audio", "reference_audios",
+}
 
 // captureAsyncRequestDetails 只处理已收到的输入，不访问上游；详情采集失败不会阻断原来的生成请求。
 func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequestDetails {
@@ -45,15 +53,25 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 			if part.FileName() != "" && isAsyncReferenceField(name) {
 				if len(details.References) >= 128 {
 					_ = part.Close()
-					details.CaptureError = "参考图数量超出展示上限"
+					details.CaptureError = "参考素材数量超出展示上限"
 					continue
 				}
-				reference := saveAsyncMultipartReference(part, name)
+				reference := saveAsyncReferenceFile(part, part.FileName(), name)
 				details.References = append(details.References, reference)
-			} else if part.FileName() == "" && (name == "prompt" || isAsyncRequestParameter(name)) {
-				value, err := io.ReadAll(io.LimitReader(part, 1024*1024+1))
-				if err == nil && len(value) <= 1024*1024 {
-					if name == "prompt" {
+			} else if part.FileName() == "" && (name == "prompt" || isAsyncRequestParameter(name) || isAsyncReferenceField(name)) {
+				limit := int64(1024 * 1024)
+				if isAsyncReferenceField(name) {
+					limit = common.AsyncMediaMaxFileBytes
+				}
+				value, err := io.ReadAll(io.LimitReader(part, limit+1))
+				if err == nil && int64(len(value)) <= limit {
+					if isAsyncReferenceField(name) {
+						var content any
+						if common.Unmarshal(value, &content) != nil {
+							content = string(value)
+						}
+						appendAsyncReferences(content, name, &details.References, task.UserID)
+					} else if name == "prompt" {
 						details.Prompt = string(value)
 					} else {
 						details.Parameters[name] = string(value)
@@ -64,6 +82,7 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 			}
 			_ = part.Close()
 		}
+		saveAsyncInlineReferences(details.References)
 		return details
 	}
 	var fields map[string]json.RawMessage
@@ -83,19 +102,19 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 		}
 	}
 	var texts []string
-	for _, key := range []string{"messages", "input", "contents"} {
+	for _, key := range []string{"messages", "input", "contents", "content"} {
 		var content any
 		if common.Unmarshal(fields[key], &content) == nil {
-			collectAsyncRequestContent(content, &texts, &details.References)
+			collectAsyncRequestContent(content, &texts, &details.References, task.UserID)
 		}
 	}
 	if details.Prompt == "" {
 		details.Prompt = strings.Join(texts, "\n\n")
 	}
-	for _, key := range []string{"image", "images", "image_url", "input_image", "input_reference", "mask"} {
+	for _, key := range asyncReferenceFields {
 		var value any
 		if common.Unmarshal(fields[key], &value) == nil {
-			appendAsyncReferences(value, key, &details.References)
+			appendAsyncReferences(value, key, &details.References, task.UserID)
 		}
 	}
 	// Gemini 的图片尺寸和比例来自生成配置，仅提取这些展示参数。
@@ -114,30 +133,38 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 			details.Parameters["resolution"] = generation.ImageConfig.ImageSize
 		}
 	}
-	for index := range details.References {
-		reference := &details.References[index]
+	saveAsyncInlineReferences(details.References)
+	return details
+}
+
+// 远程地址延迟到查看时读取，内联素材立即保留快照，不影响原请求的内容和发送方式。
+func saveAsyncInlineReferences(references []model.AsyncRelayReference) {
+	for index := range references {
+		reference := &references[index]
+		if reference.Source == "" {
+			continue
+		}
 		if strings.HasPrefix(reference.Source, "https://") || strings.HasPrefix(reference.Source, "http://") {
 			parsed, err := url.Parse(reference.Source)
 			if err != nil || parsed.User != nil {
 				reference.Source = ""
-				reference.Error = "参考图地址格式有误"
+				reference.Error = "参考素材地址格式有误"
 			}
 			continue
 		}
 		if strings.HasPrefix(reference.Source, "file-") {
 			reference.Source = ""
-			reference.Error = "参考图只有上游文件编号，未包含可保存的图片"
+			reference.Error = "参考素材只有上游文件编号，未包含可保存的内容"
 			continue
 		}
-		media, err := saveAsyncMediaSource(context.Background(), asyncMediaSource{Value: reference.Source, Base64: !strings.HasPrefix(reference.Source, "data:")})
+		media, err := saveAsyncMediaSource(context.Background(), asyncMediaSource{Value: reference.Source, Base64: !strings.HasPrefix(reference.Source, "data:"), AllowAudio: true})
 		reference.Source = ""
 		if err != nil {
-			reference.Error = "参考图内容保存失败"
+			reference.Error = "参考素材内容保存失败"
 			continue
 		}
 		reference.Path, reference.Kind, reference.ContentType = media.Path, media.Kind, media.ContentType
 	}
-	return details
 }
 
 func isAsyncRequestParameter(name string) bool {
@@ -150,22 +177,33 @@ func isAsyncRequestParameter(name string) bool {
 }
 
 func isAsyncReferenceField(name string) bool {
-	switch name {
-	case "image", "images", "mask", "input_image", "input_reference", "reference_image":
-		return true
+	for _, field := range asyncReferenceFields {
+		if name == field {
+			return true
+		}
 	}
 	return false
 }
 
-// saveAsyncMultipartReference 复制上传的参考文件，不依赖请求结束后会被清理的表单缓存。
-func saveAsyncMultipartReference(part *multipart.Part, field string) model.AsyncRelayReference {
-	reference := model.AsyncRelayReference{Name: part.FileName(), Role: "reference", Kind: "image"}
+func asyncReferenceKind(field string) string {
+	if strings.Contains(field, "video") {
+		return "video"
+	}
+	if strings.Contains(field, "audio") {
+		return "audio"
+	}
+	return "image"
+}
+
+// saveAsyncReferenceFile 为上传文件保存独立快照，日志清理不会删除其他任务共用的素材。
+func saveAsyncReferenceFile(reader io.Reader, name, field string) model.AsyncRelayReference {
+	reference := model.AsyncRelayReference{Name: name, Role: "reference", Kind: asyncReferenceKind(field)}
 	if field == "mask" {
 		reference.Role = "mask"
 	}
 	path, file, err := common.CreateAsyncMediaFile()
 	if err != nil {
-		reference.Error = "参考图保存失败"
+		reference.Error = "参考素材保存失败"
 		return reference
 	}
 	keep := false
@@ -175,19 +213,19 @@ func saveAsyncMultipartReference(part *multipart.Part, field string) model.Async
 			_ = common.RemoveAsyncMediaFile(path)
 		}
 	}()
-	size, err := io.Copy(file, io.LimitReader(part, common.AsyncMediaMaxFileBytes+1))
+	size, err := io.Copy(file, io.LimitReader(reader, common.AsyncMediaMaxFileBytes+1))
 	if err != nil || size > common.AsyncMediaMaxFileBytes {
-		reference.Error = "参考图内容读取失败"
+		reference.Error = "参考素材内容读取失败"
 		return reference
 	}
 	if err = file.Sync(); err != nil {
-		reference.Error = "参考图保存失败"
+		reference.Error = "参考素材保存失败"
 		return reference
 	}
 	_ = file.Close()
-	contentType, kind, err := inspectAsyncMedia(path)
+	contentType, kind, err := inspectAsyncMediaWithAudio(path, true)
 	if err != nil {
-		reference.Error = "参考文件不是可预览的图片或视频"
+		reference.Error = "参考文件不是可预览的图片、视频或音频"
 		return reference
 	}
 	reference.Path, reference.ContentType, reference.Kind = path, contentType, kind
@@ -195,31 +233,55 @@ func saveAsyncMultipartReference(part *multipart.Part, field string) model.Async
 	return reference
 }
 
-// appendAsyncReferences 只接收明确的图片字段，不把提示词中的链接当成参考图。
-func appendAsyncReferences(value any, role string, references *[]model.AsyncRelayReference) {
+// appendAsyncReferences 根据输入字段保留媒体类型，上传素材沿用原有归属和有效期校验。
+func appendAsyncReferences(value any, field string, references *[]model.AsyncRelayReference, userID int) {
 	if len(*references) >= 128 {
 		return
 	}
-	if role != "mask" {
-		role = "reference"
+	role, kind := "reference", asyncReferenceKind(field)
+	if field == "mask" {
+		role = "mask"
 	}
 	switch item := value.(type) {
 	case string:
 		if item != "" {
-			*references = append(*references, model.AsyncRelayReference{Source: item, Role: role, Kind: "image"})
+			*references = append(*references, model.AsyncRelayReference{Source: item, Role: role, Kind: kind})
 		}
 	case []any:
 		for _, child := range item {
-			appendAsyncReferences(child, role, references)
+			appendAsyncReferences(child, field, references, userID)
 		}
 	case map[string]any:
-		if data, ok := item["b64_json"].(string); ok && data != "" {
-			appendAsyncReferences("data:application/octet-stream;base64,"+data, role, references)
+		if id, ok := item["asset_id"].(string); ok && id != "" {
+			reference := model.AsyncRelayReference{Role: role, Kind: kind, Error: "参考素材不存在或已过期"}
+			if service.ValidateVideoAssets(map[string]any{kind + "_urls": []any{item}}, userID) == nil {
+				var asset model.VideoAsset
+				if model.DB.Where("id = ? AND user_id = ?", id, userID).First(&asset).Error == nil {
+					if file, err := os.Open(asset.Path); err == nil {
+						reference = saveAsyncReferenceFile(file, "", field)
+						_ = file.Close()
+					}
+				}
+			}
+			*references = append(*references, reference)
 			return
 		}
-		for _, key := range []string{"url", "image_url", "file_uri", "fileUri"} {
+		if data, ok := item["b64_json"].(string); ok && data != "" {
+			appendAsyncReferences("data:application/octet-stream;base64,"+data, field, references, userID)
+			return
+		}
+		if data, ok := item["data"].(string); ok && data != "" && field == "input_audio" {
+			appendAsyncReferences(data, field, references, userID)
+			return
+		}
+		for _, key := range []string{"mimeType", "mime_type"} {
+			if contentType, ok := item[key].(string); ok {
+				field = asyncReferenceKind(contentType)
+			}
+		}
+		for _, key := range []string{"url", "image_url", "video_url", "audio_url", "file_uri", "fileUri"} {
 			if child, ok := item[key]; ok {
-				appendAsyncReferences(child, role, references)
+				appendAsyncReferences(child, field, references, userID)
 				return
 			}
 		}
@@ -227,7 +289,7 @@ func appendAsyncReferences(value any, role string, references *[]model.AsyncRela
 }
 
 // collectAsyncRequestContent 覆盖聊天、Responses 和 Gemini 输入中的提示词及参考媒体。
-func collectAsyncRequestContent(value any, texts *[]string, references *[]model.AsyncRelayReference) {
+func collectAsyncRequestContent(value any, texts *[]string, references *[]model.AsyncRelayReference, userID int) {
 	switch item := value.(type) {
 	case string:
 		if item != "" {
@@ -235,7 +297,7 @@ func collectAsyncRequestContent(value any, texts *[]string, references *[]model.
 		}
 	case []any:
 		for _, child := range item {
-			collectAsyncRequestContent(child, texts, references)
+			collectAsyncRequestContent(child, texts, references, userID)
 		}
 	case map[string]any:
 		if role, _ := item["role"].(string); role == "assistant" || role == "model" {
@@ -244,9 +306,9 @@ func collectAsyncRequestContent(value any, texts *[]string, references *[]model.
 		if text, ok := item["text"].(string); ok && text != "" {
 			*texts = append(*texts, text)
 		}
-		for _, key := range []string{"image_url", "input_image"} {
+		for _, key := range []string{"image_url", "input_image", "video_url", "input_video", "audio_url", "input_audio"} {
 			if image, ok := item[key]; ok {
-				appendAsyncReferences(image, "reference", references)
+				appendAsyncReferences(image, key, references, userID)
 			}
 		}
 		for _, key := range []string{"inlineData", "inline_data"} {
@@ -255,19 +317,19 @@ func collectAsyncRequestContent(value any, texts *[]string, references *[]model.
 				if contentType == "" {
 					contentType, _ = inline["mime_type"].(string)
 				}
-				if data, ok := inline["data"].(string); ok && strings.HasPrefix(contentType, "image/") {
-					appendAsyncReferences("data:"+contentType+";base64,"+data, "reference", references)
+				if data, ok := inline["data"].(string); ok && (strings.HasPrefix(contentType, "image/") || strings.HasPrefix(contentType, "video/") || strings.HasPrefix(contentType, "audio/")) {
+					appendAsyncReferences("data:"+contentType+";base64,"+data, asyncReferenceKind(contentType), references, userID)
 				}
 			}
 		}
 		for _, key := range []string{"fileData", "file_data"} {
 			if file, ok := item[key]; ok {
-				appendAsyncReferences(file, "reference", references)
+				appendAsyncReferences(file, "reference", references, userID)
 			}
 		}
 		for _, key := range []string{"content", "parts"} {
 			if child, ok := item[key]; ok {
-				collectAsyncRequestContent(child, texts, references)
+				collectAsyncRequestContent(child, texts, references, userID)
 			}
 		}
 	}

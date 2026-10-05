@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Reference media": "Reference media",
+    "No reference media recorded": "No reference media recorded",
+    "Reference media were not recorded for this historical task.": "Reference media were not recorded for this historical task.",
+    "Reference audio": "Reference audio",
+    "Generated audio": "Generated audio",
+    "Reference video {{number}}": "Reference video {{number}}",
+    "Reference audio {{number}}": "Reference audio {{number}}",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"",
     "#1 App": "#1 App",
     "#1 Model": "#1 Model",

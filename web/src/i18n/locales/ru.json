@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Reference media": "Референсные материалы",
+    "No reference media recorded": "Референсные материалы не записаны",
+    "Reference media were not recorded for this historical task.": "Референсные материалы для этой старой задачи не были записаны.",
+    "Reference audio": "Референсное аудио",
+    "Generated audio": "Созданное аудио",
+    "Reference video {{number}}": "Референсное видео {{number}}",
+    "Reference audio {{number}}": "Референсное аудио {{number}}",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"",
     "#1 App": "#1 Приложение",
     "#1 Model": "#1 Модель",

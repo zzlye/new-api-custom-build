@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetAsyncRelayTaskDetails 把请求、参考图、结果和时间放在同一条记录中，列表本身不携带大段输入。
+// GetAsyncRelayTaskDetails 把请求、参考素材、结果和时间放在同一条记录中，列表本身不携带大段输入。
 func GetAsyncRelayTaskDetails(c *gin.Context) {
 	task := loadAsyncRelayTask(c)
 	if task == nil {
@@ -69,7 +69,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 	common.ApiSuccess(c, response)
 }
 
-// GetAsyncRelayReference 与生成文件使用相同的归属和到期规则，读取远程参考图时仍需通过地址校验。
+// GetAsyncRelayReference 与生成文件使用相同的归属和到期规则，读取远程参考素材时仍需通过地址校验。
 func GetAsyncRelayReference(c *gin.Context) {
 	task := loadAsyncRelayTask(c)
 	if task == nil {
@@ -89,8 +89,8 @@ func GetAsyncRelayReference(c *gin.Context) {
 	}
 	reference := input.References[index]
 	if reference.Path == "" && reference.Source != "" {
-		// 仅在用户查看时读取远程参考图；沿用地址校验和大小上限，不影响生图流程。
-		media, err := saveAsyncMediaSource(c.Request.Context(), asyncMediaSource{Value: reference.Source})
+		// 仅在用户查看时读取远程素材；沿用地址校验和大小上限，不影响生成流程。
+		media, err := saveAsyncMediaSource(c.Request.Context(), asyncMediaSource{Value: reference.Source, AllowAudio: true})
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"message": "参考媒体读取失败"}})
 			return

@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Reference media": "Médias de référence",
+    "No reference media recorded": "Aucun média de référence enregistré",
+    "Reference media were not recorded for this historical task.": "Les médias de référence de cette ancienne tâche n’ont pas été enregistrés.",
+    "Reference audio": "Audio de référence",
+    "Generated audio": "Audio généré",
+    "Reference video {{number}}": "Vidéo de référence {{number}}",
+    "Reference audio {{number}}": "Audio de référence {{number}}",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"",
     "#1 App": "#1 App",
     "#1 Model": "#1 Modèle",

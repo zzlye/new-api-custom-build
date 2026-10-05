@@ -8,27 +8,34 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func enqueueDetailFixture(t *testing.T, body []byte, contentType string) *model.AsyncRelayTask {
+func enqueueDetailFixture(t *testing.T, body []byte, contentType string, video ...bool) *model.AsyncRelayTask {
 	t.Helper()
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits?async=true", bytes.NewReader(body))
+	path, format := "/v1/images/edits?async=true", relaytypes.RelayFormat(relaytypes.RelayFormatOpenAIImage)
+	if len(video) > 0 && video[0] {
+		path, format = "/v1/videos?async=true", relaytypes.RelayFormatTask
+	}
+	c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", contentType)
 	c.Request.Header.Set("Authorization", "Bearer private-header")
 	c.Set("id", 31)
 	c.Set("token_id", 9)
 	defer common.CleanupBodyStorage(c)
-	require.NoError(t, EnqueueAsyncRelayRequest(c, relaytypes.RelayFormatOpenAIImage))
+	require.NoError(t, EnqueueAsyncRelayRequest(c, format))
 	var task model.AsyncRelayTask
 	require.NoError(t, model.DB.Order("id desc").First(&task).Error)
 	return &task
@@ -218,4 +225,166 @@ func TestAsyncTaskListShowsInterfaceAndGenerationDurationWithoutInputBody(t *tes
 	encoded, err := common.Marshal(items)
 	require.NoError(t, err)
 	assert.NotContains(t, string(encoded), "只在详情中显示的长提示词")
+}
+
+// 三类素材经过受理、详情读取和清理，原始请求始终保持原样。
+func TestAsyncTaskDetailsMixedReferences(t *testing.T) {
+	png, err := base64.StdEncoding.DecodeString(asyncFixturePNG)
+	require.NoError(t, err)
+	video := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+	audio := append([]byte("fLaC\x80\x00\x00\x22"), make([]byte, 34)...)
+	inline := []string{"data:image/png;base64," + asyncFixturePNG, "data:video/mp4;base64," + base64.StdEncoding.EncodeToString(video), "data:audio/flac;base64," + base64.StdEncoding.EncodeToString(audio)}
+	for _, format := range []string{"标准字段", "参考别名", "内容数组", "表单文件", "表单地址"} {
+		t.Run(format, func(t *testing.T) {
+			prepareAsyncMediaController(t)
+			input := map[string]any{"model": "sd-2.0", "prompt": "起身看向外面，音乐参考", "resolution": "720p"}
+			keys := []string{"image_urls", "video_urls", "audio_urls"}
+			if format == "参考别名" {
+				keys = []string{"reference_images", "reference_videos", "reference_audios"}
+			}
+			for i, key := range keys {
+				input[key] = []string{inline[i]}
+			}
+			if format == "内容数组" {
+				for _, key := range keys {
+					delete(input, key)
+				}
+				input["content"] = []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": inline[0]}}, map[string]any{"type": "video_url", "video_url": map[string]any{"url": inline[1]}}, map[string]any{"type": "audio_url", "audio_url": map[string]any{"url": inline[2]}}}
+			}
+			body, err := common.Marshal(input)
+			require.NoError(t, err)
+			contentType := "application/json"
+			if format == "表单文件" || format == "表单地址" {
+				var buffer bytes.Buffer
+				form := multipart.NewWriter(&buffer)
+				require.NoError(t, form.WriteField("prompt", input["prompt"].(string)))
+				for i, key := range keys {
+					if format == "表单文件" {
+						part, err := form.CreateFormFile(key+"[]", []string{"参考.png", "动作.mp4", "音乐.flac"}[i])
+						require.NoError(t, err)
+						_, err = part.Write([][]byte{png, video, audio}[i])
+						require.NoError(t, err)
+					} else {
+						value, err := common.Marshal([]string{inline[i]})
+						require.NoError(t, err)
+						require.NoError(t, form.WriteField(key, string(value)))
+					}
+				}
+				require.NoError(t, form.Close())
+				body, contentType = buffer.Bytes(), form.FormDataContentType()
+			}
+			task := enqueueDetailFixture(t, body, contentType, true)
+			original, err := os.ReadFile(task.RequestFilePath)
+			require.NoError(t, err)
+			assert.Equal(t, body, original)
+			var saved model.AsyncRelayRequestDetails
+			require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &saved))
+			require.Len(t, saved.References, 3)
+			params := gin.Params{{Key: "task_id", Value: task.TaskID}}
+			for i, kind := range []string{"image", "video", "audio"} {
+				assert.Empty(t, saved.References[i].Error)
+				assert.Equal(t, kind, saved.References[i].Kind)
+				reference := asyncControllerRequest(GetAsyncRelayReference, http.MethodGet, "/reference", 31, common.RoleCommonUser, append(append(gin.Params{}, params...), gin.Param{Key: "index", Value: fmt.Sprint(i)}), "")
+				require.Equal(t, http.StatusOK, reference.Code)
+				assert.Equal(t, [][]byte{png, video, audio}[i], reference.Body.Bytes())
+			}
+			details := asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, params, "")
+			assert.Contains(t, details.Body.String(), `"kind":"audio"`)
+			assert.Contains(t, details.Body.String(), "/reference/2")
+			task.Status, task.FinishedAt = model.AsyncRelayTaskStatusSucceeded, common.GetTimestamp()-7201
+			require.NoError(t, model.DB.Save(task).Error)
+			require.NoError(t, model.ExpireAsyncRelayTaskFiles(task))
+			for _, reference := range saved.References {
+				assert.NoFileExists(t, reference.Path)
+			}
+			details = asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, params, "")
+			assert.Contains(t, details.Body.String(), "起身看向外面，音乐参考")
+			assert.NotContains(t, details.Body.String(), "/reference/")
+		})
+	}
+}
+
+func TestAsyncTaskDetailsUploadedReferenceSnapshot(t *testing.T) {
+	prepareAsyncMediaController(t)
+	// 同一套素材归属、快照与清理用例可在三种真实数据库上运行。
+	db, dialect := openTaskDialectDatabase(t, &model.AsyncRelayTask{}, &model.Task{}, &model.VideoAsset{}, &model.VideoAssetUse{})
+	model.DB = db
+	common.SetDatabaseTypes(dialect, common.DatabaseTypeSQLite)
+	png, err := base64.StdEncoding.DecodeString(asyncFixturePNG)
+	require.NoError(t, err)
+	asset, err := service.SaveVideoAsset(31, bytes.NewReader(png))
+	require.NoError(t, err)
+	for _, owner := range []bool{true, false} {
+		if !owner {
+			require.NoError(t, model.DB.Model(asset).Update("user_id", 32).Error)
+		}
+		body, err := common.Marshal(map[string]any{"reference_images": []any{map[string]any{"asset_id": asset.ID}}})
+		require.NoError(t, err)
+		task := enqueueDetailFixture(t, body, "application/json")
+		var saved model.AsyncRelayRequestDetails
+		require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &saved))
+		require.Len(t, saved.References, 1)
+		if owner {
+			assert.Empty(t, saved.References[0].Error)
+			assert.FileExists(t, saved.References[0].Path)
+			assert.NotEqual(t, asset.Path, saved.References[0].Path)
+			task.Status, task.FinishedAt = model.AsyncRelayTaskStatusSucceeded, common.GetTimestamp()-7201
+			require.NoError(t, model.DB.Save(task).Error)
+			require.NoError(t, model.ExpireAsyncRelayTaskFiles(task))
+			assert.FileExists(t, asset.Path)
+		} else {
+			assert.Empty(t, saved.References[0].Path)
+			assert.NotEmpty(t, saved.References[0].Error)
+		}
+	}
+}
+
+func TestAsyncTaskDetailsRemoteAudioAndInvalidMedia(t *testing.T) {
+	prepareAsyncMediaController(t)
+	settings := system_setting.GetFetchSetting()
+	previousProtection := settings.EnableSSRFProtection
+	settings.EnableSSRFProtection = false
+	t.Cleanup(func() { settings.EnableSSRFProtection = previousProtection })
+	service.InitHttpClient()
+	flac := append([]byte("fLaC\x80\x00\x00\x22"), make([]byte, 34)...)
+	var requests atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.URL.Path == "/failed" {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write(flac)
+	}))
+	defer source.Close()
+	for _, path := range []string{"/audio", "/failed"} {
+		body, err := common.Marshal(map[string]any{"prompt": "只记录素材，https://example.test/not-a-reference", "audio_urls": []string{source.URL + path}, "callback_url": "https://example.test/callback"})
+		require.NoError(t, err)
+		before := requests.Load()
+		task := enqueueDetailFixture(t, body, "application/json")
+		assert.Equal(t, before, requests.Load(), "受理任务不下载远程素材")
+		var saved model.AsyncRelayRequestDetails
+		require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &saved))
+		require.Len(t, saved.References, 1)
+		assert.Equal(t, "audio", saved.References[0].Kind)
+		params := gin.Params{{Key: "task_id", Value: task.TaskID}, {Key: "index", Value: "0"}}
+		response := asyncControllerRequest(GetAsyncRelayReference, http.MethodGet, "/reference/0", 31, common.RoleCommonUser, params, "")
+		assert.Equal(t, before+1, requests.Load(), "查看仅下载一次，失败不自动重试")
+		if path == "/audio" {
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.Equal(t, "audio/flac", response.Header().Get("Content-Type"))
+			assert.Equal(t, flac, response.Body.Bytes())
+		} else {
+			assert.Equal(t, http.StatusBadGateway, response.Code)
+		}
+	}
+	// 伪装为音频的网页不产生预览地址，也不保留无效快照文件。
+	input := `{"audio_urls":["data:audio/flac;base64,PGh0bWw+YmFkPC9odG1sPg=="]}`
+	task := enqueueDetailFixture(t, []byte(input), "application/json")
+	var saved model.AsyncRelayRequestDetails
+	require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &saved))
+	require.Len(t, saved.References, 1)
+	assert.NotEmpty(t, saved.References[0].Error)
+	assert.Empty(t, saved.References[0].Path)
+	assert.Empty(t, saved.References[0].Source)
 }

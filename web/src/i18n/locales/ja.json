@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Reference media": "参照メディア",
+    "No reference media recorded": "参照メディアは記録されていません",
+    "Reference media were not recorded for this historical task.": "この過去のタスクの参照メディアは記録されていません。",
+    "Reference audio": "参照音声",
+    "Generated audio": "生成された音声",
+    "Reference video {{number}}": "参照動画 {{number}}",
+    "Reference audio {{number}}": "参照音声 {{number}}",
     "\"default\": \"us-central1\", \"claude-3-5-sonnet-20240620\": \"europe-west1\"": "\"default \":\" us - central 1 \", \"claude -3 -5 - sonnet -20240620 \":\" europe - west 1 \"",
     "#1 App": "#1 アプリ",
     "#1 Model": "#1 モデル",
