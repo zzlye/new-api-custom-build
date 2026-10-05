@@ -1007,6 +1007,14 @@ func (user *User) delete(identity *AuthSessionIdentity) error {
 	}
 	var nextAuthVersion int64
 	if err := DB.Transaction(func(tx *gorm.DB) error {
+		if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+			// SQLite 必须先取得写锁再校验会话，避免并发消费凭证导致读快照升级失败。
+			// 自赋值不改变账号信息；权限检查与真正的删除仍在同一事务内执行。
+			if err := tx.Model(&User{}).Where("id = ?", user.Id).
+				UpdateColumn("auth_version", gorm.Expr("auth_version")).Error; err != nil {
+				return err
+			}
+		}
 		if identity != nil {
 			if err := ValidateAuthSessionWithTx(tx, *identity); err != nil {
 				return err

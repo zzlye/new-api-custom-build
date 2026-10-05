@@ -748,6 +748,13 @@ func revokeUserSessions(userID int, excludedSID, reason string) (int64, error) {
 		var affected int64
 		var revoked []UserSession
 		err := DB.Transaction(func(tx *gorm.DB) error {
+			if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+				// 批量撤销同样先取得写锁，防止账号已删除而会话撤销因读锁升级失败。
+				if err := tx.Model(&UserSession{}).Where("sid IN ?", sids).
+					UpdateColumn("status", gorm.Expr("status")).Error; err != nil {
+					return err
+				}
+			}
 			if err := lockForUpdate(tx).Where("sid IN ? AND status = ?", sids, UserSessionStatusActive).Find(&revoked).Error; err != nil {
 				return err
 			}

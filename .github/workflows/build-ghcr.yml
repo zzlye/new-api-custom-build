@@ -57,6 +57,13 @@ jobs:
           mkdir -p web/dist
           touch web/dist/index.html
           go test -v -p 2 -timeout 20m ./...
+      - name: 验证账号注销与会话撤销的数据库兼容性
+        run: |
+          # SQLite 压测并发凭证消费；另外两种数据库验证相同的注销安全约束。
+          go test -v ./controller -run '^TestSecurityAccountDeletionConcurrentRequestsHaveOneWinner$' -count=100
+          for dialect in mysql postgres; do
+            TEST_SECURITY_DIALECT="$dialect" go test -v ./controller -run '^TestSecurityAccountDeletion' -count=1 -timeout 10m
+          done
       - name: 独立验证协议模块
         working-directory: relaykit
         run: |
