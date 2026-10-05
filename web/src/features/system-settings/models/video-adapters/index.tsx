@@ -12,6 +12,7 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CapabilityEditor } from './capability-editor'
+import { AdapterConfigTransfer } from './config-transfer'
 
 export interface AdapterTemplate {
   id: string
@@ -60,6 +61,7 @@ function VideoAdaptersManager() {
   const [documentChannels, setDocumentChannels] = useState<number[]>([])
   const [activeTemplate, setActiveTemplate] = useState('')
   const [message, setMessage] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
   const catalog = useQuery({
     queryKey: ['video-adapters'],
     refetchOnWindowFocus: false,
@@ -143,6 +145,7 @@ function VideoAdaptersManager() {
       className='min-w-0 space-y-5'
       onSubmit={(e) => {
         e.preventDefault()
+        if (importOpen || save.isPending) return
         setMessage('')
         save.mutate()
       }}
@@ -163,7 +166,7 @@ function VideoAdaptersManager() {
           <button
             type='submit'
             className={`${buttonClass} bg-primary text-primary-foreground`}
-            disabled={save.isPending || !dirty}
+            disabled={save.isPending || !dirty || importOpen}
           >
             {save.isPending ? t('Saving...') : t('Publish rules')}
           </button>
@@ -175,6 +178,19 @@ function VideoAdaptersManager() {
         </p>
       ) : null}
       {message ? <p role='status'>{message}</p> : null}
+      <AdapterConfigTransfer
+        registry={draft}
+        channels={channels}
+        disabled={save.isPending}
+        onOpenChange={setImportOpen}
+        onImport={(next) => {
+          setDraft(next)
+          setSearch('')
+          setMessage(
+            t('Configuration added to draft. Review it and publish when ready.')
+          )
+        }}
+      />
       <details className='rounded-xl border p-4'>
         <summary className='cursor-pointer font-medium'>
           {t('How to configure video adapters')}

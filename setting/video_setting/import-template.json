@@ -1,0 +1,69 @@
+{
+  "format": "newapi-video-adapters",
+  "format_version": 1,
+  "templates": [
+    {
+      "id": "sd25-reference-example",
+      "name": "SD2.5 CH1 文档填写示例",
+      "protocol": {
+        "enabled": true,
+        "submit_path": "/v1/videos",
+        "poll_path": "/v1/videos/{id}",
+        "poll_method": "GET",
+        "poll_id_field": "task_id",
+        "content_path": "/v1/videos/{id}/content",
+        "encoding": "json",
+        "auth_mode": "header",
+        "auth_name": "Authorization",
+        "auth_prefix": "Bearer ",
+        "fields": [
+          { "source": "model", "target": "model", "format": "identity" },
+          { "source": "prompt", "target": "prompt", "format": "identity" },
+          { "source": "duration", "target": "duration", "format": "identity" },
+          { "source": "resolution", "target": "resolution", "format": "identity" },
+          { "source": "aspect_ratio", "target": "aspect_ratio", "format": "identity" },
+          { "source": "image_urls", "target": "image_refs", "format": "identity" },
+          { "source": "video_urls", "target": "video_refs", "format": "identity" },
+          { "source": "audio_urls", "target": "audio_refs", "format": "identity" },
+          { "source": "first_frame", "target": "first_image", "format": "identity" },
+          { "source": "last_frame", "target": "last_image", "format": "identity" }
+        ],
+        "defaults": {},
+        "headers": {},
+        "capabilities": {
+          "duration": { "min": 4, "max": 30, "default": 4 },
+          "resolutions": ["720p"],
+          "aspect_ratios": ["21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"],
+          "modes": ["text", "references", "frames"],
+          "image_limit": 30,
+          "video_limit": 10,
+          "audio_limit": 10,
+          "media_transport": "url",
+          "parameters": []
+        },
+        "response": {
+          "id": "id",
+          "status": "status",
+          "url": "url|video_url",
+          "error": "error.message",
+          "progress": "",
+          "states": {
+            "queued": "queued",
+            "in_progress": "in_progress",
+            "completed": "completed",
+            "failed": "failed"
+          }
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "sd25-ch1-example",
+      "enabled": true,
+      "channel_ids": [],
+      "models": ["sd-2.5-ch1"],
+      "template_id": "sd25-reference-example"
+    }
+  ]
+}
