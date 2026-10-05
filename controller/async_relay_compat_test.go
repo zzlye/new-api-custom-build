@@ -344,14 +344,14 @@ func TestAsyncRelayGeminiConcurrentReferenceIntegrity(t *testing.T) {
 		t.Run(fmt.Sprintf("channel_%d/%s", tc.channelType, tc.alias), func(t *testing.T) {
 			channelType, modelAlias, actualModel := tc.channelType, tc.alias, tc.upstream
 			const prompt = "只提升参考图的清晰度，不改变主体、数量、颜色和构图。"
-			type captured struct{ path, body string }
+			type captured struct{ path, body, accept string }
 			captures := make(chan captured, 2)
 			release := make(chan struct{})
 			var releaseOnce sync.Once
 			user, token := prepareAsyncCompatRelay(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				raw, err := io.ReadAll(r.Body)
 				assert.NoError(t, err)
-				captures <- captured{r.URL.Path, string(raw)}
+				captures <- captured{r.URL.Path, string(raw), r.Header.Get("Accept")}
 				select {
 				case <-release:
 				case <-r.Context().Done():
@@ -407,6 +407,8 @@ func TestAsyncRelayGeminiConcurrentReferenceIntegrity(t *testing.T) {
 				err           error
 			}
 			results := make(chan result, 2)
+			// 浏览器默认通配响应类型与脚本显式 JSON 都必须完整转发参考图。
+			accepts := []string{"*/*", "application/json"}
 			for i, body := range bodies {
 				go func() {
 					req, err := http.NewRequestWithContext(ctx, http.MethodPost, gateway.URL+"/v1beta/models/"+modelAlias+":generateContent", strings.NewReader(body))
@@ -415,6 +417,8 @@ func TestAsyncRelayGeminiConcurrentReferenceIntegrity(t *testing.T) {
 						return
 					}
 					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Accept", accepts[i])
+					req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
 					req.Header.Set("Authorization", "Bearer sk-"+token.Key)
 					req.Header.Set("x-goog-api-key", "sk-"+token.Key)
 					response, err := http.DefaultClient.Do(req)
@@ -450,7 +454,12 @@ func TestAsyncRelayGeminiConcurrentReferenceIntegrity(t *testing.T) {
 					digest := sha256.Sum256(reference)
 					assert.True(t, expected[digest], "出站参考图必须和一个原始输入逐字节一致，且不得重复另一个任务的图片")
 					delete(expected, digest)
-					t.Logf("实际出站图片：%d 字节，SHA256=%x", len(reference), digest)
+					for i, original := range refs {
+						if sha256.Sum256(original) == digest {
+							assert.Equal(t, accepts[i], got.accept, "响应协商头不得与其他任务串用")
+						}
+					}
+					t.Logf("实际出站图片：Accept=%s，%d 字节，SHA256=%x", got.accept, len(reference), digest)
 				case <-ctx.Done():
 					t.Fatal("上游替身没有同时收到两张参考图")
 				}
