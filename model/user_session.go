@@ -750,8 +750,8 @@ func revokeUserSessions(userID int, excludedSID, reason string) (int64, error) {
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 				// 批量撤销同样先取得写锁，防止账号已删除而会话撤销因读锁升级失败。
-				if err := tx.Model(&UserSession{}).Where("sid IN ?", sids).
-					UpdateColumn("status", gorm.Expr("status")).Error; err != nil {
+				// 锁操作不走业务更新回调，实际撤销每批仍只执行一次。
+				if err := tx.Exec("UPDATE user_sessions SET status = status WHERE sid IN ?", sids).Error; err != nil {
 					return err
 				}
 			}
