@@ -1065,6 +1065,28 @@ export const ModelPricingEditorPanel = forwardRef<
                         </AlertDescription>
                       </Alert>
                     )}
+                    {/* 按次仍可直接使用，保留可选转换入口供图片等既有定价迁移。 */}
+                    {pricingMode === 'per-request' && (
+                      <div className='space-y-2'>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          disabled={
+                            conversion.isPending || Boolean(billingExpr.trim())
+                          }
+                          onClick={() => void convertPricing()}
+                        >
+                          {conversion.isPending
+                            ? t('Preparing conversion...')
+                            : t('Convert to expression')}
+                        </Button>
+                        {conversionReason && (
+                          <p role='status' className='text-sm'>
+                            {t(conversionReason)}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {(pricingMode === 'per-token' || wasConverted) && (
                       <p className='text-muted-foreground text-xs'>
                         {t(

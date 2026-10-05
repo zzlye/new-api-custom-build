@@ -351,8 +351,8 @@ it('shows and removes a single provider override while retaining the per-call de
     'true'
   )
   expect(
-    screen.queryByRole('button', { name: 'Convert to expression' })
-  ).not.toBeInTheDocument()
+    screen.getByRole('button', { name: 'Convert to expression' })
+  ).toBeEnabled()
   expect(
     screen.queryByText(/Legacy pricing is deprecated/)
   ).not.toBeInTheDocument()
