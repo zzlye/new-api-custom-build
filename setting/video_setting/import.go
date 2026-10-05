@@ -68,6 +68,10 @@ func MergeImport(base Registry, bundle ImportBundle, channelIDs []int) (*Registr
 		if rule.ID == "" || seenRules[rule.ID] {
 			return nil, fmt.Errorf("导入规则编号为空或重复")
 		}
+		// 省略或 null 不能隐式扩大为整个渠道；默认规则必须明确填写空数组。
+		if rule.Models == nil {
+			return nil, fmt.Errorf("规则 %s 的模型列表必须显式填写；渠道默认规则请填写 models: []", rule.ID)
+		}
 		seenRules[rule.ID] = true
 		templateID, exists := importedIDs[rule.TemplateID]
 		if !exists {
@@ -121,6 +125,12 @@ func validateImportProtocol(protocol Protocol) error {
 	for _, field := range protocol.Fields {
 		if !allowed[field.Source] {
 			return fmt.Errorf("未知统一输入字段 %s；上游字段请填写 target，新参数先在 capabilities.parameters 声明", field.Source)
+		}
+		// 条件也读取统一输入，不能用上游字段名，否则条件永远不成立却通过导入。
+		for _, condition := range field.When {
+			if !allowed[condition.Source] {
+				return fmt.Errorf("未知条件输入字段 %s；条件 source 需使用统一字段或已声明的附加参数", condition.Source)
+			}
 		}
 	}
 	return nil

@@ -29,7 +29,7 @@
 - `format` 固定为 `newapi-video-adapters`，`format_version` 固定为 `1`，不要填写线上发布版本。
 - `templates`：每项包含唯一 `id`、展示名称 `name` 和完整 `protocol`。
 - `rules`：每项包含唯一 `id`、`enabled`、`channel_ids`、`models`、`template_id`。可选 `override` 是整份协议，不是局部补丁。
-- `models` 填渠道映射后的实际上游模型名，不按名字猜协议。空数组意味着渠道默认规则，请仅在明确需要时使用。
+- `models` 必须显式填写数组，填渠道映射后的实际上游模型名，不按名字猜协议。省略或 null 会被拒绝；空数组意味着渠道默认规则，请仅在明确需要时使用。
 - 同一文件内模板编号和规则编号各自不能重复；`template_id` 必须引用文件内的模板。多个模型可写在同一 `models` 数组内共用模板。
 - `rules: []` 可以只导入模板，之后在页面添加绑定。导入模型规则时，必须在文件或页面指定实际存在的渠道。
 - 未识别的配置属性会拒绝导入，不会静默忽略拼错的字段。
@@ -104,7 +104,7 @@
 - `scale` 仅用于数值单位换算，例如秒转毫秒填 1000；不换算时省略，字符串和数组不要填 1。时长只允许改名、转类型或换算单位，不能用常量、条件或枚举改变实际秒数。
 - `values` 是枚举映射，例如 `{"720p":"HD"}`；没有对应项会报错。
 - `fallback` 仅源字段缺失时补默认值；false 和 0 是有效值，不能替换成默认值。
-- `when` 是全部满足才发送的条件数组：`{"source":"mode","operator":"eq","value":"references"}`。operator 仅为 exists/missing/eq/ne。
+- `when` 是全部满足才发送的条件数组：`{"source":"mode","operator":"eq","value":"references"}`。operator 仅为 exists/missing/eq/ne。条件 source 同样只能使用统一输入字段或已声明的 extra_parameters.KEY，不能填写上游字段名。
 - target 和 item_key 可用点号表示嵌套字段，例如 `parameters.resolution`。禁止让目标字段重复或相互覆盖。
 
 ## 能力限制 capabilities

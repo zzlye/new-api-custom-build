@@ -123,6 +123,15 @@ func TestVideoAdapterImportPreview(t *testing.T) {
 	response = asyncControllerRequest(PreviewVideoAdapterImport, "POST", "/api/video-adapters/import-preview", 31, common.RoleRootUser, nil, string(data))
 	assert.Equal(t, 400, response.Code)
 	assert.Contains(t, response.Body.String(), "不存在")
+
+	// 显式空数组仍可导入渠道默认规则，且响应保持数组，供页面直接预览。
+	bundle["rules"].([]any)[0].(map[string]any)["models"] = []any{}
+	body["channel_ids"] = []int{9}
+	data, err = common.Marshal(body)
+	require.NoError(t, err)
+	response = asyncControllerRequest(PreviewVideoAdapterImport, "POST", "/api/video-adapters/import-preview", 31, common.RoleRootUser, nil, string(data))
+	require.Equal(t, 200, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"models":[]`)
 }
 
 // 导入边界统一走真实处理器，错误文件不会落库或调用上游。
@@ -151,6 +160,16 @@ func TestVideoAdapterImportInvalidConfiguration(t *testing.T) {
 		{"模板引用丢失", func(bundle map[string]any) {
 			bundle["rules"].([]any)[0].(map[string]any)["template_id"] = "missing"
 		}, "模板未包含"},
+		{"遗漏模型列表", func(bundle map[string]any) {
+			delete(bundle["rules"].([]any)[0].(map[string]any), "models")
+		}, "模型列表必须显式填写"},
+		{"模型列表为 null", func(bundle map[string]any) {
+			bundle["rules"].([]any)[0].(map[string]any)["models"] = nil
+		}, "模型列表必须显式填写"},
+		{"条件误填上游字段", func(bundle map[string]any) {
+			protocol := bundle["templates"].([]any)[0].(map[string]any)["protocol"].(map[string]any)
+			protocol["fields"].([]any)[5].(map[string]any)["when"] = []any{map[string]any{"source": "image_refs", "operator": "exists"}}
+		}, "未知条件输入字段 image_refs"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			base, err := video_setting.LoadRegistry()
@@ -183,6 +202,8 @@ func TestVideoAdapterImportPreservesDraftAndValues(t *testing.T) {
 	p.Capabilities.GenerateAudio = &supported
 	p.Capabilities.Parameters = []video_setting.Parameter{{Key: "seed", Label: "种子", Type: "integer", Editable: true}}
 	p.Fields = append(p.Fields, video_setting.Field{Source: "generate_audio", Target: "sound", Format: "identity"}, video_setting.Field{Source: "extra_parameters.seed", Target: "seed", Format: "identity"})
+	// 已声明的自定义字段和统一素材字段可以作为条件，零值与 false 仍正常发送。
+	p.Fields[len(p.Fields)-1].When = []video_setting.Condition{{Source: "extra_parameters.seed", Operator: "exists"}, {Source: "image_urls", Operator: "exists"}}
 	base := video_setting.Registry{Version: 12, Templates: bundle.Templates, Rules: []video_setting.Rule{}}
 	before, err := common.Marshal(base)
 	require.NoError(t, err)
