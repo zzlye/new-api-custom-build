@@ -125,14 +125,60 @@ func TestUserModelPricingDatabaseMatrix(t *testing.T) {
 			var original Option
 			require.NoError(t, db.Where(commonKeyCol+" = ?", "ModelPrice").First(&original).Error)
 			assert.Equal(t, `{"image":0.1}`, original.Value)
+
+			// 名单必须覆盖所有配置，零价也计入；空规则、已删除和不存在的账号不出现。
+			for _, user := range []User{
+				{Id: 82, Username: "Alice", DisplayName: "专属客户", Password: "test-only", AffCode: "pricing82"},
+				{Id: 83, Username: "Bob", Password: "test-only", AffCode: "pricing83"},
+				{Id: 84, Username: "Deleted", Password: "test-only", AffCode: "pricing84"},
+			} {
+				require.NoError(t, db.Create(&user).Error)
+			}
+			for _, option := range []Option{
+				{Key: "UserModelPricing:82", Value: `{"image":{"ModelPrice":0},"video":{"ModelPrice":1}}`},
+				{Key: "UserModelPricing:83", Value: `{"image":{"ModelPrice":0.1}}`},
+				{Key: "UserModelPricing:84", Value: `{"image":{"ModelPrice":0.1}}`},
+				{Key: "UserModelPricing:999", Value: `{"image":{"ModelPrice":0.1}}`},
+			} {
+				require.NoError(t, db.Create(&option).Error)
+			}
+			require.NoError(t, db.Delete(&User{}, 84).Error)
+			for _, tc := range []struct {
+				keyword string
+				start   int
+				wantID  int
+				total   int
+				count   int
+			}{
+				{"", 0, 83, 2, 1}, {"", 1, 82, 2, 2},
+				{"ALI", 0, 82, 1, 2}, {"客户", 0, 82, 1, 2}, {"82", 0, 82, 1, 2},
+				{"missing", 0, 0, 0, 0}, {"", 9, 0, 2, 0},
+			} {
+				items, total, err := ListConfiguredPricingUsers(tc.keyword, tc.start, 1)
+				require.NoError(t, err)
+				assert.Equal(t, tc.total, total)
+				if tc.wantID == 0 {
+					assert.Empty(t, items)
+					continue
+				}
+				require.Len(t, items, 1)
+				assert.Equal(t, tc.wantID, items[0].Id)
+				assert.Equal(t, tc.count, items[0].ModelCount)
+			}
+			require.NoError(t, UpdateUserModelPricing(83, []ModelPricingChange{{ModelName: "image", ExpectedVersion: ModelPricingVersion(PricingValues{"ModelPrice": 0.1}), Reset: true}}))
+			items, total, err := ListConfiguredPricingUsers("", 0, 20)
+			require.NoError(t, err)
+			assert.Equal(t, 1, total)
+			require.Len(t, items, 1)
+			assert.Equal(t, 82, items[0].Id)
 		})
 	}
 }
 
 func TestUserModelPricingPreviewRespectsExplicitCompletionRatio(t *testing.T) {
-	draft := PricingValues{"ModelRatio":2.0,"CompletionRatio":3.0,"billing_setting.billing_mode":"ratio"}
-	preview,err := PreviewModelPricing("gpt-4",draft,true)
-	require.NoError(t,err)
-	assert.Equal(t,3.0,preview["CompletionRatio"])
-	assert.Equal(t,2.0,preview["ModelRatio"])
+	draft := PricingValues{"ModelRatio": 2.0, "CompletionRatio": 3.0, "billing_setting.billing_mode": "ratio"}
+	preview, err := PreviewModelPricing("gpt-4", draft, true)
+	require.NoError(t, err)
+	assert.Equal(t, 3.0, preview["CompletionRatio"])
+	assert.Equal(t, 2.0, preview["ModelRatio"])
 }

@@ -7118,6 +7118,10 @@
     "，": ", ",
     "，and ": ", and ",
     "Restore": "Restore",
-    "No users found": "No users found"
+    "No users found": "No users found",
+    "Pricing users": "Pricing users",
+    "Configured pricing users": "Configured pricing users",
+    "{{count}} models configured": "{{count}} models configured",
+    "No matching users with configured prices": "No matching users with configured prices"
   }
 }

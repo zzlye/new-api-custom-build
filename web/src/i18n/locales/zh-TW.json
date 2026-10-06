@@ -7118,6 +7118,10 @@
     "，": "，",
     "，and ": "，並",
     "Restore": "恢復",
-    "No users found": "找不到使用者"
+    "No users found": "找不到使用者",
+    "Pricing users": "定價使用者",
+    "Configured pricing users": "已設定定價",
+    "{{count}} models configured": "已設定 {{count}} 個模型",
+    "No matching users with configured prices": "暫無符合的已定價使用者"
   }
 }

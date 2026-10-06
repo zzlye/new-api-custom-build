@@ -7113,6 +7113,10 @@
     "，": ", ",
     "，and ": " và ",
     "Restore": "Khôi phục",
-    "No users found": "Không tìm thấy người dùng"
+    "No users found": "Không tìm thấy người dùng",
+    "Pricing users": "Định giá người dùng",
+    "Configured pricing users": "Đã đặt giá",
+    "{{count}} models configured": "Đã đặt giá {{count}} mô hình",
+    "No matching users with configured prices": "Không có người dùng phù hợp đã đặt giá"
   }
 }

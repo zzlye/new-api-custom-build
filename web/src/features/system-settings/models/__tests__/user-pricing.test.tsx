@@ -78,6 +78,21 @@ function setup(
     ],
   }
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url.startsWith('/api/option/user_model_pricing?')) {
+      const term =
+        new URL(url, 'http://localhost').searchParams.get('keyword') ?? ''
+      const items = snapshot.entries.length
+        ? [
+            {
+              id: 81,
+              username: 'alice',
+              display_name: 'Alice',
+              model_count: snapshot.entries.length,
+            },
+          ].filter((item) => `${item.id} ${item.username}`.includes(term))
+        : []
+      return { data: { success: true, data: { items, total: items.length } } }
+    }
     if (url.startsWith('/api/user/search')) {
       const term =
         new URL(url, 'http://localhost').searchParams.get('keyword') ?? ''
@@ -261,4 +276,57 @@ test('读取用户价格失败展示错误，不显示可保存的空价格', as
   expect(
     screen.queryByRole('button', { name: 'Save model prices' })
   ).not.toBeInTheDocument()
+})
+
+test('已定价名单显示模型数量，可搜索编号并切换回全部用户', async () => {
+  const { user } = setup()
+  await user.click(
+    screen.getByRole('button', { name: 'Configured pricing users' })
+  )
+  await user.click(
+    await screen.findByRole('button', {
+      name: /#81 · alice · Alice.*1 models configured/,
+    })
+  )
+  expect(
+    screen.queryByRole('button', { name: '#82 · bob · Bob' })
+  ).not.toBeInTheDocument()
+  await user.type(
+    screen.getByRole('textbox', { name: 'Search users by name or ID' }),
+    '82'
+  )
+  expect(
+    await screen.findByText('No matching users with configured prices')
+  ).toBeVisible()
+  expect(screen.getByText('Selected user: alice (#81)')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'All users' }))
+  expect(
+    await screen.findByRole('button', { name: '#82 · bob · Bob' })
+  ).toBeVisible()
+})
+
+test('删除最后一条专属价格会更新已定价名单，当前用户仍可编辑', async () => {
+  const { user } = setup()
+  await user.click(
+    screen.getByRole('button', { name: 'Configured pricing users' })
+  )
+  await user.click(await screen.findByRole('button', { name: /#81 · alice/ }))
+  await user.click(await screen.findByRole('button', { name: 'image-test' }))
+  await user.click(screen.getByRole('button', { name: 'Restore global price' }))
+  await user.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Restore',
+    })
+  )
+  expect(
+    await screen.findByText('No matching users with configured prices')
+  ).toBeVisible()
+  expect(screen.getByText('Selected user: alice (#81)')).toBeVisible()
+  expect(await screen.findByText('Using global price')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'Save model prices' }))
+  expect(
+    await screen.findByRole('button', {
+      name: /#81 · alice.*1 models configured/,
+    })
+  ).toBeVisible()
 })

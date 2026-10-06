@@ -326,7 +326,7 @@ func TestPreConsumeMultiplierRejectsInvalidRuntimeAndOverflow(t *testing.T) {
 
 func TestUserModelPricingRequiresRoot(t *testing.T) {
 	for _, role := range []int{0, common.RoleCommonUser, common.RoleAdminUser} {
-		for _, handler := range []gin.HandlerFunc{GetUserModelPricingConfig, UpdateUserModelPricingConfig} {
+		for _, handler := range []gin.HandlerFunc{GetUserModelPricingConfig, UpdateUserModelPricingConfig, GetConfiguredPricingUsers} {
 			recorder := httptest.NewRecorder()
 			ctx, _ := gin.CreateTestContext(recorder)
 			ctx.Set("role", role)

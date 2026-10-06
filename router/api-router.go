@@ -213,6 +213,7 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.PUT("/", controller.UpdateOption)
 			optionRoute.POST("/appearance/upload", controller.UploadAppearanceMedia)
 			optionRoute.PUT("/passkey/domains", controller.UpdatePasskeyDomains)
+			optionRoute.GET("/user_model_pricing", controller.GetConfiguredPricingUsers)
 			optionRoute.GET("/user_model_pricing/:id", controller.GetUserModelPricingConfig)
 			optionRoute.PATCH("/user_model_pricing/:id", controller.UpdateUserModelPricingConfig)
 			optionRoute.GET("/model_pricing", controller.GetModelPricingConfig)

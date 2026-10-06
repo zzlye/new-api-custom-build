@@ -20,6 +20,58 @@ const userModelPricingPrefix = "UserModelPricing:"
 
 var userModelPricingMu sync.Mutex
 
+type UserModelPricingSummary struct {
+	Id          int    `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	ModelCount  int    `json:"model_count" gorm:"-"`
+}
+
+// 从持久化配置汇总已定价用户，忽略空规则和已删除账号，不返回价格或账号敏感字段。
+func ListConfiguredPricingUsers(keyword string, start, limit int) ([]UserModelPricingSummary, int, error) {
+	var options []Option
+	if err := DB.Where(commonKeyCol+" LIKE ?", userModelPricingPrefix+"%").Find(&options).Error; err != nil {
+		return nil, 0, err
+	}
+	counts := make(map[int]int)
+	ids := make([]int, 0, len(options))
+	for _, option := range options {
+		id, err := strconv.Atoi(strings.TrimPrefix(option.Key, userModelPricingPrefix))
+		if err != nil || id <= 0 {
+			continue
+		}
+		var rules map[string]PricingValues
+		if err := common.UnmarshalJsonStr(option.Value, &rules); err != nil {
+			return nil, 0, fmt.Errorf("用户 %d 定价配置读取失败", id)
+		}
+		if len(rules) > 0 {
+			counts[id] = len(rules)
+			ids = append(ids, id)
+		}
+	}
+	items := make([]UserModelPricingSummary, 0)
+	keyword = strings.ToLower(strings.TrimSpace(keyword))
+	// 分批查询避免大量用户时超过数据库参数数量上限，最终统一排序、搜索和分页。
+	for batch := range slices.Chunk(ids, 500) {
+		var users []UserModelPricingSummary
+		if err := DB.Model(&User{}).Select("id", "username", "display_name").Where("id IN ?", batch).Find(&users).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, user := range users {
+			if keyword != "" && !strings.Contains(strconv.Itoa(user.Id), keyword) && !strings.Contains(strings.ToLower(user.Username), keyword) && !strings.Contains(strings.ToLower(user.DisplayName), keyword) {
+				continue
+			}
+			user.ModelCount = counts[user.Id]
+			items = append(items, user)
+		}
+	}
+	slices.SortFunc(items, func(a, b UserModelPricingSummary) int { return b.Id - a.Id })
+	total := len(items)
+	start = max(0, min(start, total))
+	end := min(start+max(0, min(limit, 100)), total)
+	return items[start:end], total, nil
+}
+
 func IsUserModelPricingOption(key string) bool {
 	return strings.HasPrefix(key, userModelPricingPrefix)
 }

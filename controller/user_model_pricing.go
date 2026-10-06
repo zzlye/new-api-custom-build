@@ -10,6 +10,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func GetConfiguredPricingUsers(c *gin.Context) {
+	// 已定价名单和编辑接口使用相同的根用户权限。
+	if c.GetInt("role") != common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以管理用户定价"})
+		return
+	}
+	page := common.GetPageQuery(c)
+	users, total, err := model.ListConfiguredPricingUsers(c.Query("keyword"), page.GetStartIdx(), page.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	page.SetTotal(total)
+	page.SetItems(users)
+	common.ApiSuccess(c, page)
+}
+
 func GetUserModelPricingConfig(c *gin.Context) {
 	// 接口只对根用户开放，避免用户通过管理接口读取别人的协议价格。
 	if c.GetInt("role") != common.RoleRootUser {

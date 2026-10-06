@@ -7113,6 +7113,10 @@
     "，": "、",
     "，and ": "、",
     "Restore": "復元",
-    "No users found": "ユーザーが見つかりません"
+    "No users found": "ユーザーが見つかりません",
+    "Pricing users": "料金設定ユーザー",
+    "Configured pricing users": "料金設定済み",
+    "{{count}} models configured": "{{count}} モデル設定済み",
+    "No matching users with configured prices": "該当する料金設定済みユーザーはいません"
   }
 }

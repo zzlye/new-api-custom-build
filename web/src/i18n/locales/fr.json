@@ -7113,6 +7113,10 @@
     "，": ", ",
     "，and ": " et ",
     "Restore": "Rétablir",
-    "No users found": "Aucun utilisateur trouvé"
+    "No users found": "Aucun utilisateur trouvé",
+    "Pricing users": "Utilisateurs et tarifs",
+    "Configured pricing users": "Tarifs configurés",
+    "{{count}} models configured": "{{count}} modèles configurés",
+    "No matching users with configured prices": "Aucun utilisateur correspondant avec des tarifs configurés"
   }
 }

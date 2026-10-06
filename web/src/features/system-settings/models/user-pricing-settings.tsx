@@ -17,8 +17,8 @@ import { pricingFromDraft, pricingRow } from '@/features/model-pricing/pricing'
 import {
   getUserModelPricing,
   saveUserModelPricing,
+  type PricingUser,
 } from '@/features/model-pricing/user-pricing-api'
-import type { User } from '@/features/users/types'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import {
@@ -30,11 +30,11 @@ import { UserPricingSelector } from './user-pricing-selector'
 export function UserPricingSettings() {
   const { t } = useTranslation()
   const client = useQueryClient()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<PricingUser | null>(null)
   const [modelName, setModelName] = useState('')
   const [dirty, setDirty] = useState(false)
   const [pendingSelection, setPendingSelection] = useState<{
-    user: User | null
+    user: PricingUser | null
     model: string
   } | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -56,6 +56,8 @@ export function UserPricingSettings() {
         queryKey: ['user-model-pricing', input.userId],
       })
       await client.invalidateQueries({ queryKey: ['pricing'] })
+      // 保存和恢复全局价格后同步已定价名单，删除最后一条规则即从名单移除。
+      await client.invalidateQueries({ queryKey: ['user-pricing-users'] })
       toast.success(t('Saved successfully'))
     },
   })
@@ -93,7 +95,7 @@ export function UserPricingSettings() {
     [globalQuery.data, query.data]
   )
 
-  const select = (next: { user: User | null; model: string }) => {
+  const select = (next: { user: PricingUser | null; model: string }) => {
     if (dirty) {
       setPendingSelection(next)
       return
