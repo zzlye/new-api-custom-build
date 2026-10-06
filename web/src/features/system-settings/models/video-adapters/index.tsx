@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   VideoProtocolForm,
   type VideoProtocol,
@@ -191,38 +192,6 @@ function VideoAdaptersManager() {
           )
         }}
       />
-      <details className='rounded-xl border p-4'>
-        <summary className='cursor-pointer font-medium'>
-          {t('How to configure video adapters')}
-        </summary>
-        <ol className='mt-3 list-inside list-decimal space-y-2 text-sm'>
-          <li>
-            {t(
-              'Add a row, select channels, and enter the exact upstream model names. Multiple models can share a template.'
-            )}
-          </li>
-          <li>
-            {t(
-              'Choose a documented template. Use a row override only when that model differs.'
-            )}
-          </li>
-          <li>
-            {t(
-              'For a new field, declare its type and workshop visibility, then map extra_parameters.KEY to the upstream field.'
-            )}
-          </li>
-          <li>
-            {t(
-              'Preview a request and response, then publish. Previews never create paid video tasks.'
-            )}
-          </li>
-        </ol>
-        <p className='text-muted-foreground mt-3 text-sm'>
-          {t(
-            'wan-3.0 uses duration; sd2-5-720p uses seconds. Reference images and first frames have different meanings.'
-          )}
-        </p>
-      </details>
       <div className='flex flex-wrap gap-2'>
         <input
           aria-label={t('Search video adapters')}
@@ -306,213 +275,223 @@ function VideoAdaptersManager() {
           </button>
         </div>
       </details>
-      <fieldset disabled={save.isPending} className='min-w-0 space-y-3'>
-        {!visible.length ? (
-          <p className='text-muted-foreground text-sm'>
-            {t('No matching adapter rules. Add a row to bind a template.')}
-          </p>
-        ) : null}
-        {visible.map((rule) => {
-          const selected = draft.templates.find(
-            (p) => p.id === rule.template_id
-          )
-          const protocol = rule.override ?? selected?.protocol
-          const modelNames = [
-            ...new Set(
-              channels
-                .filter((c) => rule.channel_ids.includes(c.id))
-                .flatMap((c) => {
-                  let mapped: string[] = []
-                  try {
-                    mapped = Object.values(
-                      JSON.parse(c.model_mapping || '{}') as Record<
-                        string,
-                        string
-                      >
-                    )
-                  } catch {}
-                  return [...c.models.split(','), ...mapped]
-                })
-            ),
-          ].filter(Boolean)
-          return (
-            <article key={rule.id} className='min-w-0 rounded-xl border p-4'>
-              <div className='grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]'>
-                <label className='min-w-0 text-sm'>
-                  {t('Applicable channels')}
-                  <select
-                    aria-label={t('Applicable channels')}
-                    multiple
-                    className={`${fieldClass} mt-1 h-24`}
-                    value={rule.channel_ids.map(String)}
-                    onChange={(e) =>
-                      updateRule(rule.id, {
-                        channel_ids: Array.from(
-                          e.target.selectedOptions,
-                          (option) => Number(option.value)
-                        ),
-                      })
-                    }
-                  >
-                    {channels.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} · {c.id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className='min-w-0 space-y-2'>
-                  <label className='block text-sm'>
-                    {t('Upstream model names')}
-                    <BufferedList
-                      value={rule.models}
-                      onChange={(models) => updateRule(rule.id, { models })}
-                      label={t('Upstream model names')}
-                    />
-                  </label>
-                  <select
-                    className={fieldClass}
-                    aria-label={t('Add existing model')}
-                    value=''
-                    onChange={(e) => {
-                      if (e.target.value) {
+      {/* 规则在限定高度内滚动，搜索和发布操作不随规则数量被推远。 */}
+      <ScrollArea
+        role='region'
+        aria-label={t('Video adapters')}
+        className='h-[min(36rem,60dvh)] w-full min-w-0 rounded-xl border'
+      >
+        <fieldset
+          disabled={save.isPending}
+          className='min-w-0 space-y-3 p-3 sm:p-4'
+        >
+          {!visible.length ? (
+            <p className='text-muted-foreground text-sm'>
+              {t('No matching adapter rules. Add a row to bind a template.')}
+            </p>
+          ) : null}
+          {visible.map((rule) => {
+            const selected = draft.templates.find(
+              (p) => p.id === rule.template_id
+            )
+            const protocol = rule.override ?? selected?.protocol
+            const modelNames = [
+              ...new Set(
+                channels
+                  .filter((c) => rule.channel_ids.includes(c.id))
+                  .flatMap((c) => {
+                    let mapped: string[] = []
+                    try {
+                      mapped = Object.values(
+                        JSON.parse(c.model_mapping || '{}') as Record<
+                          string,
+                          string
+                        >
+                      )
+                    } catch {}
+                    return [...c.models.split(','), ...mapped]
+                  })
+              ),
+            ].filter(Boolean)
+            return (
+              <article key={rule.id} className='min-w-0 rounded-xl border p-4'>
+                <div className='grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]'>
+                  <label className='min-w-0 text-sm'>
+                    {t('Applicable channels')}
+                    <select
+                      aria-label={t('Applicable channels')}
+                      multiple
+                      className={`${fieldClass} mt-1 h-24`}
+                      value={rule.channel_ids.map(String)}
+                      onChange={(e) =>
                         updateRule(rule.id, {
-                          models: [
-                            ...new Set([...rule.models, e.target.value]),
-                          ],
+                          channel_ids: Array.from(
+                            e.target.selectedOptions,
+                            (option) => Number(option.value)
+                          ),
                         })
                       }
-                    }}
-                  >
-                    <option value=''>{t('Add existing model')}</option>
-                    {modelNames.map((name) => (
-                      <option key={name}>{name}</option>
-                    ))}
-                  </select>
-                  <p className='text-muted-foreground text-xs'>
-                    {t('Empty model names apply as the channel default.')}
-                  </p>
-                </div>
-                <label className='min-w-0 text-sm'>
-                  {t('Protocol template')}
-                  <select
-                    className={`${fieldClass} mt-1`}
-                    value={rule.template_id}
-                    onChange={(e) =>
-                      updateRule(rule.id, {
-                        template_id: e.target.value,
-                        override: undefined,
-                      })
-                    }
-                  >
-                    {draft.templates.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className='flex flex-wrap items-center gap-2 md:flex-col md:items-start'>
-                  <label className='flex items-center gap-2 text-sm'>
-                    <input
-                      type='checkbox'
-                      checked={rule.enabled}
-                      onChange={(e) =>
-                        updateRule(rule.id, { enabled: e.target.checked })
-                      }
-                    />
-                    {t('Enabled')}
+                    >
+                      {channels.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} · {c.id}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                  <button
-                    type='button'
-                    className={buttonClass}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        rules: [
-                          ...draft.rules,
-                          {
-                            ...structuredClone(rule),
-                            id: nanoid(),
-                            enabled: false,
-                          },
-                        ],
-                      })
-                    }
-                  >
-                    {t('Duplicate')}
-                  </button>
-                  <button
-                    type='button'
-                    className={`${buttonClass} text-destructive`}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        rules: draft.rules.filter((r) => r.id !== rule.id),
-                      })
-                    }
-                  >
-                    {t('Delete')}
-                  </button>
-                </div>
-              </div>
-              {protocol ? (
-                <details className='mt-4 min-w-0'>
-                  <summary className='cursor-pointer text-sm font-medium'>
-                    {t('Model overrides and preview')}
-                  </summary>
-                  <div className='mt-4 space-y-5'>
+                  <div className='min-w-0 space-y-2'>
+                    <label className='block text-sm'>
+                      {t('Upstream model names')}
+                      <BufferedList
+                        value={rule.models}
+                        onChange={(models) => updateRule(rule.id, { models })}
+                        label={t('Upstream model names')}
+                      />
+                    </label>
+                    <select
+                      className={fieldClass}
+                      aria-label={t('Add existing model')}
+                      value=''
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          updateRule(rule.id, {
+                            models: [
+                              ...new Set([...rule.models, e.target.value]),
+                            ],
+                          })
+                        }
+                      }}
+                    >
+                      <option value=''>{t('Add existing model')}</option>
+                      {modelNames.map((name) => (
+                        <option key={name}>{name}</option>
+                      ))}
+                    </select>
+                    <p className='text-muted-foreground text-xs'>
+                      {t('Empty model names apply as the channel default.')}
+                    </p>
+                  </div>
+                  <label className='min-w-0 text-sm'>
+                    {t('Protocol template')}
+                    <select
+                      className={`${fieldClass} mt-1`}
+                      value={rule.template_id}
+                      onChange={(e) =>
+                        updateRule(rule.id, {
+                          template_id: e.target.value,
+                          override: undefined,
+                        })
+                      }
+                    >
+                      {draft.templates.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className='flex flex-wrap items-center gap-2 md:flex-col md:items-start'>
                     <label className='flex items-center gap-2 text-sm'>
                       <input
                         type='checkbox'
-                        checked={Boolean(rule.override)}
+                        checked={rule.enabled}
                         onChange={(e) =>
-                          updateRule(rule.id, {
-                            override: e.target.checked
-                              ? structuredClone(protocol)
-                              : undefined,
-                          })
+                          updateRule(rule.id, { enabled: e.target.checked })
                         }
                       />
-                      {t('Customize this row')}
+                      {t('Enabled')}
                     </label>
-                    {rule.override ? (
-                      <>
-                        <CapabilityEditor
-                          value={protocol.capabilities}
-                          onChange={(capabilities) =>
+                    <button
+                      type='button'
+                      className={buttonClass}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          rules: [
+                            ...draft.rules,
+                            {
+                              ...structuredClone(rule),
+                              id: nanoid(),
+                              enabled: false,
+                            },
+                          ],
+                        })
+                      }
+                    >
+                      {t('Duplicate')}
+                    </button>
+                    <button
+                      type='button'
+                      className={`${buttonClass} text-destructive`}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          rules: draft.rules.filter((r) => r.id !== rule.id),
+                        })
+                      }
+                    >
+                      {t('Delete')}
+                    </button>
+                  </div>
+                </div>
+                {protocol ? (
+                  <details className='mt-4 min-w-0'>
+                    <summary className='cursor-pointer text-sm font-medium'>
+                      {t('Model overrides and preview')}
+                    </summary>
+                    <div className='mt-4 space-y-5'>
+                      <label className='flex items-center gap-2 text-sm'>
+                        <input
+                          type='checkbox'
+                          checked={Boolean(rule.override)}
+                          onChange={(e) =>
                             updateRule(rule.id, {
-                              override: { ...protocol, capabilities },
+                              override: e.target.checked
+                                ? structuredClone(protocol)
+                                : undefined,
                             })
                           }
                         />
-                        <VideoProtocolForm
-                          showEnabled={false}
-                          value={protocol}
-                          onChange={(override) =>
-                            updateRule(rule.id, { override })
-                          }
-                          t={t}
-                        />
-                      </>
-                    ) : (
-                      <p className='text-muted-foreground text-sm'>
-                        {t('This row inherits the selected template.')}
-                      </p>
-                    )}
-                    <AdapterPreview
-                      protocol={protocol}
-                      model={rule.models[0] ?? ''}
-                      registry={draft}
-                      channelIds={rule.channel_ids}
-                    />
-                  </div>
-                </details>
-              ) : null}
-            </article>
-          )
-        })}
-      </fieldset>
+                        {t('Customize this row')}
+                      </label>
+                      {rule.override ? (
+                        <>
+                          <CapabilityEditor
+                            value={protocol.capabilities}
+                            onChange={(capabilities) =>
+                              updateRule(rule.id, {
+                                override: { ...protocol, capabilities },
+                              })
+                            }
+                          />
+                          <VideoProtocolForm
+                            showEnabled={false}
+                            value={protocol}
+                            onChange={(override) =>
+                              updateRule(rule.id, { override })
+                            }
+                            t={t}
+                          />
+                        </>
+                      ) : (
+                        <p className='text-muted-foreground text-sm'>
+                          {t('This row inherits the selected template.')}
+                        </p>
+                      )}
+                      <AdapterPreview
+                        protocol={protocol}
+                        model={rule.models[0] ?? ''}
+                        registry={draft}
+                        channelIds={rule.channel_ids}
+                      />
+                    </div>
+                  </details>
+                ) : null}
+              </article>
+            )
+          })}
+        </fieldset>
+      </ScrollArea>
       <details className='min-w-0 rounded-xl border p-4'>
         <summary className='cursor-pointer font-medium'>
           {t('Manage reusable templates')}
