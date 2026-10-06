@@ -350,7 +350,8 @@ export function ApiKeysTable() {
       )}
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
-      paginationInFooter={false}
+      // 分页放入独立页脚，为固定高度的表格预留空间，避免底部按钮被裁切。
+      paginationInFooter
       tableHeaderClassName='bg-white/35 backdrop-blur-md dark:bg-white/10'
       tableClassName='appearance-glass-surface border-white/35 shadow-lg dark:border-white/15'
       toolbarProps={{
