@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -50,9 +51,17 @@ export function AdapterConfigTransfer(props: Props) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [channelIds, setChannelIds] = useState<number[]>([])
+  const [channelSearch, setChannelSearch] = useState('')
   const [fileError, setFileError] = useState('')
   const [reading, setReading] = useState(false)
   const fileRequest = useRef(0)
+  // 搜索只影响可见渠道，不改变已选绑定或已校验的导入预览。
+  const channelQuery = channelSearch.trim().toLowerCase()
+  const filteredChannels = props.channels.filter(
+    (channel) =>
+      channel.name.toLowerCase().includes(channelQuery) ||
+      String(channel.id).includes(channelQuery)
+  )
   const signature = JSON.stringify([props.registry, text, channelIds])
   const preview = useMutation({
     meta: { errorToast: false },
@@ -101,6 +110,7 @@ export function AdapterConfigTransfer(props: Props) {
     if (busy) return
     fileRequest.current++
     setOpen(value)
+    setChannelSearch('')
     props.onOpenChange(value)
     preview.reset()
     setFileError('')
@@ -278,38 +288,63 @@ export function AdapterConfigTransfer(props: Props) {
               'Selected channels replace every imported rule’s channel IDs. Leave unselected to keep the file’s bindings.'
             )}
           </p>
-          <div className='grid max-h-40 gap-2 overflow-y-auto rounded-lg border p-3 sm:grid-cols-2'>
-            {props.channels.map((channel) => (
-              <div key={channel.id} className='flex min-w-0 items-center gap-2'>
-                <Checkbox
-                  id={`${id}-channel-${channel.id}`}
-                  checked={channelIds.includes(channel.id)}
-                  disabled={busy}
-                  onCheckedChange={(checked) => {
-                    setChannelIds((current) =>
-                      checked
-                        ? [...current, channel.id]
-                        : current.filter((value) => value !== channel.id)
-                    )
-                    preview.reset()
-                  }}
-                />
-                <Label
-                  className='min-w-0 break-all'
-                  htmlFor={`${id}-channel-${channel.id}`}
+          <Input
+            type='search'
+            aria-label={t('Search channels by name or ID')}
+            placeholder={t('Search channels by name or ID')}
+            value={channelSearch}
+            disabled={busy}
+            onChange={(event) => setChannelSearch(event.target.value)}
+          />
+          <ScrollArea
+            role='region'
+            aria-label={t('Bind imported rules to channels')}
+            className='h-48 w-full min-w-0 rounded-lg border'
+          >
+            <ul className='flex min-w-0 flex-col divide-y px-3'>
+              {filteredChannels.map((channel) => (
+                <li
+                  key={channel.id}
+                  className='flex min-w-0 items-center gap-3'
                 >
-                  {channel.name} · {channel.id}
-                </Label>
-              </div>
-            ))}
+                  <Checkbox
+                    id={`${id}-channel-${channel.id}`}
+                    checked={channelIds.includes(channel.id)}
+                    disabled={busy}
+                    onCheckedChange={(checked) => {
+                      setChannelIds((current) =>
+                        checked
+                          ? [...current, channel.id]
+                          : current.filter((value) => value !== channel.id)
+                      )
+                      preview.reset()
+                    }}
+                  />
+                  <Label
+                    className='min-h-11 min-w-0 flex-1 cursor-pointer py-3 text-sm leading-relaxed break-all'
+                    htmlFor={`${id}-channel-${channel.id}`}
+                  >
+                    {channel.name} · {channel.id}
+                  </Label>
+                </li>
+              ))}
+            </ul>
             {!props.channels.length ? (
-              <p className='text-muted-foreground text-sm'>
+              <p className='text-muted-foreground p-3 text-sm'>
                 {t(
                   'Create a channel before binding model rules. Templates can be imported without rules.'
                 )}
               </p>
             ) : null}
-          </div>
+            {props.channels.length > 0 && !filteredChannels.length ? (
+              <p className='text-muted-foreground p-3 text-sm'>
+                {t('No channels found')}
+              </p>
+            ) : null}
+          </ScrollArea>
+          <p className='text-muted-foreground text-xs'>
+            {t('Selected {{count}}', { count: channelIds.length })}
+          </p>
         </fieldset>
         {fileError || preview.isError ? (
           <p role='alert' className='text-destructive text-sm break-words'>
