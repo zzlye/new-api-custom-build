@@ -20,14 +20,15 @@ func GetModelPricingConfig(c *gin.Context) {
 
 func PreviewModelPricingConversion(c *gin.Context) {
 	var request struct {
-		ModelName string              `json:"model_name"`
-		Pricing   model.PricingValues `json:"pricing"`
+		UserPricing bool                `json:"user_pricing"`
+		ModelName   string              `json:"model_name"`
+		Pricing     model.PricingValues `json:"pricing"`
 	}
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	preview, err := model.PreviewModelPricingConversion(request.ModelName, request.Pricing)
+	preview, err := model.PreviewModelPricingConversion(request.ModelName, request.Pricing, request.UserPricing)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -37,14 +38,15 @@ func PreviewModelPricingConversion(c *gin.Context) {
 
 func PreviewModelPricing(c *gin.Context) {
 	var request struct {
-		ModelName string              `json:"model_name"`
-		Pricing   model.PricingValues `json:"pricing"`
+		UserPricing bool                `json:"user_pricing"`
+		ModelName   string              `json:"model_name"`
+		Pricing     model.PricingValues `json:"pricing"`
 	}
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	preview, err := model.PreviewModelPricing(request.ModelName, request.Pricing)
+	preview, err := model.PreviewModelPricing(request.ModelName, request.Pricing, request.UserPricing)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -52,7 +54,7 @@ func PreviewModelPricing(c *gin.Context) {
 	common.ApiSuccess(c, model.ModelPricingDescription{
 		Effective:      preview,
 		CacheWriteMode: model.ResolveCacheWriteMode(request.ModelName, request.Pricing),
-		BillingDetails: model.ResolveLegacyBillingDetails(request.ModelName, preview, request.Pricing),
+		BillingDetails: model.ResolveLegacyBillingDetails(request.ModelName, preview, request.Pricing, request.UserPricing),
 	})
 }
 

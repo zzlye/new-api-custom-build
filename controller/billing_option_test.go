@@ -323,3 +323,25 @@ func TestPreConsumeMultiplierRejectsInvalidRuntimeAndOverflow(t *testing.T) {
 		assert.Nil(t, info.Billing)
 	}
 }
+
+func TestUserModelPricingRequiresRoot(t *testing.T) {
+	for _, role := range []int{0, common.RoleCommonUser, common.RoleAdminUser} {
+		for _, handler := range []gin.HandlerFunc{GetUserModelPricingConfig, UpdateUserModelPricingConfig} {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Set("role", role)
+			ctx.Params = gin.Params{{Key: "id", Value: "81"}}
+			ctx.Request = httptest.NewRequest(http.MethodPatch, "/api/option/user_model_pricing/81", strings.NewReader(`{"changes":[]}`))
+			handler(ctx)
+			assert.Equal(t, http.StatusForbidden, recorder.Code)
+		}
+	}
+	for _, handler := range []gin.HandlerFunc{GetUserModelPricingConfig, UpdateUserModelPricingConfig} {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Set("role", common.RoleRootUser)
+		ctx.Params = gin.Params{{Key: "id", Value: "0"}}
+		handler(ctx)
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	}
+}

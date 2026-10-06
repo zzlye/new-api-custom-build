@@ -1500,3 +1500,15 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 	assert.NotContains(t, fields, "image_generation_call")
 	assert.NotContains(t, fields, "image_generation_call_price")
 }
+
+func TestUserModelPricingTextAudioUsesUserPrices(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{OriginModelName: "gemini-2.5-flash", PriceData: hosttypes.PriceData{
+		UserPricing: true, ModelRatio: 2, CompletionRatio: 3, AudioRatio: 4, AudioCompletionRatio: 5,
+		GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 0.4}, CacheRatio: 1, ImageRatio: 1,
+	}}
+	usage := &dto.Usage{PromptTokens: 120, CompletionTokens: 15, TotalTokens: 135,
+		PromptTokensDetails: dto.InputTokenDetails{AudioTokens: 20}, CompletionTokenDetails: dto.OutputTokenDetails{AudioTokens: 5}}
+	summary := calculateTextQuotaSummary(ctx, info, usage)
+	assert.Equal(t, 248, summary.Quota)
+}

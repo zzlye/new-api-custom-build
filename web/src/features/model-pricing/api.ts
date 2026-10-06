@@ -88,6 +88,7 @@ export type ModelPricingConversion = Partial<ModelPricingDescription> & {
 
 export async function previewModelPricingConversion(request: {
   model_name: string
+  user_pricing?: boolean
   pricing: PricingValues
 }): Promise<ModelPricingConversion> {
   const response = await api.post('/api/option/model_pricing/convert', request)
@@ -102,6 +103,7 @@ export async function previewModelPricingConversion(request: {
 
 export async function previewModelPricing(request: {
   model_name: string
+  user_pricing?: boolean
   pricing: PricingValues
 }): Promise<{
   effective: PricingValues

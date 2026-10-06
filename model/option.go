@@ -347,6 +347,9 @@ func validateAppearanceFloatRange(value string, min, max float64, label string) 
 }
 
 func UpdateOption(key string, value string) error {
+	if IsUserModelPricingOption(key) {
+		return fmt.Errorf("请使用用户定价界面修改价格")
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -385,6 +388,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 		return nil
 	}
 	for key := range values {
+		if IsUserModelPricingOption(key) {
+			return fmt.Errorf("请使用用户定价界面修改价格")
+		}
 		if IsPasskeyDomainOption(key) {
 			_, err := UpdatePasskeyDomainOptions(values, false, "")
 			return err

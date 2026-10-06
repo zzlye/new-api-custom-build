@@ -14,9 +14,11 @@ type GroupRatioInfo struct {
 }
 
 type PriceData struct {
-	FreeModel  bool
-	ModelPrice float64
-	ModelRatio float64
+	// UserPricing 标记本次请求已固定用户专属价格，结算不再读取全局基础价。
+	UserPricing bool
+	FreeModel   bool
+	ModelPrice  float64
+	ModelRatio  float64
 	// PerSecondBilling 表示 ModelPrice 是每秒单价，而不是每次任务单价。
 	// seconds 仍会保留在 OtherRatios 中用于日志与任务快照，但不会再次乘入额度。
 	PerSecondBilling     bool

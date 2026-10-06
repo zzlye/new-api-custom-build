@@ -76,12 +76,23 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 	}
 	billingModelName := info.GetBillingModelName()
+	userPricing, err := ResolveUserModelPricing(c, info, info.OriginModelName, billingModelName)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	billingMode := billing_setting.GetBillingMode(billingModelName)
+	if userPricing != nil {
+		billingMode, _ = userPricing["billing_setting.billing_mode"].(string)
+	}
 	modelPrice, usePrice := ratio_setting.GetModelPrice(billingModelName, false)
 
+	if userPricing != nil {
+		modelPrice, usePrice = userPricing["ModelPrice"].(float64)
+	}
 	groupRatioInfo := HandleGroupRatio(c, info)
 
 	// Check if this model uses tiered_expr billing
-	if billing_setting.GetBillingMode(billingModelName) == billing_setting.BillingModeTieredExpr {
+	if billingMode == billing_setting.BillingModeTieredExpr {
 		return modelPriceHelperTiered(c, info, billingModelName, promptTokens, groupRatioInfo)
 	}
 
@@ -105,6 +116,10 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		var success bool
 		var matchName string
 		modelRatio, success, matchName = ratio_setting.GetModelRatio(billingModelName)
+		if userPricing != nil {
+			modelRatio, success = userPricing["ModelRatio"].(float64)
+			matchName = billingModelName
+		}
 		if !success {
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
@@ -123,6 +138,16 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		imageRatio, _ = ratio_setting.GetImageRatio(billingModelName)
 		audioRatio = ratio_setting.GetAudioRatio(billingModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(billingModelName)
+		if userPricing != nil {
+			completionRatio, _ = userPricing["CompletionRatio"].(float64)
+			cacheRatio, _ = userPricing["CacheRatio"].(float64)
+			cacheCreationRatio, _ = userPricing["CreateCacheRatio"].(float64)
+			cacheCreationRatio5m = cacheCreationRatio
+			cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
+			imageRatio, _ = userPricing["ImageRatio"].(float64)
+			audioRatio, _ = userPricing["AudioRatio"].(float64)
+			audioCompletionRatio, _ = userPricing["AudioCompletionRatio"].(float64)
+		}
 		ratio := modelRatio * groupRatioInfo.GroupRatio
 		quota, err := common.QuotaFromFloatStrict(preConsumedTokens * ratio)
 		if err != nil {
@@ -161,6 +186,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	}
 
 	priceData := hosttypes.PriceData{
+		UserPricing:          userPricing != nil,
 		FreeModel:            freeModel,
 		ModelPrice:           modelPrice,
 		ModelRatio:           modelRatio,
@@ -224,8 +250,18 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	usePrice := success
 	var modelRatio float64
 	billingMode := billing_setting.GetBillingMode(info.OriginModelName)
+	userPricing, err := ResolveUserModelPricing(c, info, info.OriginModelName, info.GetUpstreamModelName())
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if userPricing != nil {
+		modelPrice, success = userPricing["ModelPrice"].(float64)
+		usePrice = success
+		billingMode, _ = userPricing["billing_setting.billing_mode"].(string)
+		modelRatio, _ = userPricing["ModelRatio"].(float64)
+	}
 
-	if !success {
+	if !success && userPricing == nil {
 		// 按秒模式必须显式配置当前模型价格，禁止把内置按次默认价误当成每秒价格。
 		if billingMode == billing_setting.BillingModePerSecond {
 			return hosttypes.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
@@ -251,7 +287,11 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	if perSecondBilling {
 		// 按秒模型配置表达式后，表达式返回当前分辨率对应的每秒美元价格。
 		// 将结果换算成 resolution 倍率，保留原有秒数计费和结算链路。
-		if expr, ok := billing_setting.GetBillingExpr(info.OriginModelName); ok && strings.TrimSpace(expr) != "" {
+		expr, ok := billing_setting.GetBillingExpr(info.OriginModelName)
+		if userPricing != nil {
+			expr, ok = userPricing["billing_setting.billing_expr"].(string)
+		}
+		if ok && strings.TrimSpace(expr) != "" {
 			requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
 			if err != nil {
 				return hosttypes.PriceData{}, fmt.Errorf("读取分辨率定价请求失败: %w", err)
@@ -311,6 +351,7 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	}
 
 	priceData := hosttypes.PriceData{
+		UserPricing:      userPricing != nil,
 		FreeModel:        freeModel,
 		ModelPrice:       modelPrice,
 		ModelRatio:       modelRatio,
@@ -389,6 +430,13 @@ func resolveBillingModelName(origin string) string {
 
 func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billingModelName string, promptTokens int, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
 	exprStr, ok := billing_setting.GetBillingExpr(billingModelName)
+	userPricing, err := ResolveUserModelPricing(c, info, info.OriginModelName, billingModelName)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
+	if userPricing != nil {
+		exprStr, ok = userPricing["billing_setting.billing_expr"].(string)
+	}
 	if !ok {
 		return hosttypes.PriceData{}, fmt.Errorf("model %s is configured as tiered_expr but has no billing expression", billingModelName)
 	}
@@ -464,6 +512,7 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, billing
 	info.BillingRequestInput = &requestInput
 
 	priceData := hosttypes.PriceData{
+		UserPricing:       userPricing != nil,
 		FreeModel:         freeModel,
 		GroupRatioInfo:    groupRatioInfo,
 		QuotaToPreConsume: preConsumedQuota,

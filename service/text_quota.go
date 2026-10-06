@@ -269,7 +269,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 	if isOpenRouterClaudeBilling {
 		summary.PromptTokens -= summary.CacheTokens
-		isUsingCustomSettings := relayInfo.PriceData.UsePrice || hasCustomModelRatio(summary.ModelName, relayInfo.PriceData.ModelRatio)
+		isUsingCustomSettings := relayInfo.PriceData.UserPricing || relayInfo.PriceData.UsePrice || hasCustomModelRatio(summary.ModelName, relayInfo.PriceData.ModelRatio)
 		if summary.CacheCreationTokens == 0 && relayInfo.PriceData.CacheCreationRatio != 1 && usage.Cost != 0 && !isUsingCustomSettings {
 			maybeCacheCreationTokens := CalcOpenRouterCacheCreateTokens(*usage, relayInfo.PriceData)
 			if maybeCacheCreationTokens >= 0 && summary.PromptTokens >= maybeCacheCreationTokens {
@@ -333,7 +333,11 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 		if !dAudioTokens.IsZero() {
 			summary.AudioInputPrice = operation_setting.GetGeminiInputAudioPricePerMillionTokens(summary.ModelName)
-			if summary.AudioInputPrice > 0 {
+			if relayInfo.PriceData.UserPricing {
+				// 用户音频基础价和普通输入价一起固定，不再使用全局 Gemini 音频单价。
+				summary.AudioInputPrice = relayInfo.PriceData.ModelRatio * relayInfo.PriceData.AudioRatio * 1_000_000 / common.QuotaPerUnit
+			}
+			if summary.AudioInputPrice > 0 || relayInfo.PriceData.UserPricing {
 				baseTokens = baseTokens.Sub(dAudioTokens)
 				audioInputQuota = decimal.NewFromFloat(summary.AudioInputPrice).
 					Div(decimal.NewFromInt(1000000)).Mul(dAudioTokens).Mul(dGroupRatio).Mul(dQuotaPerUnit)
@@ -350,6 +354,11 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 
 		promptQuota := baseTokens.Add(cachedTokensWithRatio).Add(imageTokensWithRatio).Add(cachedCreationTokensWithRatio)
 		completionQuota := dCompletionTokens.Mul(dCompletionRatio)
+		if relayInfo.PriceData.UserPricing && usage.CompletionTokenDetails.AudioTokens > 0 {
+			audioTokens := decimal.NewFromInt(int64(min(summary.CompletionTokens, usage.CompletionTokenDetails.AudioTokens)))
+			completionQuota = dCompletionTokens.Sub(audioTokens).Mul(dCompletionRatio).
+				Add(audioTokens.Mul(decimal.NewFromFloat(relayInfo.PriceData.AudioRatio)).Mul(decimal.NewFromFloat(relayInfo.PriceData.AudioCompletionRatio)))
+		}
 		quotaCalculateDecimal := promptQuota.Add(completionQuota).Mul(ratio)
 		quotaCalculateDecimal = quotaCalculateDecimal.Add(audioInputQuota)
 		quotaCalculateDecimal = relayInfo.PriceData.ApplyOtherRatiosToDecimal(quotaCalculateDecimal)

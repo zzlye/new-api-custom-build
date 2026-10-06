@@ -574,3 +574,27 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, hashedPassword, stored.Password)
 }
+
+func TestListModelsIncludesOnlyCurrentUserPricing(t *testing.T) {
+	withSelfUseModeDisabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 1001, Username: "user-price-list", Password: "test", Group: "default", Status: common.UserStatusEnabled}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{{Group: "default", Model: "user-price-only", ChannelId: 1, Enabled: true}, {Group: "default", Model: "other-user-price-only", ChannelId: 1, Enabled: true}}).Error)
+	common.OptionMapRWMutex.Lock()
+	oldOptions := common.OptionMap
+	common.OptionMap = map[string]string{"UserModelPricing:1001": `{"user-price-only":{"ModelPrice":0.08}}`, "UserModelPricing:1002": `{"other-user-price-only":{"ModelPrice":0.06}}`}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = oldOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1001)
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+	ids := decodeListModelsResponse(t, recorder)
+	require.Contains(t, ids, "user-price-only")
+	require.NotContains(t, ids, "other-user-price-only")
+}

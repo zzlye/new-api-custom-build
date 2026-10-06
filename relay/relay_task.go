@@ -281,8 +281,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if pinnedPlugin.Plugin != nil {
 		pluginKey = pinnedPlugin.Plugin.Meta.Key
 	}
-	exprStr, exists := billing_setting.ResolveTaskBillingExpr(pluginKey, modelName, info.UpstreamModelName)
-	useTiered := exists || billing_setting.GetBillingMode(modelName) == billing_setting.BillingModeTieredExpr
+	billingMode, exprStr, exists, pricingErr := helper.ResolveUserTaskBilling(c, info, pluginKey)
+	if pricingErr != nil {
+		return nil, service.TaskErrorWrapperLocal(pricingErr, "model_price_error", http.StatusBadRequest)
+	}
+	useTiered := exists || billingMode == billing_setting.BillingModeTieredExpr
 	// 先校验并提取时长，再计算按秒预扣；任务表达式独立使用用量事实。
 	if !useTiered {
 		var estimatedRatios map[string]float64
@@ -301,7 +304,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
-	if !useTiered && billing_setting.GetBillingMode(modelName) == billing_setting.BillingModePerSecond && !info.PriceData.HasOtherRatio("seconds") {
+	if !useTiered && billingMode == billing_setting.BillingModePerSecond && !info.PriceData.HasOtherRatio("seconds") {
 		if req, requestErr := relaycommon.GetTaskRequest(c); requestErr == nil {
 			info.PriceData.AddOtherRatio("seconds", float64(taskcommon.ResolveVideoDurationSeconds(req, 1)))
 		}

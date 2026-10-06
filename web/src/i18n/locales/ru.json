@@ -1,5 +1,16 @@
 {
   "translation": {
+    "User pricing": "Цены пользователя",
+    "Search users by name or ID": "Поиск по имени или ID",
+    "Selected user": "Выбранный пользователь",
+    "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.": "Индивидуальные цены заменяют базовые. Множители групп сохраняются. Остальные модели используют общие цены.",
+    "No user prices configured": "Индивидуальные цены не заданы",
+    "User price configured": "Индивидуальная цена задана",
+    "Using global price": "Используется общая цена",
+    "Restore global price": "Восстановить общую цену",
+    "Select a user and model to configure pricing": "Выберите пользователя и модель",
+    "Your unsaved pricing changes will be discarded.": "Несохранённые изменения цен будут потеряны.",
+    "Remove this user price? Future requests will use the global model price and group ratio.": "Удалить эту цену? Новые запросы будут использовать общую цену и множитель группы.",
     "Don't show again today": "Не показывать сегодня",
     "Search channels by name or ID": "Поиск каналов по названию или ID",
     "Import configuration": "Import configuration",
@@ -7100,6 +7111,8 @@
     "© 2025 Your Company. All rights reserved.": "© 2025 Ваша Компания. Все права защищены.",
     "、": ", ",
     "，": ", ",
-    "，and ": " и "
+    "，and ": " и ",
+    "Restore": "Восстановить",
+    "No users found": "Пользователи не найдены"
   }
 }

@@ -168,6 +168,7 @@ type TaskPluginAuthorSnapshot struct {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
+	UserPricing      bool                         `json:"user_pricing,omitempty"`       // 用户专属基础价快照
 	ModelPrice       float64                      `json:"model_price,omitempty"`        // 模型单价
 	GroupRatio       float64                      `json:"group_ratio,omitempty"`        // 分组倍率
 	ModelRatio       float64                      `json:"model_ratio,omitempty"`        // 模型倍率

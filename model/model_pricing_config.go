@@ -221,9 +221,16 @@ func effectiveModelPricing(values map[string]map[string]any, name string) Pricin
 
 // PreviewModelPricing resolves a complete editable draft using the same defaults
 // as the saved-price display and conversion. It has no write side effects.
-func PreviewModelPricing(name string, draft PricingValues) (PricingValues, error) {
+func PreviewModelPricing(name string, draft PricingValues, userPricing ...bool) (PricingValues, error) {
 	if draft == nil {
 		return nil, errors.New("pricing draft is required")
+	}
+	// 用户定价的预览与实际结算使用同一份完整基础价格。
+	if len(userPricing) > 0 && userPricing[0] {
+		if err := ValidateModelPricing(name, draft); err != nil {
+			return nil, err
+		}
+		return EffectiveUserModelPricing(name, draft), nil
 	}
 	values, _, _, err := readModelPricingMaps(DB)
 	if err != nil {

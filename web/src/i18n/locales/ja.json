@@ -1,5 +1,16 @@
 {
   "translation": {
+    "User pricing": "ユーザー別料金",
+    "Search users by name or ID": "ユーザー名またはIDで検索",
+    "Selected user": "選択中のユーザー",
+    "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.": "ユーザー別料金は基本価格を置き換えます。グループ倍率は引き続き適用され、未設定モデルは共通料金を使用します。",
+    "No user prices configured": "ユーザー別料金は未設定です",
+    "User price configured": "ユーザー別料金を設定済み",
+    "Using global price": "共通料金を使用中",
+    "Restore global price": "共通料金に戻す",
+    "Select a user and model to configure pricing": "ユーザーとモデルを選択してください",
+    "Your unsaved pricing changes will be discarded.": "未保存の料金変更は破棄されます。",
+    "Remove this user price? Future requests will use the global model price and group ratio.": "この料金を削除しますか？新しいリクエストは共通料金とグループ倍率を使用します。",
     "Don't show again today": "今日は再表示しない",
     "Search channels by name or ID": "チャンネル名または ID で検索",
     "Import configuration": "Import configuration",
@@ -7100,6 +7111,8 @@
     "© 2025 Your Company. All rights reserved.": "© 2025 Your Company. 全著作権所有。",
     "、": "、",
     "，": "、",
-    "，and ": "、"
+    "，and ": "、",
+    "Restore": "復元",
+    "No users found": "ユーザーが見つかりません"
   }
 }

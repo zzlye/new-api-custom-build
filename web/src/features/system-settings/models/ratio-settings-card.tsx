@@ -46,6 +46,7 @@ import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
 import { UpstreamRatioSync } from './upstream-ratio-sync'
+import { UserPricingSettings } from './user-pricing-settings'
 import {
   formatJsonForTextarea,
   type JsonValidationError,
@@ -155,6 +156,7 @@ type RatioTabId =
   | 'groups'
   | 'tool-prices'
   | 'upstream-sync'
+  | 'user-prices'
 
 type RatioSettingsCardProps = {
   modelDefaults: ModelFormValues
@@ -459,15 +461,8 @@ export function RatioSettingsCard({
     groups: 'Group ratios',
     'tool-prices': 'Tool prices',
     'upstream-sync': 'Upstream price sync',
+    'user-prices': 'User pricing',
   }
-  const tabsGridClass =
-    {
-      1: 'grid-cols-1',
-      2: 'grid-cols-2',
-      3: 'grid-cols-3',
-      4: 'grid-cols-4',
-      5: 'grid-cols-5',
-    }[visibleTabs.length] ?? 'grid-cols-4'
   const defaultTab = visibleTabs[0] ?? 'models'
 
   const renderTabContent = (tab: RatioTabId) => {
@@ -520,13 +515,14 @@ export function RatioSettingsCard({
     if (tab === 'tool-prices') {
       return <ToolPriceSettings defaultValue={toolPricesDefault} />
     }
+    if (tab === 'user-prices') return <UserPricingSettings />
     return <UpstreamRatioSync />
   }
 
   const renderTabSwitcher = () => (
-    <TabsList className={`grid w-fit max-w-full ${tabsGridClass}`}>
+    <TabsList className='inline-flex w-fit max-w-[calc(100vw-4rem)] overflow-x-auto sm:max-w-full'>
       {visibleTabs.map((tab) => (
-        <TabsTrigger key={tab} value={tab}>
+        <TabsTrigger key={tab} value={tab} className='flex-none'>
           {t(tabLabels[tab])}
         </TabsTrigger>
       ))}

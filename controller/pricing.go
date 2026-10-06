@@ -43,6 +43,12 @@ func GetPricing(c *gin.Context) {
 	maps.Copy(groupRatio, ratio_setting.GetGroupRatioCopy())
 	var group string
 	if exists {
+		var pricingErr error
+		pricing, pricingErr = model.PricingForUser(pricing, userId.(int))
+		if pricingErr != nil {
+			common.ApiError(c, pricingErr)
+			return
+		}
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
 			group = user.Group

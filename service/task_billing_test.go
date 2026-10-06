@@ -1858,3 +1858,24 @@ func TestSettle_TokenRecalcFallsBackToCompletionTokens(t *testing.T) {
 		})
 	}
 }
+
+func TestUserModelPricingTaskSettlementUsesFrozenRatio(t *testing.T) {
+	truncate(t)
+	seedUser(t, 871, 10000)
+	seedChannel(t, 871)
+	seedChargedAccounting(t, 871, 871, 0, 2000, 1)
+	task := makeTask(871, 871, 2000, 0, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext = &model.TaskBillingContext{UserPricing: true, ModelRatio: 2, GroupRatio: 0.4, OriginModelName: "user-price-task"}
+	require.NoError(t, model.DB.Create(task).Error)
+	// 经数据库重读后仍按提交价格结算，不要求全局模型价格继续存在。
+	var loaded model.Task
+	require.NoError(t, model.DB.First(&loaded, task.ID).Error)
+	require.True(t, RecalculateTaskQuotaByTokens(context.Background(), &loaded, 1000))
+	assert.Equal(t, 800, loaded.Quota)
+	assert.Equal(t, 11200, getUserQuota(t, 871))
+	assert.Equal(t, int64(800), getChannelUsedQuota(t, 871))
+	// 固定价格不会因为上游返回 token 用量而发生额外扣费。
+	loaded.PrivateData.BillingContext.PerCallBilling = true
+	assert.False(t, RecalculateTaskQuotaByTokens(context.Background(), &loaded, 10000))
+	assert.Equal(t, 11200, getUserQuota(t, 871))
+}

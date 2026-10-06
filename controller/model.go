@@ -248,6 +248,11 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 	}
+	userPrices, pricingErr := model.UserModelPricingFromCache(c.GetInt("id"))
+	if pricingErr != nil {
+		common.ApiError(c, pricingErr)
+		return
+	}
 	models := service.GetGroupsEnabledModels(ownerGroups)
 	for _, modelName := range models {
 		if modelLimitEnable {
@@ -256,7 +261,7 @@ func ListModels(c *gin.Context, modelType int) {
 				continue
 			}
 		}
-		if !acceptUnsetRatioModel && !helper.HasModelBillingConfig(modelName) {
+		if !acceptUnsetRatioModel && userPrices[modelName] == nil && !helper.HasModelBillingConfig(modelName) {
 			continue
 		}
 		userModelNames = append(userModelNames, modelName)

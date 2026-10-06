@@ -125,6 +125,7 @@ import { TieredPricingEditor } from './tiered-pricing-editor'
 export type { ModelRatioData } from './model-pricing-core'
 
 type ModelPricingSheetProps = {
+  userPricing?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   editData?: ModelRatioData | null
@@ -163,6 +164,7 @@ export const ModelPricingSheet = forwardRef<
     usageSchema,
     pluginVariants,
     onDirtyChange,
+    userPricing,
   },
   ref
 ) {
@@ -186,6 +188,7 @@ export const ModelPricingSheet = forwardRef<
           usageSchema={usageSchema}
           pluginVariants={pluginVariants}
           onDirtyChange={onDirtyChange}
+          userPricing={userPricing}
           onSave={onSave}
           isSaving={isSaving}
           className='h-full rounded-none border-0'
@@ -207,6 +210,7 @@ export const ModelPricingEditorPanel = forwardRef<
     usageSchema,
     pluginVariants,
     onDirtyChange,
+    userPricing,
     embedded = false,
     scrollHeader,
   },
@@ -299,6 +303,7 @@ export const ModelPricingEditorPanel = forwardRef<
     try {
       previewRequest = JSON.stringify({
         model_name: watchedValues.name.trim(),
+        ...(userPricing ? { user_pricing: true } : {}),
         pricing: pricingFromDraft({
           ...watchedValues,
           billingMode: 'per-token',
@@ -815,6 +820,7 @@ export const ModelPricingEditorPanel = forwardRef<
       const pricing = pricingFromDraft(draft)
       const result = await conversion.mutateAsync({
         model_name: draft.name,
+        ...(userPricing ? { user_pricing: true } : {}),
         pricing,
       })
       if (generation !== conversionGeneration.current) return

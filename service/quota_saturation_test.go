@@ -138,3 +138,14 @@ func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 	require.Nil(t, info.Billing)
 }
+
+func TestUserModelPricingAudioUsesReservedPrices(t *testing.T) {
+	price := &hosttypes.PriceData{UserPricing: true, ModelRatio: 2, CompletionRatio: 3, AudioRatio: 4, AudioCompletionRatio: 5}
+	quota, clamp := calculateAudioQuota(QuotaInfo{
+		ModelName: "personal-audio", ModelRatio: 2, GroupRatio: 0.4, UserPriceData: price,
+		InputDetails: TokenDetails{TextTokens: 100, AudioTokens: 20}, OutputDetails: TokenDetails{TextTokens: 10, AudioTokens: 5},
+	})
+	// (100 + 10×3 + 20×4 + 5×4×5) × 2 × 0.4。
+	require.Equal(t, 248, quota)
+	require.Nil(t, clamp)
+}

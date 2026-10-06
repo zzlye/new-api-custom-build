@@ -1,5 +1,16 @@
 {
   "translation": {
+    "User pricing": "Giá người dùng",
+    "Search users by name or ID": "Tìm theo tên hoặc ID người dùng",
+    "Selected user": "Người dùng đã chọn",
+    "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.": "Giá riêng thay thế giá cơ bản. Hệ số nhóm vẫn áp dụng. Mô hình chưa đặt giá riêng dùng giá chung.",
+    "No user prices configured": "Chưa có giá riêng",
+    "User price configured": "Đã đặt giá riêng",
+    "Using global price": "Đang dùng giá chung",
+    "Restore global price": "Khôi phục giá chung",
+    "Select a user and model to configure pricing": "Chọn người dùng và mô hình để đặt giá",
+    "Your unsaved pricing changes will be discarded.": "Thay đổi giá chưa lưu sẽ bị bỏ.",
+    "Remove this user price? Future requests will use the global model price and group ratio.": "Xóa giá riêng này? Yêu cầu mới sẽ dùng giá chung và hệ số nhóm.",
     "Don't show again today": "Không hiển thị lại hôm nay",
     "Search channels by name or ID": "Tìm kênh theo tên hoặc ID",
     "Import configuration": "Import configuration",
@@ -7100,6 +7111,8 @@
     "© 2025 Your Company. All rights reserved.": "© 2025 Công ty của bạn. Mọi quyền được bảo lưu.",
     "、": ", ",
     "，": ", ",
-    "，and ": " và "
+    "，and ": " và ",
+    "Restore": "Khôi phục",
+    "No users found": "Không tìm thấy người dùng"
   }
 }

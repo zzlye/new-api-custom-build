@@ -60,7 +60,7 @@ type LegacyBillingDetails struct {
 	ConflictingAudioPrices bool                `json:"-"`
 }
 
-func ResolveLegacyBillingDetails(name string, effective, configured PricingValues) LegacyBillingDetails {
+func ResolveLegacyBillingDetails(name string, effective, configured PricingValues, userPricing ...bool) LegacyBillingDetails {
 	details := LegacyBillingDetails{}
 	if effective["billing_setting.billing_mode"] == billing_setting.BillingModeTieredExpr {
 		return details
@@ -78,7 +78,7 @@ func ResolveLegacyBillingDetails(name string, effective, configured PricingValue
 	if err != nil {
 		return details
 	}
-	if price := operation_setting.GetGeminiInputAudioPricePerMillionTokens(name); price > 0 {
+	if price := operation_setting.GetGeminiInputAudioPricePerMillionTokens(name); price > 0 && !(len(userPricing) > 0 && userPricing[0]) {
 		details.AudioInputPrice = &price
 		// Native Gemini settles with its dedicated input price; compatible
 		// chat enters the audio-ratio path when those ratios are configured.
@@ -141,7 +141,7 @@ func ResolveCacheWriteMode(name string, configured PricingValues) CacheWriteMode
 	return CacheWriteNone
 }
 
-func PreviewModelPricingConversion(name string, draft PricingValues) (*ModelPricingConversion, error) {
+func PreviewModelPricingConversion(name string, draft PricingValues, userPricing ...bool) (*ModelPricingConversion, error) {
 	if draft == nil {
 		return nil, errors.New("pricing draft is required")
 	}
@@ -156,7 +156,7 @@ func PreviewModelPricingConversion(name string, draft PricingValues) (*ModelPric
 	legacyDraft := make(PricingValues, len(draft)+1)
 	maps.Copy(legacyDraft, draft)
 	legacyDraft["billing_setting.billing_mode"] = billing_setting.BillingModeRatio
-	effective, err := PreviewModelPricing(name, legacyDraft)
+	effective, err := PreviewModelPricing(name, legacyDraft, userPricing...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func PreviewModelPricingConversion(name string, draft PricingValues) (*ModelPric
 		return nil, err
 	}
 	_, fixedPrice := effective["ModelPrice"]
-	preview := &ModelPricingConversion{ModelPricingDescription: ModelPricingDescription{Effective: effective, BillingDetails: ResolveLegacyBillingDetails(name, effective, draft)}}
+	preview := &ModelPricingConversion{ModelPricingDescription: ModelPricingDescription{Effective: effective, BillingDetails: ResolveLegacyBillingDetails(name, effective, draft, userPricing...)}}
 	if preview.BillingDetails.InvalidAudioPrice {
 		return nil, errors.New("audio prices must be finite")
 	}

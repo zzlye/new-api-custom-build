@@ -1,5 +1,16 @@
 {
   "translation": {
+    "User pricing": "用户定价",
+    "Search users by name or ID": "搜索用户名或用户 ID",
+    "Selected user": "已选用户",
+    "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.": "用户定价替换模型基础价格，分组倍率仍然生效。未单独设置的模型使用全局价格。",
+    "No user prices configured": "暂未设置用户定价",
+    "User price configured": "已设置用户专属价格",
+    "Using global price": "当前使用全局价格",
+    "Restore global price": "恢复全局价格",
+    "Select a user and model to configure pricing": "选择用户和模型后设置专属价格",
+    "Your unsaved pricing changes will be discarded.": "尚未保存的价格修改将被丢弃。",
+    "Remove this user price? Future requests will use the global model price and group ratio.": "删除这条用户定价后，新请求将使用全局模型价格和分组倍率。",
     "Don't show again today": "今日不再提醒",
     "Search channels by name or ID": "搜索渠道名称或 ID",
     "Import configuration": "导入配置",
@@ -7105,6 +7116,8 @@
     "© 2025 Your Company. All rights reserved.": "© 2025 您的公司。保留所有权利。",
     "、": "、",
     "，": "，",
-    "，and ": "，并"
+    "，and ": "，并",
+    "Restore": "恢复",
+    "No users found": "未找到用户"
   }
 }

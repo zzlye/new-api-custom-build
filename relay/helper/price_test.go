@@ -890,3 +890,97 @@ func TestModelPriceHelperPerSecondRequiresModelPrice(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, HasModelBillingConfig("video-missing-price"))
 }
+
+// 用户基础价格先覆盖，再沿用分组倍率；异步任务和表达式结算保留提交快照。
+func TestUserModelPricingRelayAndSettlement(t *testing.T) {
+	oldPrices := ratio_setting.ModelPrice2JSONString()
+	oldGroups := ratio_setting.GroupRatio2JSONString()
+	common.OptionMapRWMutex.Lock()
+	oldOptions := common.OptionMap
+	common.OptionMap = map[string]string{"UserModelPricing:81": `{"image":{"ModelPrice":0.08},"video":{"ModelPrice":0.03,"billing_setting.billing_mode":"per_second"},"text":{"billing_setting.billing_mode":"tiered_expr","billing_setting.billing_expr":"p * 2 + c * 8"},"free":{"ModelPrice":0}}`}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(oldPrices))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroups))
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = oldOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"image":0.1,"video":0.5,"free":0.5}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"personal":0.4}`))
+	for _, tc := range []struct {
+		name  string
+		user  int
+		quota int
+	}{
+		{"image", 81, 16000}, {"image", 82, 20000}, {"free", 81, 0},
+	} {
+		t.Run(fmt.Sprintf("%s-%d", tc.name, tc.user), func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{UserId: tc.user, OriginModelName: tc.name, UsingGroup: "personal", UserGroup: "personal"}
+			price, err := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{})
+			require.NoError(t, err)
+			assert.Equal(t, tc.quota, price.QuotaToPreConsume)
+			assert.Equal(t, 0.4, price.GroupRatioInfo.GroupRatio)
+		})
+	}
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{UserId: 81, OriginModelName: "video", UsingGroup: "personal", UserGroup: "personal"}
+	info.PriceData.AddOtherRatio("seconds", 8)
+	price, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	assert.Equal(t, 48000, price.Quota)
+	assert.True(t, price.PerSecondBilling)
+	mode, expression, exists, err := ResolveUserTaskBilling(ctx, info, "test-plugin")
+	require.NoError(t, err)
+	assert.Equal(t, "per_second", mode)
+	assert.False(t, exists)
+	assert.Empty(t, expression)
+	info = &relaycommon.RelayInfo{UserId: 81, OriginModelName: "text", UsingGroup: "personal", UserGroup: "personal", BillingRequestInput: &billingexpr.RequestInput{Body: []byte(`{}`)}}
+	_, err = ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.NotNil(t, info.TieredBillingSnapshot)
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["UserModelPricing:81"] = `{}`
+	common.OptionMapRWMutex.Unlock()
+	ok, quota, _ := service.TryTieredSettle(info, billingexpr.TokenParams{P: 1000, C: 500, Len: 1000})
+	assert.True(t, ok)
+	assert.Equal(t, 1200, quota)
+	// 已接收请求保留原价，新请求在删除规则后恢复全局价。
+	oldInfo := &relaycommon.RelayInfo{UserId: 81, OriginModelName: "image", UsingGroup: "personal", UserGroup: "personal"}
+	price, err = ModelPriceHelper(ctx, oldInfo, 0, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	assert.Equal(t, 16000, price.QuotaToPreConsume)
+	fresh, _ := gin.CreateTestContext(httptest.NewRecorder())
+	price, err = ModelPriceHelper(fresh, oldInfo, 0, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	assert.Equal(t, 20000, price.QuotaToPreConsume)
+}
+
+func TestUserModelPricingTaskExpressionKeepsGroupRatio(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	oldOptions := common.OptionMap
+	common.OptionMap = map[string]string{"UserModelPricing:81": `{"video":{"billing_setting.billing_mode":"tiered_expr","billing_setting.billing_expr":"u(\"seconds\") * 0.08","billing_setting.plugin_billing_expr":{"provider":"u(\"seconds\") * 0.03"}}}`}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = oldOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{UserId: 81, OriginModelName: "video"}
+	_, expression, exists, err := ResolveUserTaskBilling(ctx, info, "provider")
+	require.NoError(t, err)
+	require.True(t, exists)
+	assert.Equal(t, `u("seconds") * 0.03`, expression)
+	snapshot := &billingexpr.BillingSnapshot{BillingMode: "tiered_expr", ExprString: expression, ExprHash: billingexpr.ExprHashString(expression), ExprVersion: billingexpr.ExprVersion(expression), TaskUsageBilling: true, GroupRatio: 0.4, QuotaPerUnit: common.QuotaPerUnit, UsageFacts: map[string]any{"seconds": 5.0}}
+	reservation, _, err := service.EvaluateTaskCompletionUsage(snapshot, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 30000, reservation.ActualQuotaAfterGroup)
+	common.OptionMapRWMutex.Lock()
+	common.OptionMap["UserModelPricing:81"] = `{}`
+	common.OptionMapRWMutex.Unlock()
+	settlement, _, err := service.EvaluateTaskCompletionUsage(snapshot, map[string]any{"seconds": 8.0})
+	require.NoError(t, err)
+	assert.Equal(t, 48000, settlement.ActualQuotaAfterGroup)
+}

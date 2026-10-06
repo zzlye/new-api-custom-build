@@ -1,5 +1,16 @@
 {
   "translation": {
+    "User pricing": "User pricing",
+    "Search users by name or ID": "Search users by name or ID",
+    "Selected user": "Selected user",
+    "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.": "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.",
+    "No user prices configured": "No user prices configured",
+    "User price configured": "User price configured",
+    "Using global price": "Using global price",
+    "Restore global price": "Restore global price",
+    "Select a user and model to configure pricing": "Select a user and model to configure pricing",
+    "Your unsaved pricing changes will be discarded.": "Your unsaved pricing changes will be discarded.",
+    "Remove this user price? Future requests will use the global model price and group ratio.": "Remove this user price? Future requests will use the global model price and group ratio.",
     "Don't show again today": "Don't show again today",
     "Search channels by name or ID": "Search channels by name or ID",
     "Import configuration": "Import configuration",
@@ -7105,6 +7116,8 @@
     "© 2025 Your Company. All rights reserved.": "© 2025 Your Company. All rights reserved.",
     "、": ", ",
     "，": ", ",
-    "，and ": ", and "
+    "，and ": ", and ",
+    "Restore": "Restore",
+    "No users found": "No users found"
   }
 }

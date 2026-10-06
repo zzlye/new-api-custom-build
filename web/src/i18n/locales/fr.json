@@ -1,5 +1,16 @@
 {
   "translation": {
+    "User pricing": "Tarifs utilisateur",
+    "Search users by name or ID": "Rechercher par nom ou ID",
+    "Selected user": "Utilisateur sélectionné",
+    "User prices replace model base prices. Group ratios still apply. Models without overrides use global prices.": "Ces tarifs remplacent les prix de base. Les multiplicateurs de groupe restent applicables. Les autres modèles utilisent les prix globaux.",
+    "No user prices configured": "Aucun tarif utilisateur",
+    "User price configured": "Tarif utilisateur défini",
+    "Using global price": "Prix global utilisé",
+    "Restore global price": "Rétablir le prix global",
+    "Select a user and model to configure pricing": "Sélectionnez un utilisateur et un modèle",
+    "Your unsaved pricing changes will be discarded.": "Les modifications non enregistrées seront perdues.",
+    "Remove this user price? Future requests will use the global model price and group ratio.": "Supprimer ce tarif ? Les nouvelles requêtes utiliseront le prix global et le multiplicateur de groupe.",
     "Don't show again today": "Ne plus afficher aujourd’hui",
     "Search channels by name or ID": "Rechercher un canal par nom ou identifiant",
     "Import configuration": "Import configuration",
@@ -7100,6 +7111,8 @@
     "© 2025 Your Company. All rights reserved.": "© 2025 Votre entreprise. Tous droits réservés.",
     "、": ", ",
     "，": ", ",
-    "，and ": " et "
+    "，and ": " et ",
+    "Restore": "Rétablir",
+    "No users found": "Aucun utilisateur trouvé"
   }
 }
