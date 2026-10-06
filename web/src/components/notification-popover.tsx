@@ -287,6 +287,49 @@ function AnnouncementsContent({
   )
 }
 
+// 自动公告弹窗和右上角通知入口共用内容，保持两处时间线与通知一致。
+export function NotificationTabs(
+  props: Pick<
+    NotificationPopoverProps,
+    'activeTab' | 'onTabChange' | 'notice' | 'announcements' | 'loading'
+  >
+) {
+  const { t } = useTranslation()
+  return (
+    <Tabs
+      value={props.activeTab}
+      onValueChange={(value) => {
+        if (value === 'notice' || value === 'announcements') {
+          props.onTabChange(value)
+        }
+      }}
+    >
+      <TabsList className='grid w-full grid-cols-2'>
+        <TabsTrigger value='notice' className='gap-1.5'>
+          <Bell className='size-3.5' />
+          {t('Notice')}
+        </TabsTrigger>
+        <TabsTrigger value='announcements' className='gap-1.5'>
+          <Megaphone className='size-3.5' />
+          {t('Timeline')}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value='notice' className='mt-2'>
+        <NoticeContent notice={props.notice} loading={props.loading} t={t} />
+      </TabsContent>
+
+      <TabsContent value='announcements' className='mt-2'>
+        <AnnouncementsContent
+          announcements={props.announcements}
+          loading={props.loading}
+          t={t}
+        />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
 /**
  * Notification popover with Notice and Announcements tabs
  */
@@ -337,33 +380,13 @@ export function NotificationPopover({
           </p>
         </PopoverHeader>
 
-        <Tabs
-          value={activeTab}
-          onValueChange={onTabChange as (value: string) => void}
-        >
-          <TabsList className='grid w-full grid-cols-2'>
-            <TabsTrigger value='notice' className='gap-1.5'>
-              <Bell className='size-3.5' />
-              {t('Notice')}
-            </TabsTrigger>
-            <TabsTrigger value='announcements' className='gap-1.5'>
-              <Megaphone className='size-3.5' />
-              {t('Timeline')}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value='notice' className='mt-2'>
-            <NoticeContent notice={notice} loading={loading} t={t} />
-          </TabsContent>
-
-          <TabsContent value='announcements' className='mt-2'>
-            <AnnouncementsContent
-              announcements={announcements}
-              loading={loading}
-              t={t}
-            />
-          </TabsContent>
-        </Tabs>
+        <NotificationTabs
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          notice={notice}
+          announcements={announcements}
+          loading={loading}
+        />
 
         <div className='flex justify-end'>
           <Button size='sm' onClick={() => onOpenChange(false)}>
