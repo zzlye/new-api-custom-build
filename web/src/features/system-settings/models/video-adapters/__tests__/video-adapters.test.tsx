@@ -28,6 +28,15 @@ Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
   configurable: true,
   value: true,
 })
+Object.defineProperty(globalThis, 'requestAnimationFrame', {
+  configurable: true,
+  value: (callback: FrameRequestCallback) =>
+    setTimeout(() => callback(performance.now()), 0),
+})
+Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+  configurable: true,
+  value: (handle: number) => clearTimeout(handle),
+})
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { QueryClient, QueryClientProvider, notifyManager } =
@@ -161,14 +170,14 @@ test('根用户添加模型行、声明新字段、复制、预览和发布', as
   }
   const host = await render(100)
   const button = (text: string) => {
-    const b = [...host.querySelectorAll('button')].find(
-      (b) => b.textContent === text
+    const b = [...document.querySelectorAll('button')].find(
+      (b) => b.textContent === text || b.getAttribute('aria-label') === text
     )
     assert.ok(b, text)
     return b
   }
   const inputFor = (text: string) => {
-    const label = [...host.querySelectorAll('label')].find((l) =>
+    const label = [...document.querySelectorAll('label')].find((l) =>
       l.textContent?.startsWith(text)
     )
     assert.ok(label, text)
@@ -190,7 +199,7 @@ test('根用户添加模型行、声明新字段、复制、预览和发布', as
     })
   }
   await act(async () => button('Add row').click())
-  const channels = host.querySelector<HTMLSelectElement>(
+  const channels = document.querySelector<HTMLSelectElement>(
     'article select[multiple]'
   )
   assert.ok(channels)
@@ -198,7 +207,7 @@ test('根用户添加模型行、声明新字段、复制、预览和发布', as
     channels.options[0].selected = true
     channels.dispatchEvent(new Event('change', { bubbles: true }))
   })
-  const names = host.querySelector<HTMLTextAreaElement>('article textarea')
+  const names = document.querySelector<HTMLTextAreaElement>('article textarea')
   assert.ok(names)
   await fill(names, 'future-model,other-model')
   await act(async () =>
@@ -215,10 +224,10 @@ test('根用户添加模型行、声明新字段、复制、预览和发布', as
     )
   )
   await act(async () => button('Add mapping').click())
-  const inputs = [...host.querySelectorAll('label')].filter((l) =>
+  const inputs = [...document.querySelectorAll('label')].filter((l) =>
     l.textContent?.startsWith('Input field')
   )
-  const targets = [...host.querySelectorAll('label')].filter((l) =>
+  const targets = [...document.querySelectorAll('label')].filter((l) =>
     l.textContent?.startsWith('Upstream field')
   )
   const sourceInput = inputs.at(-1)?.querySelector('input')
@@ -229,8 +238,11 @@ test('根用户添加模型行、声明新字段、复制、预览和发布', as
   await fill(targetInput, 'options.camera')
   await act(async () => button('Preview conversion').click())
   assert.equal(previews.length, 1)
+  await act(async () => button('Close').click())
   await act(async () => button('Duplicate').click())
-  assert.equal(host.querySelectorAll('article').length, 2)
+  assert.equal(host.querySelectorAll('tbody tr').length, 2)
+  assert.equal(document.querySelectorAll('article').length, 1)
+  await act(async () => button('Close').click())
   await act(async () => button('Publish rules').click())
   assert.equal(saves.length, 1)
   const saved = saves[0] as {
