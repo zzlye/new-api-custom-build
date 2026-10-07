@@ -34,7 +34,6 @@ import type { TaskLog } from '../../types'
 import { DeleteTaskLogButton } from '../delete-task-log-button'
 import { TaskDetailsDialog } from '../dialogs/task-details-dialog'
 import { PluginAuthorLink } from '../plugin-author-link'
-import { TaskArtifactsCell } from '../task-artifacts'
 import { TaskMediaResult } from '../task-media-result'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
@@ -287,18 +286,7 @@ export function useTaskLogsColumns(
         },
       },
       createProgressColumn<TaskLog>({ headerLabel: t('Progress') }),
-      {
-        id: 'artifacts',
-        header: t('Artifacts'),
-        cell: ({ row }) =>
-          row.original.is_async ? (
-            <span>-</span>
-          ) : (
-            <TaskArtifactsCell key={row.original.task_id} log={row.original} />
-          ),
-        size: 120,
-        maxSize: 140,
-      },
+      // 列表只保留任务详情入口，不再单独展示制品列。
       {
         accessorKey: 'fail_reason',
         header: t('Details'),
