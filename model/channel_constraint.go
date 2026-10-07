@@ -3,11 +3,13 @@ package model
 import (
 	"slices"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
+	dto.FilterExcludedChannels,
 	dto.FilterAllowedChannels,
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
@@ -90,6 +92,8 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+	case dto.FilterExcludedChannels:
+		return !filter.ExcludedChannelIDs[ch.Id] && ch.Status == common.ChannelStatusEnabled
 	case dto.FilterAllowedChannels:
 		return filter.AllowedChannelIDs[ch.Id]
 	case dto.FilterRequestPath:

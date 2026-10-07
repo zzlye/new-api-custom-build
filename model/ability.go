@@ -207,6 +207,10 @@ func filterAbilitiesByConstraints(abilities []Ability, modelName string, filters
 
 func identityFilterRequiresKey(filters []dto.ChannelFilter) bool {
 	for _, filter := range filters {
+		// 重试排除和管理员白名单在查询失败时也必须收紧，不能退回未筛选渠道。
+		if filter.Kind == dto.FilterExcludedChannels || filter.Kind == dto.FilterAllowedChannels {
+			return true
+		}
 		if filter.Kind == dto.FilterTaskPluginIdentity && filter.TaskPluginKey != "" {
 			return true
 		}

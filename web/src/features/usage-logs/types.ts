@@ -553,6 +553,7 @@ export interface UserInfo {
 
 // 完整任务详情由独立接口按需加载，列表只携带轻量摘要。
 export interface TaskDetails {
+  routing_events?: TaskRoutingEvent[]
   task_id: string
   model_name: string
   request_method: string
@@ -574,4 +575,14 @@ export interface TaskDetails {
   response_time: number
   finish_time: number
   response_status_code: number
+}
+
+export interface TaskRoutingEvent {
+  attempt: number
+  channel_id?: number
+  group?: string
+  status?: number
+  error_code?: string
+  elapsed_ms: number
+  decision: { action: string; reason: string; source: string }
 }

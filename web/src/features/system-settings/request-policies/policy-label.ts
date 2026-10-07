@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import type { TFunction } from 'i18next'
 
 // Labels for the decision events recorded by the backend request policy state
@@ -5,6 +23,18 @@ import type { TFunction } from 'i18next'
 // sources reported by the channel operations summary.
 export function policyLabel(t: TFunction, value: string): string {
   switch (value) {
+    case 'media_retry_disabled':
+      return t('Media channel failover is disabled')
+    case 'no_retry_channel':
+      return t('No untried eligible channel remains')
+    case 'channel_not_selected':
+      return t('This channel is not selected for failover')
+    case 'submission_not_rejected':
+      return t('Submission was accepted or its outcome is unknown')
+    case 'response_started_or_cancelled':
+      return t('Response already started or execution was cancelled')
+    case 'async_media':
+      return t('Media task retries')
     case 'upstream_failure':
       return t('Upstream request failed')
     case 'request_failed':

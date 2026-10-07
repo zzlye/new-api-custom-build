@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -117,6 +118,7 @@ func TestAsyncRelayNoAutomaticRetryNativeMedia(t *testing.T) {
 	for _, video := range []bool{false, true} {
 		t.Run(fmt.Sprintf("video_%t", video), func(t *testing.T) {
 			prepareAsyncMediaController(t)
+			require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, `{"enabled":true,"max_retries":2,"status_codes":"500-599","channel_ids":[]}`))
 			settings := system_setting.GetFetchSetting()
 			previousProtection := settings.EnableSSRFProtection
 			settings.EnableSSRFProtection = false

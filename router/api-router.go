@@ -206,6 +206,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
+		optionRoute.GET("/async_media_retry_channels", controller.GetAsyncMediaRetryChannels)
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.GET("/request_policy", controller.GetRequestPolicy)

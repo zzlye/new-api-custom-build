@@ -207,6 +207,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	// 显式配置的视频协议优先于自动插件匹配，兼容已保存的渠道模板。
 	info.VideoProtocol = nil
+	// 每次切换渠道重新判定协议，不能继承上一渠道的配置标记。
+	c.Set("configured_video_protocol", false)
 	if service.IsVideoAdapterPath(c.Request.URL.Path) {
 		upstream, err := service.VideoUpstreamModel(c.GetString("model_mapping"), info.OriginModelName)
 		if err != nil {
@@ -403,7 +405,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// Any 2xx is a successful submission: task APIs commonly answer 201 Created
 	// or 202 Accepted, and parseSubmitResponse receives the exact status code.
 	if resp.StatusCode/100 != 2 {
-		responseBody, _ := io.ReadAll(resp.Body)
+		responseBody, readErr := io.ReadAll(resp.Body)
+		taskIDPath := ""
+		if info.VideoProtocol != nil {
+			taskIDPath = info.VideoProtocol.Response.ID
+		}
+		service.ObserveAsyncMediaHTTPFailure(c.Request.Context(), resp, responseBody, readErr, taskIDPath)
 		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 

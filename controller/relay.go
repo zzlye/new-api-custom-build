@@ -190,7 +190,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	retryLimit := service.RelayRetryLimit(c)
+	for ; retryParam.GetRetry() <= retryLimit; retryParam.IncreaseRetry() {
 		relayInfo.StreamStatus = nil
 		relayInfo.PerformanceBusinessRejection = false
 		relayInfo.PerformanceOutputTokens = 0
@@ -198,6 +199,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
+			if c.GetString(model.AsyncRelayContextKey) != "" && newAPIError != nil {
+				service.RequestPolicy(c).AddEvent(service.PolicyEvent{Decision: service.PolicyDecision{Action: "stop", Reason: "no_retry_channel", Source: "async_media"}})
+				break
+			}
 			newAPIError = channelErr
 			break
 		}
@@ -218,6 +223,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
+		if err := service.BeginAsyncMediaAttempt(c); err != nil {
+			newAPIError = types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+			break
+		}
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
@@ -239,7 +248,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
-		decision := service.DecideRelayRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry())
+		decision := service.DecideRelayRetry(c, newAPIError, retryLimit-retryParam.GetRetry())
 		service.RecordPolicyFailure(c, channel.Id, newAPIError, decision)
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
@@ -310,7 +319,14 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		service.RequestPolicy(c).BeginAttempt(channel, info.UsingGroup)
 		return channel, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
+	var channel *model.Channel
+	var selectGroup string
+	var err error
+	if c.GetString(model.AsyncRelayContextKey) != "" && retryParam.GetRetry() > 0 {
+		channel, selectGroup, err = service.SelectAsyncMediaRetryChannel(retryParam)
+	} else {
+		channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(retryParam)
+	}
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
@@ -329,9 +345,8 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
-	// 媒体任务结果未知时不重发生成请求，避免上游已经计费后再次生成。
 	if c.GetString(model.AsyncRelayContextKey) != "" {
-		return false
+		return service.DecideRelayRetry(c, openaiErr, retryTimes).Action == "retry"
 	}
 	if openaiErr == nil {
 		return false
@@ -626,7 +641,8 @@ func executeTaskSubmissionWith(
 		Retry:       common.GetPointer(0),
 	}
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	retryLimit := service.RelayRetryLimit(c)
+	for ; retryParam.GetRetry() <= retryLimit; retryParam.IncreaseRetry() {
 		stage = "select_channel"
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
 			diagnostics.cancelled("before_attempt", retryParam.GetRetry()+1)
@@ -649,6 +665,10 @@ func executeTaskSubmissionWith(
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
+				if c.GetString(model.AsyncRelayContextKey) != "" && taskErr != nil {
+					policy.AddEvent(service.PolicyEvent{Decision: service.PolicyDecision{Action: "stop", Reason: "no_retry_channel", Source: "async_media"}})
+					break
+				}
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", channelErr.StatusCode)
 				break
 			}
@@ -669,6 +689,10 @@ func executeTaskSubmissionWith(
 		c.Request.Body = io.NopCloser(bodyStorage)
 
 		stage = "submit"
+		if err := service.BeginAsyncMediaAttempt(c); err != nil {
+			taskErr = service.TaskErrorWrapperLocal(err, "save_routing_failed", http.StatusInternalServerError)
+			break
+		}
 		result, taskErr = submit(c, relayInfo)
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
 			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
@@ -682,7 +706,7 @@ func executeTaskSubmissionWith(
 
 		taskAPIError := taskSubmissionAPIError(taskErr)
 		relayInfo.LastError = taskAPIError
-		decision := decideTaskRetry(c, taskErr, common.RetryTimes-retryParam.GetRetry())
+		decision := decideTaskRetry(c, taskErr, retryLimit-retryParam.GetRetry())
 		service.RecordPolicyFailure(c, channel.Id, taskAPIError, decision)
 		if !taskErr.LocalError {
 			processChannelError(c,
@@ -917,6 +941,9 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		return decideTaskRetry(c, taskErr, retryTimes).Action == "retry"
+	}
 	// 可配置渠道只执行一次创建，协议/网络异常不能通过再次付费提交来探测。
 	if c.GetBool("configured_video_protocol") {
 		return false
@@ -977,6 +1004,9 @@ func taskSubmissionAPIError(taskErr *taskdto.TaskError) *types.NewAPIError {
 // decideTaskRetry is the single retry decision for task submissions. The
 // reason is recorded in the request policy decision events of the log details.
 func decideTaskRetry(c *gin.Context, taskErr *taskdto.TaskError, retryTimes int) service.PolicyDecision {
+	if taskErr != nil && c.GetString(model.AsyncRelayContextKey) != "" {
+		return service.DecideAsyncMediaRetry(c, retryTimes, taskErr.NoRetry || taskErr.LocalError)
+	}
 	stop := service.PolicyDecision{Action: "stop", Source: "system"}
 	retry := service.PolicyDecision{Action: "retry", Reason: "retry_status_matched", Source: "system"}
 	switch {

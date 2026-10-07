@@ -88,6 +88,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
 	responseBody, err := io.ReadAll(resp.Body)
+	ObserveAsyncMediaHTTPFailure(ctx, resp, responseBody, err)
 	if err != nil {
 		return
 	}

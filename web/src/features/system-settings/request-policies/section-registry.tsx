@@ -17,12 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createSectionRegistry } from '../utils/section-registry'
+import { AsyncMediaRetrySection } from './async-media-retry-section'
 import { ChannelHealthSection } from './channel-health-section'
 import type { RequestPolicySettings } from './defaults'
 import { RequestChecksSection } from './request-checks-section'
 import { RoutingPolicySection } from './routing-section'
 
 const POLICY_SECTIONS = [
+  {
+    id: 'media-retry',
+    titleKey: 'Media task retries',
+    build: (settings: RequestPolicySettings) => (
+      <AsyncMediaRetrySection value={settings.AsyncMediaRetryPolicy} />
+    ),
+  },
   {
     id: 'filtering',
     titleKey: 'Request checks',

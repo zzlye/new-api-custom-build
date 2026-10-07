@@ -269,7 +269,11 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 	writer := &asyncRelayFileWriter{file: responseFile, header: make(http.Header), delivery: delivery}
 	worker, _ := gin.CreateTestContext(writer)
 	defer common.CleanupBodyStorage(worker)
+	worker.Set(service.AsyncMediaRoutingPersistKey, func() error { return persistAsyncRelayRouting(task, worker) })
 	executionErr := executeAsyncRelayRequest(ctx, task, worker, requestFile)
+	if err := persistAsyncRelayRouting(task, worker); err != nil {
+		common.SysError("保存媒体路由记录失败: " + err.Error())
+	}
 	if executionErr == nil || writer.status != 0 {
 		worker.Writer.WriteHeaderNow()
 	}

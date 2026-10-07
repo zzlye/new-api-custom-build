@@ -25,6 +25,7 @@ import { useTaskDetails } from '../hooks/use-task-details'
 import type { TaskMedia } from '../types'
 import { TaskMediaLinks } from './task-media-links'
 import { TaskMediaPreview } from './task-media-preview'
+import { TaskRoutingHistory } from './task-routing-history'
 
 const PARAMETER_LABELS: Record<string, string> = {
   model: 'Model',
@@ -205,6 +206,7 @@ export function TaskDetailsContent(props: { taskId: string }) {
           </dd>
         </div>
       </dl>
+      <TaskRoutingHistory events={details.routing_events} />
       {details.error && (
         <p
           role='alert'

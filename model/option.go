@@ -39,6 +39,7 @@ func InitOptionMap() {
 	common.OptionMap = make(map[string]string)
 	common.OptionMap[common.AsyncMediaRetentionOption] = "2"
 	common.OptionMap[common.AsyncMediaConcurrencyOption] = "4"
+	common.OptionMap[operation_setting.AsyncMediaRetryOption] = operation_setting.DefaultAsyncMediaRetryJSON
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -236,6 +237,10 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == operation_setting.AsyncMediaRetryOption {
+		_, err := operation_setting.ParseAsyncMediaRetryPolicy(value)
+		return err
+	}
 	if key == "InviteTopUpCommissionRatio" {
 		ratio, err := strconv.ParseFloat(value, 64)
 		if err != nil || math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio < 0 || ratio > 1 {
@@ -347,6 +352,10 @@ func validateAppearanceFloatRange(value string, min, max float64, label string) 
 }
 
 func UpdateOption(key string, value string) error {
+	// 媒体重试策略只有数据库完整提交后才更新内存，写入失败不能返回保存成功。
+	if key == operation_setting.AsyncMediaRetryOption {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsUserModelPricingOption(key) {
 		return fmt.Errorf("请使用用户定价界面修改价格")
 	}

@@ -37,6 +37,7 @@ type ChannelFilterKind string
 
 const (
 	FilterAllowedChannels    ChannelFilterKind = "allowed_channels"
+	FilterExcludedChannels   ChannelFilterKind = "excluded_channels"
 	FilterRequestPath        ChannelFilterKind = "request_path"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
@@ -45,6 +46,7 @@ const (
 type ChannelFilter struct {
 	// 内部能力筛选与官方插件筛选共同生效，空集合表示没有可用渠道。
 	AllowedChannelIDs      map[int]bool
+	ExcludedChannelIDs     map[int]bool
 	Kind                   ChannelFilterKind
 	RequestPath            string
 	TaskPluginKey          string

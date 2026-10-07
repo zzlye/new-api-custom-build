@@ -117,25 +117,41 @@ type FetchReq struct {
 
 // AsyncTaskDetails 是任务日志的完整记录，不包含上游密钥、内部路径或原始请求头。
 type AsyncTaskDetails struct {
-	TaskID             string            `json:"task_id"`
-	ModelName          string            `json:"model_name"`
-	RequestMethod      string            `json:"request_method"`
-	RequestPath        string            `json:"request_path"`
-	RequestFormat      string            `json:"request_format"`
-	Status             string            `json:"status"`
-	Error              string            `json:"error,omitempty"`
-	Prompt             string            `json:"prompt"`
-	PromptSource       string            `json:"prompt_source,omitempty"`
-	InputAvailable     bool              `json:"input_available"`
-	InputError         string            `json:"input_error,omitempty"`
-	Parameters         map[string]string `json:"parameters"`
-	References         []TaskMedia       `json:"references"`
-	Media              []TaskMedia       `json:"media"`
-	MediaExpired       bool              `json:"media_expired"`
-	ExpiresAt          int64             `json:"expires_at,omitempty"`
-	SubmitTime         int64             `json:"submit_time"`
-	StartTime          int64             `json:"start_time"`
-	ResponseTime       int64             `json:"response_time"`
-	FinishTime         int64             `json:"finish_time"`
-	ResponseStatusCode int               `json:"response_status_code"`
+	RoutingEvents      []TaskRoutingEvent `json:"routing_events,omitempty"`
+	TaskID             string             `json:"task_id"`
+	ModelName          string             `json:"model_name"`
+	RequestMethod      string             `json:"request_method"`
+	RequestPath        string             `json:"request_path"`
+	RequestFormat      string             `json:"request_format"`
+	Status             string             `json:"status"`
+	Error              string             `json:"error,omitempty"`
+	Prompt             string             `json:"prompt"`
+	PromptSource       string             `json:"prompt_source,omitempty"`
+	InputAvailable     bool               `json:"input_available"`
+	InputError         string             `json:"input_error,omitempty"`
+	Parameters         map[string]string  `json:"parameters"`
+	References         []TaskMedia        `json:"references"`
+	Media              []TaskMedia        `json:"media"`
+	MediaExpired       bool               `json:"media_expired"`
+	ExpiresAt          int64              `json:"expires_at,omitempty"`
+	SubmitTime         int64              `json:"submit_time"`
+	StartTime          int64              `json:"start_time"`
+	ResponseTime       int64              `json:"response_time"`
+	FinishTime         int64              `json:"finish_time"`
+	ResponseStatusCode int                `json:"response_status_code"`
+}
+
+// TaskRoutingEvent 仅保存编号、错误分类和决策，不保留上游地址、密钥或原始响应。
+type TaskRoutingEvent struct {
+	Attempt   int    `json:"attempt"`
+	ChannelID int    `json:"channel_id,omitempty"`
+	Group     string `json:"group,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
+	ElapsedMS int64  `json:"elapsed_ms"`
+	Decision  struct {
+		Action string `json:"action"`
+		Reason string `json:"reason"`
+		Source string `json:"source"`
+	} `json:"decision"`
 }

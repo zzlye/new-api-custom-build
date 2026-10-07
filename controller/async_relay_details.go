@@ -66,6 +66,10 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 	if task.FinishedAt > 0 {
 		response.ExpiresAt = task.FinishedAt + common.AsyncMediaRetentionSeconds()
 	}
+	// 渠道身份和路由过程只向管理员展示，用户仍仅看到自己的生成结果。
+	if c.GetInt("role") >= common.RoleAdminUser {
+		response.RoutingEvents = input.RoutingEvents
+	}
 	common.ApiSuccess(c, response)
 }
 
