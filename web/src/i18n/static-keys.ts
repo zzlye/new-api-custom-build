@@ -857,6 +857,7 @@ export const STATIC_I18N_KEYS = [
   'The text below is the revised prompt returned by the provider.',
   'No prompt recorded',
   'Generation parameters',
+  'Complete task parameters',
   'Reference images',
   'Reference media have expired',
   'No reference images',

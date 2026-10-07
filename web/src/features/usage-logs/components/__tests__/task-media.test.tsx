@@ -125,6 +125,35 @@ beforeEach(async () => {
   released = []
   mediaLoadFails = false
   taskDetails = {
+    full_parameters: {
+      task_id: 'async_fixture',
+      model_name: 'gpt-image-2',
+      upstream_model_name: 'gpt-image-2',
+      channel_id: 148,
+      request_method: 'POST',
+      request_path: '/v1/images/edits',
+      request_query: '',
+      request_content_type: 'application/json',
+      request_format: 'openai_image',
+      request_conversion: ['OpenAI Image'],
+      request_details: {
+        prompt: '保持人物，背景改成晴天',
+        prompt_source: 'request',
+        parameters: { size: '1280x720', seed: '9007199254740993' },
+        references: [
+          { role: 'reference', content_type: 'image/png', kind: 'image' },
+        ],
+      },
+      request_body: '',
+      request_files: '',
+      created_at: 1788616029,
+      started_at: 1788616029,
+      finished_at: 1788616080,
+      created_beijing: '2026-09-05T01:47:09+08:00',
+      status: 'succeeded',
+      response_status_code: 200,
+      result_expired_at: 1788623280,
+    },
     task_id: 'async_fixture',
     model_name: 'gpt-image-2',
     request_method: 'POST',
@@ -462,6 +491,12 @@ describe('任务生成结果', () => {
     assert.ok(document.body.textContent?.includes('POST /v1/images/edits'))
     assert.ok(document.body.textContent?.includes('保持人物，背景改成晴天'))
     assert.ok(document.body.textContent?.includes('9007199254740993'))
+    const fullParameters = document.querySelector(
+      'section[aria-label="Complete task parameters"] pre'
+    )
+    assert.ok(fullParameters)
+    assert.ok(fullParameters.textContent?.includes('"channel_id": 148'))
+    assert.ok(fullParameters.textContent?.includes('"request_details"'))
     assert.ok(document.body.textContent?.includes('50s'))
     assert.ok(document.querySelector('img[alt="Reference image 1"]'))
     assert.ok(document.querySelector('img[alt="Generated image 1"]'))

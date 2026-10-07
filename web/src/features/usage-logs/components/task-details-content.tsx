@@ -207,6 +207,12 @@ export function TaskDetailsContent(props: { taskId: string }) {
         </div>
       </dl>
       <TaskRoutingHistory events={details.routing_events} />
+      <section className='grid gap-2' aria-label={t('Complete task parameters')}>
+        <h3 className='text-sm font-semibold'>{t('Complete task parameters')}</h3>
+        <pre className='bg-muted/20 max-h-96 overflow-auto rounded-lg border p-4 font-mono text-xs leading-5 break-words whitespace-pre-wrap'>
+          {JSON.stringify(details.full_parameters, null, 2)}
+        </pre>
+      </section>
       {details.error && (
         <p
           role='alert'

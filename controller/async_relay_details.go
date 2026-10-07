@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -51,6 +52,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		}
 	}
 	references := make([]dto.TaskMedia, 0, len(input.References))
+	fullReferences := make([]dto.AsyncTaskReferenceSnapshot, 0, len(input.References))
 	for index, reference := range input.References {
 		item := dto.TaskMedia{Name: reference.Name, Role: reference.Role, Kind: reference.Kind, ContentType: reference.ContentType, Error: reference.Error}
 		if !expired && (reference.Path != "" || reference.Source != "") {
@@ -58,11 +60,43 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 			item.PreviewURL = asyncRelayMediaPreviewURL(task, "reference", index)
 		}
 		references = append(references, item)
+		fullReferences = append(fullReferences, dto.AsyncTaskReferenceSnapshot{Role: reference.Role, ContentType: reference.ContentType, Kind: reference.Kind})
+	}
+	var taskLog model.Task
+	if task.LogID > 0 {
+		_ = model.DB.First(&taskLog, task.LogID).Error
+	}
+	upstreamModelName := taskLog.Properties.UpstreamModelName
+	channelID := taskLog.ChannelId
+	if upstreamModelName == "" || channelID == 0 {
+		var child model.Task
+		if err := model.DB.Where("async_parent_id = ?", task.TaskID).Order("id asc").First(&child).Error; err == nil {
+			if upstreamModelName == "" {
+				upstreamModelName = child.Properties.UpstreamModelName
+			}
+			if channelID == 0 {
+				channelID = child.ChannelId
+			}
+		}
+	}
+	createdBeijing := ""
+	if task.CreatedAt > 0 {
+		createdBeijing = time.Unix(task.CreatedAt, 0).In(time.FixedZone("Asia/Shanghai", 8*60*60)).Format(time.RFC3339)
+	}
+	fullParameters := dto.AsyncTaskParameterSnapshot{
+		TaskID: task.TaskID, ModelName: task.ModelName, UpstreamModelName: upstreamModelName, ChannelID: channelID,
+		RequestMethod: task.RequestMethod, RequestPath: task.RequestPath, RequestQuery: task.RequestQuery,
+		RequestContentType: task.RequestContentType, RequestFormat: task.RequestFormat,
+		RequestConversion: []string{asyncRequestConversionLabel(task.RequestFormat)},
+		RequestDetails:    dto.AsyncTaskRequestSnapshot{Prompt: input.Prompt, PromptSource: input.PromptSource, Parameters: input.Parameters, References: fullReferences, CaptureError: input.CaptureError},
+		CreatedAt:         task.CreatedAt, StartedAt: task.StartedAt, FinishedAt: task.FinishedAt, CreatedBeijing: createdBeijing,
+		Status: string(task.Status), ResponseStatusCode: task.ResponseStatusCode, ResultExpiredAt: task.ResultExpiredAt,
 	}
 	response := dto.AsyncTaskDetails{TaskID: task.TaskID, ModelName: task.ModelName, RequestMethod: task.RequestMethod, RequestPath: task.RequestPath, RequestFormat: task.RequestFormat,
 		Status: string(task.Status), Error: task.Error, Prompt: input.Prompt, PromptSource: input.PromptSource, InputAvailable: available, InputError: input.CaptureError,
 		Parameters: input.Parameters, References: references, Media: asyncRelayMediaLinks(task, "/api/task/"), MediaExpired: expired,
 		SubmitTime: task.CreatedAt, StartTime: task.StartedAt, ResponseTime: responseTime, FinishTime: task.FinishedAt, ResponseStatusCode: task.ResponseStatusCode}
+	response.FullParameters = fullParameters
 	if task.FinishedAt > 0 {
 		response.ExpiresAt = task.FinishedAt + common.AsyncMediaRetentionSeconds()
 	}
@@ -71,6 +105,28 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		response.RoutingEvents = input.RoutingEvents
 	}
 	common.ApiSuccess(c, response)
+}
+
+// asyncRequestConversionLabel 将内部协议名转换成任务日志中可读的转换名称。
+func asyncRequestConversionLabel(format string) string {
+	switch format {
+	case "gemini":
+		return "Google Gemini"
+	case "openai_image":
+		return "OpenAI Image"
+	case "openai_responses":
+		return "OpenAI Responses"
+	case "task":
+		return "Task"
+	case "mj_proxy":
+		return "Midjourney"
+	case "openai":
+		return "OpenAI Compatible"
+	case "claude":
+		return "Claude Messages"
+	default:
+		return format
+	}
 }
 
 // GetAsyncRelayReference 与生成文件使用相同的归属和到期规则，读取远程参考素材时仍需通过地址校验。

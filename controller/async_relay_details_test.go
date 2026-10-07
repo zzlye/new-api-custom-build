@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -89,6 +90,46 @@ func TestAsyncTaskDetailsKeepPromptReferencesAndPermissionBoundary(t *testing.T)
 	after := asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, params, "")
 	assert.Contains(t, after.Body.String(), "保留人物，改成晴天")
 	assert.NotContains(t, after.Body.String(), "/reference/0")
+}
+
+func TestAsyncTaskDetailsExposeCompleteParameterSnapshot(t *testing.T) {
+	prepareAsyncMediaController(t)
+	task := enqueueDetailFixture(t, []byte(fmt.Sprintf(`{"model":"nano-banana-pro","prompt":"生成一张图片","aspect_ratio":"3:2","resolution":"2K","image":"data:image/png;base64,%s"}`, asyncFixturePNG)), "application/json")
+	task.RequestFormat = string(relaytypes.RelayFormatGemini)
+	var log model.Task
+	require.NoError(t, model.DB.First(&log, task.LogID).Error)
+	log.ChannelId = 148
+	log.Properties.UpstreamModelName = "gemini-3-pro-image-preview"
+	require.NoError(t, model.DB.Save(&log).Error)
+	task.StartedAt = task.CreatedAt + 1
+	task.FinishedAt = task.CreatedAt + 10
+	task.ResponseStatusCode = http.StatusOK
+	task.ResultExpiredAt = task.FinishedAt + 7200
+	require.NoError(t, model.DB.Save(task).Error)
+
+	response := asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleRootUser, gin.Params{{Key: "task_id", Value: task.TaskID}}, "")
+	require.Equal(t, http.StatusOK, response.Code)
+	var payload struct {
+		Data dto.AsyncTaskDetails `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+	full := payload.Data.FullParameters
+	assert.Equal(t, task.TaskID, full.TaskID)
+	assert.Equal(t, "nano-banana-pro", full.ModelName)
+	assert.Equal(t, "gemini-3-pro-image-preview", full.UpstreamModelName)
+	assert.Equal(t, 148, full.ChannelID)
+	assert.Equal(t, "/v1/images/edits", full.RequestPath)
+	assert.Equal(t, []string{"Google Gemini"}, full.RequestConversion)
+	assert.Equal(t, "生成一张图片", full.RequestDetails.Prompt)
+	require.Len(t, full.RequestDetails.References, 1)
+	assert.Equal(t, "image", full.RequestDetails.References[0].Kind)
+	assert.Equal(t, task.CreatedAt, full.CreatedAt)
+	assert.Equal(t, task.StartedAt, full.StartedAt)
+	assert.Equal(t, task.FinishedAt, full.FinishedAt)
+	assert.Equal(t, int64(7200), full.ResultExpiredAt-full.FinishedAt)
+	assert.Empty(t, full.RequestBody)
+	assert.Empty(t, full.RequestFiles)
+	assert.NotContains(t, response.Body.String(), "data:image/png;base64")
 }
 
 func TestAsyncTaskDetailsPreserveMultipartImageAndMask(t *testing.T) {

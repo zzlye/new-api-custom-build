@@ -554,6 +554,7 @@ export interface UserInfo {
 
 // 完整任务详情由独立接口按需加载，列表只携带轻量摘要。
 export interface TaskDetails {
+  full_parameters: AsyncTaskParameterSnapshot
   routing_events?: TaskRoutingEvent[]
   task_id: string
   model_name: string
@@ -576,6 +577,39 @@ export interface TaskDetails {
   response_time: number
   finish_time: number
   response_status_code: number
+}
+
+export interface AsyncTaskParameterSnapshot {
+  task_id: string
+  model_name: string
+  upstream_model_name: string
+  channel_id: number
+  request_method: string
+  request_path: string
+  request_query: string
+  request_content_type: string
+  request_format: string
+  request_conversion: string[]
+  request_details: {
+    prompt?: string
+    prompt_source?: string
+    parameters?: Record<string, string>
+    references?: Array<{
+      role: string
+      content_type?: string
+      kind?: string
+    }>
+    capture_error?: string
+  }
+  request_body: string
+  request_files: string
+  created_at: number
+  started_at: number
+  finished_at: number
+  created_beijing: string
+  status: string
+  response_status_code: number
+  result_expired_at: number
 }
 
 export interface TaskRoutingEvent {
