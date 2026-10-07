@@ -4006,6 +4006,7 @@
     "Order completed successfully": "订单已成功完成",
     "Original Model": "原始模型",
     "Original input was not saved for this historical task.": "这条历史任务未保存原始输入内容。",
+    "Task input details have expired.": "任务输入参数已过期并清理。",
     "Original value": "原始值",
     "Other": "其他",
     "Other Settings": "其他设置",

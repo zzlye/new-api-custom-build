@@ -130,6 +130,7 @@ type AsyncTaskDetails struct {
 	PromptSource       string             `json:"prompt_source,omitempty"`
 	InputAvailable     bool               `json:"input_available"`
 	InputError         string             `json:"input_error,omitempty"`
+	InputsExpired      bool               `json:"inputs_expired"`
 	Parameters         map[string]string  `json:"parameters"`
 	References         []TaskMedia        `json:"references"`
 	Media              []TaskMedia        `json:"media"`

@@ -60,7 +60,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		references = append(references, item)
 	}
 	response := dto.AsyncTaskDetails{TaskID: task.TaskID, ModelName: task.ModelName, RequestMethod: task.RequestMethod, RequestPath: task.RequestPath, RequestFormat: task.RequestFormat,
-		Status: string(task.Status), Error: task.Error, Prompt: input.Prompt, PromptSource: input.PromptSource, InputAvailable: available, InputError: input.CaptureError,
+		Status: string(task.Status), Error: task.Error, Prompt: input.Prompt, PromptSource: input.PromptSource, InputAvailable: available && !input.InputsExpired, InputError: input.CaptureError, InputsExpired: input.InputsExpired,
 		Parameters: input.Parameters, References: references, Media: asyncRelayMediaLinks(task, "/api/task/"), MediaExpired: expired,
 		SubmitTime: task.CreatedAt, StartTime: task.StartedAt, ResponseTime: responseTime, FinishTime: task.FinishedAt, ResponseStatusCode: task.ResponseStatusCode}
 	if task.FinishedAt > 0 {

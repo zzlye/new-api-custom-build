@@ -134,6 +134,7 @@ beforeEach(async () => {
     prompt: '保持人物，背景改成晴天',
     prompt_source: 'request',
     input_available: true,
+    inputs_expired: false,
     parameters: { size: '1280x720', seed: '9007199254740993' },
     references: [
       {

@@ -566,6 +566,7 @@ export interface TaskDetails {
   prompt_source?: string
   input_available: boolean
   input_error?: string
+  inputs_expired: boolean
   parameters: Record<string, string> | null
   references: TaskMedia[]
   media: TaskMedia[] | null
