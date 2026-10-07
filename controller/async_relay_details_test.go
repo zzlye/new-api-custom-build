@@ -74,24 +74,20 @@ func TestAsyncTaskDetailsKeepPromptReferencesAndPermissionBoundary(t *testing.T)
 	assert.Equal(t, http.StatusNotFound, other.Code)
 	admin := asyncControllerRequest(GetAsyncRelayReference, http.MethodGet, "/reference/0", 32, common.RoleAdminUser, referenceParams, "")
 	assert.Equal(t, http.StatusOK, admin.Code)
-	// 输入快照和媒体共用保留期限；任务状态及路由日志仍保留。
-	task.Status, task.FinishedAt, task.RequestQuery = model.AsyncRelayTaskStatusSucceeded, common.GetTimestamp()-7201, "seed=9007199254740993&temperature=0.4"
+	// 文件过期只清理媒体和远程地址；原提示词和时间记录继续可查。
+	task.Status, task.FinishedAt = model.AsyncRelayTaskStatusSucceeded, common.GetTimestamp()-7201
 	require.NoError(t, model.DB.Save(task).Error)
 	expired := asyncControllerRequest(GetAsyncRelayReference, http.MethodGet, "/reference/0", 31, common.RoleCommonUser, referenceParams, "")
 	assert.Equal(t, http.StatusGone, expired.Code)
 	require.NoError(t, model.ExpireAsyncRelayTaskFiles(task))
 	assert.NoFileExists(t, saved.References[0].Path)
 	require.NoError(t, model.DB.First(task, task.ID).Error)
-	assert.Empty(t, task.RequestQuery)
 	saved = model.AsyncRelayRequestDetails{}
 	require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &saved))
-	assert.Empty(t, saved.Prompt)
-	assert.Empty(t, saved.Parameters)
-	assert.Empty(t, saved.References)
-	assert.True(t, saved.InputsExpired)
+	assert.Equal(t, "保留人物，改成晴天", saved.Prompt)
+	assert.Empty(t, saved.References[0].Path)
 	after := asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, params, "")
-	assert.NotContains(t, after.Body.String(), "保留人物，改成晴天")
-	assert.Contains(t, after.Body.String(), `"inputs_expired":true`)
+	assert.Contains(t, after.Body.String(), "保留人物，改成晴天")
 	assert.NotContains(t, after.Body.String(), "/reference/0")
 }
 
@@ -188,27 +184,7 @@ func TestAsyncTaskDetailsHideRemoteReferenceAddressAndExpireIt(t *testing.T) {
 	fresh, err := model.GetAsyncRelayTaskByTaskID(task.TaskID)
 	require.NoError(t, err)
 	assert.NotContains(t, fresh.RequestDetails, "private-reference")
-	assert.NotContains(t, fresh.RequestDetails, "参考这张图")
-	assert.NotContains(t, fresh.RequestDetails, "private-reference")
-	var expired model.AsyncRelayRequestDetails
-	require.NoError(t, common.UnmarshalJsonStr(fresh.RequestDetails, &expired))
-	assert.True(t, expired.InputsExpired)
-}
-
-func TestAsyncTaskDetailsCaptureFullSafeParameterSnapshot(t *testing.T) {
-	prepareAsyncMediaController(t)
-	body := []byte(`{"model":"nano-banana-pro","prompt":"生成一张图","candidateCount":2,"temperature":0.4,"generationConfig":{"imageConfig":{"aspectRatio":"3:2","imageSize":"2K"},"responseModalities":["IMAGE"],"seed":9007199254740993,"systemInstruction":"不要记录这段正文"},"api_key":"private-secret","callback_url":"https://private.example/callback"}`)
-	task := enqueueDetailFixture(t, body, "application/json")
-	var details model.AsyncRelayRequestDetails
-	require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &details))
-	assert.Equal(t, "2", details.Parameters["candidateCount"])
-	assert.Equal(t, "0.4", details.Parameters["temperature"])
-	assert.Equal(t, `{"imageConfig":{"aspectRatio":"3:2","imageSize":"2K"},"responseModalities":["IMAGE"],"seed":9007199254740993}`, details.Parameters["generationConfig"])
-	assert.Equal(t, "3:2", details.Parameters["aspect_ratio"])
-	assert.Equal(t, "2K", details.Parameters["resolution"])
-	assert.NotContains(t, task.RequestDetails, "private-secret")
-	assert.NotContains(t, task.RequestDetails, "private.example")
-	assert.NotContains(t, task.RequestDetails, "不要记录这段正文")
+	assert.Contains(t, fresh.RequestDetails, "参考这张图")
 }
 
 func TestAsyncTaskReferenceIsProtectedFromOrphanCleanup(t *testing.T) {
@@ -322,8 +298,7 @@ func TestAsyncTaskDetailsMixedReferences(t *testing.T) {
 				assert.NoFileExists(t, reference.Path)
 			}
 			details = asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, params, "")
-			assert.NotContains(t, details.Body.String(), "起身看向外面，音乐参考")
-			assert.Contains(t, details.Body.String(), `"inputs_expired":true`)
+			assert.Contains(t, details.Body.String(), "起身看向外面，音乐参考")
 			assert.NotContains(t, details.Body.String(), "/reference/")
 		})
 	}

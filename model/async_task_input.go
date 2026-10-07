@@ -10,7 +10,6 @@ type AsyncRelayRequestDetails struct {
 	Parameters    map[string]string      `json:"parameters,omitempty"`
 	References    []AsyncRelayReference  `json:"references,omitempty"`
 	CaptureError  string                 `json:"capture_error,omitempty"`
-	InputsExpired bool                   `json:"inputs_expired,omitempty"`
 }
 
 // AsyncRelayReference 的文件路径和远程地址只供服务器读取，接口仅返回经过鉴权的预览地址。

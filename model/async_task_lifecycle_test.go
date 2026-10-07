@@ -154,28 +154,6 @@ func TestAsyncRelayRetentionChangesApplyToRemainingResults(t *testing.T) {
 	}
 }
 
-func TestAsyncRelayCleanupRemovesLegacyExpiredInputSnapshot(t *testing.T) {
-	prepareAsyncRelayTaskTable(t)
-	task := &AsyncRelayTask{
-		UserID: 8272, NodeID: common.NodeName, Status: AsyncRelayTaskStatusSucceeded,
-		FinishedAt: common.GetTimestamp() - 7200, ResultExpiredAt: common.GetTimestamp() - 3600,
-		RequestQuery: "seed=123", RequestDetails: `{"prompt":"旧提示词","parameters":{"seed":"123"},"references":[{"source":"https://example.test/image?sig=private","role":"reference"}]}`,
-	}
-	require.NoError(t, task.Insert())
-	require.NoError(t, CleanupExpiredAsyncRelayTasks(common.NodeName))
-	saved, err := GetAsyncRelayTaskByTaskID(task.TaskID)
-	require.NoError(t, err)
-	require.NotNil(t, saved)
-	assert.Empty(t, saved.RequestQuery)
-	assert.NotContains(t, saved.RequestDetails, "旧提示词")
-	assert.NotContains(t, saved.RequestDetails, "seed")
-	assert.NotContains(t, saved.RequestDetails, "private")
-	var details AsyncRelayRequestDetails
-	require.NoError(t, common.UnmarshalJsonStr(saved.RequestDetails, &details))
-	assert.True(t, details.InputsExpired)
-	assert.Equal(t, AsyncRelayTaskStatusSucceeded, saved.Status)
-}
-
 func TestAsyncRelayExpirationClearsNativeInlineMediaAndKeepsBilling(t *testing.T) {
 	prepareAsyncRelayTaskTable(t)
 	parent := &AsyncRelayTask{UserID: 8281, RequestFormat: "task"}

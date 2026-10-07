@@ -168,10 +168,22 @@ func ExpireAsyncRelayTaskFiles(task *AsyncRelayTask) error {
 			return err
 		}
 	}
-	// 到期后同时清除任务输入参数、提示词及参考素材元数据，路由历史仍留在任务日志。
-	requestDetails, err := expireAsyncRequestDetails(task.RequestDetails)
-	if err != nil {
-		return err
+	// 文字说明继续留在日志，参考媒体的文件路径与签名地址按相同保留期限清除。
+	requestDetails := task.RequestDetails
+	if requestDetails != "" {
+		var details AsyncRelayRequestDetails
+		if err := common.UnmarshalJsonStr(requestDetails, &details); err != nil {
+			return err
+		}
+		for index := range details.References {
+			details.References[index].Path = ""
+			details.References[index].Source = ""
+		}
+		encoded, err := common.Marshal(details)
+		if err != nil {
+			return err
+		}
+		requestDetails = string(encoded)
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		// 上游子记录可能内含图片或视频的内嵌数据，到期时一并移除但保留计费快照。
@@ -197,7 +209,7 @@ func ExpireAsyncRelayTaskFiles(task *AsyncRelayTask) error {
 		}
 		return tx.Model(&AsyncRelayTask{}).Where("id = ? AND status IN ?", task.ID,
 			[]AsyncRelayTaskStatus{AsyncRelayTaskStatusSucceeded, AsyncRelayTaskStatusFailed, AsyncRelayTaskStatusCancelled}).
-			Updates(map[string]any{"request_file_path": "", "request_body": "", "request_files": "", "request_metadata": "", "request_query": "", "request_content_type": "", "result_file_path": "", "result_files": "", "response_file_path": "", "response_body": "", "request_details": requestDetails, "result_expired_at": common.GetTimestamp()}).Error
+			Updates(map[string]any{"request_file_path": "", "request_body": "", "request_files": "", "request_metadata": "", "result_file_path": "", "result_files": "", "response_file_path": "", "response_body": "", "request_details": requestDetails, "result_expired_at": common.GetTimestamp()}).Error
 	})
 }
 
@@ -215,51 +227,5 @@ func CleanupExpiredAsyncRelayTasks(nodeID string) error {
 			return err
 		}
 	}
-	// 兼容旧版本已清理文件、但仍保留提示词和参数的历史记录。
-	var legacyTasks []*AsyncRelayTask
-	err = DB.Where("(node_id = ? OR node_id = ? OR node_id IS NULL) AND status IN ? AND result_expired_at > 0 AND request_details <> ?",
-		nodeID, "", []AsyncRelayTaskStatus{AsyncRelayTaskStatusSucceeded, AsyncRelayTaskStatusFailed, AsyncRelayTaskStatusCancelled}, "").
-		Order("id asc").Limit(100).Find(&legacyTasks).Error
-	if err != nil {
-		return err
-	}
-	for _, task := range legacyTasks {
-		var details AsyncRelayRequestDetails
-		if err := common.UnmarshalJsonStr(task.RequestDetails, &details); err != nil {
-			return err
-		}
-		if details.InputsExpired && task.RequestQuery == "" {
-			continue
-		}
-		requestDetails, err := expireAsyncRequestDetails(task.RequestDetails)
-		if err != nil {
-			return err
-		}
-		if err := DB.Model(&AsyncRelayTask{}).Where("id = ? AND result_expired_at > 0", task.ID).
-			Updates(map[string]any{"request_details": requestDetails, "request_query": "", "request_content_type": "", "request_body": "", "request_files": "", "request_metadata": ""}).Error; err != nil {
-			return err
-		}
-	}
 	return nil
-}
-
-func expireAsyncRequestDetails(raw string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	var details AsyncRelayRequestDetails
-	if err := common.UnmarshalJsonStr(raw, &details); err != nil {
-		return "", err
-	}
-	details.Prompt = ""
-	details.PromptSource = ""
-	details.Parameters = nil
-	details.References = nil
-	details.CaptureError = ""
-	details.InputsExpired = true
-	encoded, err := common.Marshal(details)
-	if err != nil {
-		return "", err
-	}
-	return string(encoded), nil
 }

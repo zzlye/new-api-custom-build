@@ -15,6 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/service"
 )
 
+var asyncRequestParameterNames = []string{"model", "size", "quality", "n", "output_format", "response_format", "background", "moderation", "seconds", "duration", "aspect_ratio", "resolution", "seed", "negative_prompt", "stream"}
+
 // 只采集协议明确的素材字段，普通提示词、回调地址和鉴权字段不会成为参考素材。
 var asyncReferenceFields = []string{
 	"image", "images", "image_url", "image_urls", "input_image", "input_reference", "reference_image", "reference_images", "first_frame", "last_frame", "image_end", "mask",
@@ -56,7 +58,7 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 				}
 				reference := saveAsyncReferenceFile(part, part.FileName(), name)
 				details.References = append(details.References, reference)
-			} else if part.FileName() == "" && (name == "prompt" || isAsyncSafeParameterName(name) || isAsyncReferenceField(name)) {
+			} else if part.FileName() == "" && (name == "prompt" || isAsyncRequestParameter(name) || isAsyncReferenceField(name)) {
 				limit := int64(1024 * 1024)
 				if isAsyncReferenceField(name) {
 					limit = common.AsyncMediaMaxFileBytes
@@ -72,10 +74,7 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 					} else if name == "prompt" {
 						details.Prompt = string(value)
 					} else {
-						parameter := string(value)
-						if cleaned, ok := sanitizeAsyncParameter(parameter, 0); ok {
-							details.Parameters[name] = cleaned.(string)
-						}
+						details.Parameters[name] = string(value)
 					}
 				} else {
 					details.CaptureError = "部分输入文字超过展示上限"
@@ -92,23 +91,14 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 		return details
 	}
 	_ = common.Unmarshal(fields["prompt"], &details.Prompt)
-	for key, value := range fields {
-		if !isAsyncSafeParameterName(key) || len(value) > 16*1024 {
+	for _, key := range asyncRequestParameterNames {
+		value, exists := fields[key]
+		if !exists {
 			continue
 		}
-		parameter, ok := decodeAsyncParameter(value, 0)
-		if !ok {
-			continue
-		}
-		if cleaned, ok := sanitizeAsyncParameter(parameter, 0); ok {
-			encoded, err := common.Marshal(cleaned)
-			if err == nil && len(encoded) <= 16*1024 {
-				if text, ok := cleaned.(string); ok {
-					details.Parameters[key] = text
-				} else {
-					details.Parameters[key] = string(encoded)
-				}
-			}
+		kind := common.GetJsonType(value)
+		if kind == "string" || kind == "number" || kind == "boolean" {
+			details.Parameters[key] = common.JsonRawMessageToString(value)
 		}
 	}
 	var texts []string
@@ -127,7 +117,7 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 			appendAsyncReferences(value, key, &details.References, task.UserID)
 		}
 	}
-	// Gemini 的图片尺寸和比例同时映射为通用参数。
+	// Gemini 的图片尺寸和比例来自生成配置，仅提取这些展示参数。
 	var generation struct {
 		ResponseModalities []string `json:"responseModalities"`
 		ImageConfig        struct {
@@ -177,94 +167,13 @@ func saveAsyncInlineReferences(references []model.AsyncRelayReference) {
 	}
 }
 
-// isAsyncSafeParameterName 过滤输入正文、媒体和凭据字段，只记录可审阅的生成参数。
-func isAsyncSafeParameterName(name string) bool {
-	if name == "" || isAsyncReferenceField(name) {
-		return false
-	}
-	blocked := []string{"prompt", "content", "message", "input", "instruction", "file", "url", "uri", "token", "secret", "auth", "credential", "password", "key", "callback", "webhook", "base64", "inline"}
-	lower := strings.ToLower(name)
-	for _, part := range blocked {
-		if strings.Contains(lower, part) {
-			return false
+func isAsyncRequestParameter(name string) bool {
+	for _, key := range asyncRequestParameterNames {
+		if name == key {
+			return true
 		}
 	}
-	switch lower {
-	case "messages", "contents", "parts", "data", "metadata", "headers", "tools":
-		return false
-	}
-	return true
-}
-
-// decodeAsyncParameter 保留 JSON 数字精度，并在递归解析时过滤正文及敏感字段。
-func decodeAsyncParameter(raw json.RawMessage, depth int) (any, bool) {
-	if depth > 8 {
-		return nil, false
-	}
-	switch common.GetJsonType(raw) {
-	case "object":
-		var fields map[string]json.RawMessage
-		if common.Unmarshal(raw, &fields) != nil {
-			return nil, false
-		}
-		result := make(map[string]any, len(fields))
-		for key, value := range fields {
-			if !isAsyncSafeParameterName(key) {
-				continue
-			}
-			if cleaned, ok := decodeAsyncParameter(value, depth+1); ok {
-				result[key] = cleaned
-			}
-		}
-		return result, len(result) > 0
-	case "array":
-		var values []json.RawMessage
-		if common.Unmarshal(raw, &values) != nil {
-			return nil, false
-		}
-		result := make([]any, 0, min(len(values), 128))
-		for _, value := range values {
-			if cleaned, ok := decodeAsyncParameter(value, depth+1); ok {
-				result = append(result, cleaned)
-			}
-			if len(result) >= 128 {
-				break
-			}
-		}
-		return result, len(result) > 0
-	case "string":
-		var text string
-		if common.Unmarshal(raw, &text) != nil {
-			return nil, false
-		}
-		return sanitizeAsyncParameter(text, depth)
-	case "number":
-		return json.Number(raw), true
-	case "boolean":
-		var value bool
-		if common.Unmarshal(raw, &value) != nil {
-			return nil, false
-		}
-		return value, true
-	default:
-		return nil, false
-	}
-}
-
-// sanitizeAsyncParameter 限制参数快照的深度和体积，并递归剔除正文及敏感字段。
-func sanitizeAsyncParameter(value any, depth int) (any, bool) {
-	if depth > 8 {
-		return nil, false
-	}
-	switch item := value.(type) {
-	case string:
-		if len(item) > 4096 || strings.HasPrefix(item, "data:") || strings.HasPrefix(item, "http://") || strings.HasPrefix(item, "https://") {
-			return nil, false
-		}
-		return item, true
-	default:
-		return value, true
-	}
+	return false
 }
 
 func isAsyncReferenceField(name string) bool {

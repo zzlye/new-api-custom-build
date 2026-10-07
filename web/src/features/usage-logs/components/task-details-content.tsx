@@ -219,11 +219,7 @@ export function TaskDetailsContent(props: { taskId: string }) {
         <h3 className='text-sm font-semibold'>{t('Generation prompt')}</h3>
         {!details.input_available && (
           <p className='text-muted-foreground text-xs'>
-            {t(
-              details.inputs_expired
-                ? 'Task input details have expired.'
-                : 'Original input was not saved for this historical task.'
-            )}
+            {t('Original input was not saved for this historical task.')}
           </p>
         )}
         {details.prompt_source === 'upstream_revised' && (
