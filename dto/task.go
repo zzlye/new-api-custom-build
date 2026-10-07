@@ -60,6 +60,7 @@ type TaskDto struct {
 	UserId               int         `json:"user_id"`
 	Group                string      `json:"group"`
 	ChannelId            int         `json:"channel_id"`
+	ChannelName          string      `json:"channel_name,omitempty"` // 仅管理员任务列表补充渠道名称。
 	Quota                int         `json:"quota"`
 	Action               string      `json:"action"`
 	Status               string      `json:"status"`

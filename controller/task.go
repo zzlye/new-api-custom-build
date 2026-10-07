@@ -443,6 +443,27 @@ func GetUserTask(c *gin.Context) {
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool, viewerRole int) []*dto.TaskDto {
+	channelNames := make(map[int]string)
+	if viewerRole >= common.RoleAdminUser {
+		// 按页去重后只读取编号和名称，不加载密钥，也不为每行分别查询。
+		channelIDs := types.NewSet[int]()
+		for _, task := range tasks {
+			if task.ChannelId > 0 {
+				channelIDs.Add(task.ChannelId)
+			}
+		}
+		if channelIDs.Len() > 0 {
+			var channels []struct {
+				Id   int
+				Name string
+			}
+			if err := model.DB.Model(&model.Channel{}).Select("id", "name").Where("id IN ?", channelIDs.Items()).Scan(&channels).Error; err == nil {
+				for _, channel := range channels {
+					channelNames[channel.Id] = channel.Name
+				}
+			}
+		}
+	}
 	var userIDMap map[int]*model.UserBase
 	if fillUser {
 		userIDMap = make(map[int]*model.UserBase)
@@ -481,6 +502,7 @@ func tasksToDto(tasks []*model.Task, fillUser bool, viewerRole int) []*dto.TaskD
 			}
 		}
 		item := relay.TaskModel2Dto(task)
+		item.ChannelName = channelNames[task.ChannelId]
 		item.LegacyVideoAvailable = legacyVideoAvailable(task)
 		item.ResultDiscarded = task.PrivateData.ResultDiscarded
 		if task.Status == model.TaskStatusSuccess {

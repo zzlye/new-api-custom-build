@@ -166,6 +166,7 @@ export function createDurationColumn<T>(config: {
 export function createChannelColumn<T>(config: {
   accessorKey?: string
   headerLabel: string
+  getChannelName?: (row: T) => string | undefined
 }): ColumnDef<T> {
   const { accessorKey = 'channel_id', headerLabel } = config
 
@@ -179,6 +180,8 @@ export function createChannelColumn<T>(config: {
       if (!channelId) {
         return <span className='text-muted-foreground/60 text-xs'>-</span>
       }
+      // 名称按需启用，保留编号复制行为；长名称截断，避免挤压手机卡片。
+      const channelName = config.getChannelName?.(row.original)?.trim()
       return (
         <StatusBadge
           label={`#${channelId}`}
@@ -186,8 +189,18 @@ export function createChannelColumn<T>(config: {
           copyText={String(channelId)}
           size='sm'
           showDot={false}
-          className='font-mono'
-        />
+          className={cn('font-mono', channelName && 'max-w-[180px]')}
+          {...(channelName ? { title: `${channelName} #${channelId}` } : {})}
+        >
+          {channelName ? (
+            <>
+              <span className='min-w-0 truncate [font-family:var(--font-body)]'>
+                {channelName}
+              </span>
+              <span className='shrink-0'>#{channelId}</span>
+            </>
+          ) : undefined}
+        </StatusBadge>
       )
     },
     meta: { label: headerLabel },

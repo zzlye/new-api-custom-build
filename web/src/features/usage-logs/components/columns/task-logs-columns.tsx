@@ -93,6 +93,7 @@ export function useTaskLogsColumns(
   isRoot: boolean
 ): ColumnDef<TaskLog>[] {
   const { t } = useTranslation()
+  const { sensitiveVisible } = useUsageLogsContext()
   return useMemo(() => {
     const columns: ColumnDef<TaskLog>[] = [
       {
@@ -123,7 +124,13 @@ export function useTaskLogsColumns(
 
     if (isAdmin) {
       columns.push(
-        createChannelColumn<TaskLog>({ headerLabel: t('Channel') }),
+        createChannelColumn<TaskLog>({
+          headerLabel: t('Channel'),
+          getChannelName: (log) => {
+            if (!log.channel_name?.trim()) return undefined
+            return sensitiveVisible ? log.channel_name : '••••'
+          },
+        }),
         {
           id: 'user',
           header: t('User'),
@@ -317,5 +324,5 @@ export function useTaskLogsColumns(
       })
     }
     return columns
-  }, [t, isAdmin, isRoot])
+  }, [t, isAdmin, isRoot, sensitiveVisible])
 }
