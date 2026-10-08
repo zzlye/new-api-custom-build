@@ -1,0 +1,56 @@
+服务器 NewAPI 镜像更新验收
+变更字段：new-api-blue.image；应用源代码及 VERSION 未修改。
+应用构建提交：46281a725dbcddca60f0077036469d087d7a6e2e
+服务器：38.244.15.80；容器：new-api-blue。
+旧镜像：ghcr.io/zzlye/new-api-custom-build@sha256:ced570b668b290645fd8d1d8a3baafe3f1262eaa8e47c9030fcf10ef15a71ff2
+新镜像：ghcr.io/zzlye/new-api-custom-build@sha256:9103b9e1c94e6dd39bbe9d354520474fd3bab9603b999647c330072e9661598d
+原 Compose SHA-256：8bc2b69df034f80631dff08bd570763f543ba7f2e3f29b09ef5a3b79afd953fb
+新 Compose SHA-256：4834856e87a2d5c03b4a2ed2509416a293e2ec72293f81fbd682bb214573ce11
+原始验收文件 SHA-256：767e2961c7fe4cfb8ef16d49f0505240399ff6abc0fd12257cb9175a76b29f12
+MODIFIED_FILE：D:/xiangmu/newapi/new-api/deployments/20261008-46281a7/MODIFIED_FILE.json
+DIFF_FILE：D:/xiangmu/newapi/new-api/deployments/20261008-46281a7/DIFF_FILE.patch
+VERIFICATION：D:/xiangmu/newapi/new-api/deployments/20261008-46281a7/VERIFICATION.txt
+ROLLBACK：D:/xiangmu/newapi/new-api/deployments/20261008-46281a7/ROLLBACK.sh
+
+BASELINE
+命令：python3 -u -
+输入：D:/tmp/newapi-update-20261008/update.py 的检查部分，通过已验证主机身份的 SSH 标准输入发送。
+输出：BASELINE: healthy; api_success=true; storage=/dev/vdb1; other_containers=4
+退出状态：0。
+
+MODIFIED
+命令：docker pull ghcr.io/zzlye/new-api-custom-build:latest
+输出：Digest: sha256:9103b9e1c94e6dd39bbe9d354520474fd3bab9603b999647c330072e9661598d
+输出：Status: Downloaded newer image for ghcr.io/zzlye/new-api-custom-build:latest
+退出状态：0。
+命令：docker compose -f /opt/new-api/docker-compose.yml up -d --no-deps new-api-blue
+输入：只替换镜像摘要，其他 Compose 配置完全相同。
+输出：Container new-api-blue Recreated
+输出：Container new-api-blue Started
+退出状态：0。
+验证命令：python3 -u -
+输入：update.py 的切换后检查部分。
+输出：MODIFIED: healthy; api_success=true; mounts_ports_env_unchanged; other_containers_unchanged
+远端脚本退出状态：0。
+
+ROLLBACK
+远端命令：/tmp/newapi-update-20261008/ROLLBACK.sh /tmp/newapi-update-20261008/rollback-copy.yml
+输入：已修改 Compose 的独立副本；原件保存在同目录 ORIGINAL_COMPOSE.yml，权限 0600。
+输出：ROLLBACK: compose_sha256_restored; production_unchanged
+退出状态：0。
+恢复行为：副本恢复原 Compose 字节、原 image 字段和原配置解析结果，SHA-256 与原件相同；生产继续运行新镜像。
+本地命令：C:/Program Files/Git/bin/bash.exe -c 'chmod +x ./ROLLBACK.sh && ./ROLLBACK.sh "$PWD/rollback-copy.json"'
+本地输入：交付文件的独立 JSON 副本。
+本地输出：ROLLBACK: receipt_original_restored; production_unchanged
+本地退出状态：0；原始验收文件字节和 SHA-256 一致。
+
+验证结果
+容器健康：healthy。
+内部接口：http://127.0.0.1:3002/api/status，success=true。
+公开接口：https://api.zzlye.xyz/api/status，success=true。
+版本字段：前后均为空字符串，未改变。
+100G 硬盘：/dev/vdb1[/new-api]，/opt/new-api 挂载保持不变。
+数据、日志挂载、端口、环境变量：全部保持不变。
+数据库、Redis、Caddy、生图工坊：原容器及启动时间保持不变。
+原始执行记录：D:/tmp/newapi-update-20261008/inspect.log、update.log。
+未重新构建 Docker，未修改业务配置，未清理旧镜像或业务数据。

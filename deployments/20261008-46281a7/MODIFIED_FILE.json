@@ -1,0 +1,51 @@
+{
+  "target": "new-api-blue",
+  "image": "ghcr.io/zzlye/new-api-custom-build@sha256:9103b9e1c94e6dd39bbe9d354520474fd3bab9603b999647c330072e9661598d",
+  "image_id": "sha256:9103b9e1c94e6dd39bbe9d354520474fd3bab9603b999647c330072e9661598d",
+  "health": "healthy",
+  "version": "",
+  "ports": {
+    "3000/tcp": [
+      {
+        "HostIp": "127.0.0.1",
+        "HostPort": "3002"
+      }
+    ]
+  },
+  "mounts": [
+    {
+      "Type": "bind",
+      "Source": "/opt/new-api/logs",
+      "Destination": "/app/logs",
+      "Mode": "rw",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/opt/new-api/data",
+      "Destination": "/data",
+      "Mode": "rw",
+      "RW": true,
+      "Propagation": "rprivate"
+    }
+  ],
+  "storage": "/dev/vdb1[/new-api]",
+  "checks": [
+    {
+      "url": "http://127.0.0.1:3002/api/status",
+      "success": true,
+      "version": ""
+    },
+    {
+      "url": "https://api.zzlye.xyz/api/status",
+      "success": true,
+      "version": ""
+    }
+  ],
+  "other_containers_unchanged": true,
+  "old_compose_sha256": "8bc2b69df034f80631dff08bd570763f543ba7f2e3f29b09ef5a3b79afd953fb",
+  "new_compose_sha256": "4834856e87a2d5c03b4a2ed2509416a293e2ec72293f81fbd682bb214573ce11",
+  "rollback_copy_restored": true,
+  "commit": "46281a725dbcddca60f0077036469d087d7a6e2e"
+}

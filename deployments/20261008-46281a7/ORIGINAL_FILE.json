@@ -1,0 +1,8 @@
+{
+  "target": "new-api-blue",
+  "image": "ghcr.io/zzlye/new-api-custom-build@sha256:ced570b668b290645fd8d1d8a3baafe3f1262eaa8e47c9030fcf10ef15a71ff2",
+  "image_id": "sha256:ced570b668b290645fd8d1d8a3baafe3f1262eaa8e47c9030fcf10ef15a71ff2",
+  "health": "healthy",
+  "version": "",
+  "compose_sha256": "8bc2b69df034f80631dff08bd570763f543ba7f2e3f29b09ef5a3b79afd953fb"
+}
