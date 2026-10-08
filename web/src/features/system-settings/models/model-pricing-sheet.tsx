@@ -218,6 +218,8 @@ export const ModelPricingEditorPanel = forwardRef<
 ) {
   const { t } = useTranslation()
   const promptPriceId = useId()
+  // 为两个计价页签分别关联标签和输入框，便于点击标签与辅助工具定位。
+  const fixedPriceId = useId()
   const formElementRef = useRef<HTMLFormElement>(null)
   const currencyConfig = useSystemConfigStore((state) => state.config.currency)
   const preference = usePricingPreferencesStore((state) => state.currency)
@@ -1260,7 +1262,11 @@ export const ModelPricingEditorPanel = forwardRef<
                               render={({ field }) => (
                                 <FormItem className='contents'>
                                   <Field>
-                                    <FieldLabel>{t('Fixed price')}</FieldLabel>
+                                    <FieldLabel
+                                      htmlFor={`${fixedPriceId}-${mode}`}
+                                    >
+                                      {t('Fixed price')}
+                                    </FieldLabel>
                                     <FormControl>
                                       <InputGroup>
                                         <InputGroupAddon>
@@ -1270,8 +1276,13 @@ export const ModelPricingEditorPanel = forwardRef<
                                           grouped
                                           currency={currency}
                                           inputMode='decimal'
-                                          placeholder='0.35'
+                                          placeholder={
+                                            mode === 'per-second'
+                                              ? '0.35'
+                                              : '0.01'
+                                          }
                                           {...field}
+                                          id={`${fixedPriceId}-${mode}`}
                                           value={field.value ?? ''}
                                           onChange={field.onChange}
                                         />

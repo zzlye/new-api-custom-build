@@ -625,7 +625,8 @@ it('preserves a legacy per-request draft when conversion is unsupported', async 
   )
   const draft = await commit(editor.ref)
   expect(draft).toMatchObject({ billingMode: 'per-request', price: '0' })
-  expect(draft?.billingExpr).toBeUndefined()
+  // 固定价格明确清空分辨率表达式，避免切换后沿用旧计费规则。
+  expect(draft?.billingExpr).toBe('')
 })
 
 it('defaults to USD, remembers a currency choice and restores it when reopened', async () => {
