@@ -24,6 +24,7 @@ import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 export type AsyncMediaRetryValues = {
   enabled: boolean
   max_retries: number
+  same_channel_retries: number
   channel_ids: number[]
   selected_channels_only: boolean
   channel_status_codes: Record<string, string>
@@ -33,6 +34,7 @@ export type AsyncMediaRetryValues = {
 export const defaultAsyncMediaRetry: AsyncMediaRetryValues = {
   enabled: false,
   max_retries: 2,
+  same_channel_retries: 1,
   channel_status_codes: {},
   channel_ids: [] as number[],
   selected_channels_only: true,
@@ -43,6 +45,7 @@ export function createAsyncMediaRetrySchema(t: TFunction) {
     .object({
       enabled: z.boolean(),
       max_retries: z.number().int().min(0).max(20),
+      same_channel_retries: z.number().int().min(0).max(5),
       // 旧通用字段只用于首次展示已有策略，提交时只保存渠道规则。
       status_codes: z.string().optional(),
       selected_channels_only: z.boolean(),

@@ -17,6 +17,7 @@ import (
 
 const AsyncMediaRoutingPersistKey = "async_media_routing_persist"
 const asyncMediaRetryPolicyKey = "async_media_retry_policy"
+const asyncMediaRetrySameChannelKey = "async_media_retry_same_channel"
 
 type asyncMediaResponseKey struct{}
 type asyncMediaResponse struct {
@@ -42,7 +43,8 @@ func RelayRetryLimit(c *gin.Context) int {
 	if !policy.Enabled {
 		return 0
 	}
-	return policy.MaxRetries
+	// 每条渠道都有首次提交及自己的重试预算，换渠道预算仍表示备用渠道数量。
+	return (policy.MaxRetries+1)*(policy.SameChannelRetries+1) - 1
 }
 
 // BeginAsyncMediaAttempt 清除上一渠道的响应证据，并在发送前持久化路由记录。
@@ -121,6 +123,7 @@ func asyncMediaHasAcceptedResult(value any) bool {
 }
 
 func DecideAsyncMediaRetry(c *gin.Context, remaining int, explicitlyStopped bool) PolicyDecision {
+	c.Set(asyncMediaRetrySameChannelKey, false)
 	stop := PolicyDecision{Action: "stop", Source: "async_media", Reason: "media_retry_disabled"}
 	policy := AsyncMediaRetryConfig(c)
 	if !policy.Enabled {
@@ -146,13 +149,30 @@ func DecideAsyncMediaRetry(c *gin.Context, remaining int, explicitlyStopped bool
 		} else if !policy.MatchesStatus(c.GetInt("channel_id"), evidence.status) {
 			stop.Reason = "status_not_retryable"
 		} else {
+			used := c.GetStringSlice("use_channel")
+			attempts := 0
+			for i := len(used) - 1; i >= 0 && used[i] == strconv.Itoa(c.GetInt("channel_id")); i-- {
+				attempts++
+			}
+			if attempts > 0 && attempts <= policy.SameChannelRetries {
+				c.Set(asyncMediaRetrySameChannelKey, true)
+				return PolicyDecision{Action: "retry", Source: "async_media", Reason: "retry_same_channel"}
+			}
+			visited := make(map[string]bool)
+			for _, id := range used {
+				visited[id] = true
+			}
+			if len(visited) > policy.MaxRetries {
+				stop.Reason = "attempt_budget_exhausted"
+				return stop
+			}
 			return PolicyDecision{Action: "retry", Source: "async_media", Reason: "retry_status_matched"}
 		}
 	}
 	return stop
 }
 
-// SelectAsyncMediaRetryChannel 只从未尝试过的候选里按优先级和权重选择，不增加分组外的权限。
+// SelectAsyncMediaRetryChannel 先重试原渠道，再从同模型、分组内未尝试渠道选备用；勾选名单不限制备用渠道。
 func SelectAsyncMediaRetryChannel(param *RetryParam) (*model.Channel, string, error) {
 	c := param.Ctx
 	if err := PrepareVideoChannelSelection(c, param.ModelName); err != nil {
@@ -165,20 +185,33 @@ func SelectAsyncMediaRetryChannel(param *RetryParam) (*model.Channel, string, er
 		excluded[id] = true
 	}
 	filters = append(filters, dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: excluded})
-	policy := AsyncMediaRetryConfig(c)
-	if policy.SelectedChannelsOnly || len(policy.ChannelIDs) > 0 {
-		allowed := make(map[int]bool)
-		for _, id := range policy.ChannelIDs {
-			allowed[id] = true
-		}
-		filters = append(filters, dto.ChannelFilter{Kind: dto.FilterAllowedChannels, AllowedChannelIDs: allowed})
-	}
 	groups := []string{param.TokenGroup}
 	if param.TokenGroup == "auto" {
 		current := common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
 		groups = []string{current}
 		if common.GetContextKeyBool(c, constant.ContextKeyTokenCrossGroupRetry) {
 			groups = GetRequestAutoGroups(c, common.GetContextKeyString(c, constant.ContextKeyUserGroup))
+		}
+	}
+	if c.GetBool(asyncMediaRetrySameChannelKey) {
+		c.Set(asyncMediaRetrySameChannelKey, false)
+		// 原渠道仍须通过实时可用性和协议筛选，不能重试已被禁用的渠道。
+		sameFilters := append([]dto.ChannelFilter(nil), GetChannelConstraints(c).Filters...)
+		sameFilters = append(sameFilters,
+			dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: map[int]bool{}},
+			dto.ChannelFilter{Kind: dto.FilterAllowedChannels, AllowedChannelIDs: map[int]bool{c.GetInt("channel_id"): true}},
+		)
+		group := param.TokenGroup
+		if group == "auto" {
+			group = common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
+		}
+		channel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, 0, sameFilters)
+		if err != nil || channel != nil {
+			return channel, group, err
+		}
+		// 原渠道不可用时允许直接切换，但不能突破配置的备用渠道数量。
+		if len(excluded) > AsyncMediaRetryConfig(c).MaxRetries {
+			return nil, group, nil
 		}
 	}
 	for _, group := range groups {

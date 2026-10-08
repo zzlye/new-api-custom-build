@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -80,16 +81,20 @@ func TestAsyncMediaRoutingSwitchesChannel(t *testing.T) {
 func TestAsyncMediaRoutingRules(t *testing.T) {
 	for _, video := range []bool{false, true} {
 		for _, test := range []struct {
-			name     string
-			status   int
-			codes    string
-			budget   int
-			selected []int
-			body     string
-			mapping  string
-			mode     string
-			allFail  bool
-			want     [3]int32
+			name          string
+			status        int
+			codes         string
+			budget        int
+			same          int
+			selected      []int
+			body          string
+			mapping       string
+			mode          string
+			allFail       bool
+			firstRecovers bool
+			cache         bool
+			perChannel    bool
+			want          [3]int32
 		}{
 			{name: "状态匹配后成功", status: 500, codes: "500", budget: 2, want: [3]int32{1, 1, 0}},
 			{name: "两次重试最多三个渠道", status: 503, codes: "500-503", budget: 2, allFail: true, want: [3]int32{1, 1, 1}},
@@ -98,9 +103,18 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 			{name: "渠道用尽不循环", status: 500, codes: "500", budget: 20, allFail: true, want: [3]int32{1, 1, 1}},
 			{name: "错误码不匹配", status: 400, codes: "500", budget: 2, want: [3]int32{1, 0, 0}},
 			{name: "根用户选择400生效", status: 400, codes: "400,500", budget: 2, want: [3]int32{1, 1, 0}},
-			{name: "跳过未勾选备用渠道", status: 500, codes: "500", budget: 2, selected: []int{1, 3}, want: [3]int32{1, 0, 1}},
+			{name: "未勾选备用渠道仍可接收切换", status: 500, codes: "500", budget: 2, selected: []int{1, 3}, want: [3]int32{1, 1, 0}},
 			{name: "首次渠道未勾选不重试", status: 500, codes: "500", budget: 2, selected: []int{2, 3}, want: [3]int32{1, 0, 0}},
-			{name: "白名单用尽", status: 500, codes: "500", budget: 2, selected: []int{1}, want: [3]int32{1, 0, 0}},
+			{name: "只勾选失败渠道也能切到备用", status: 500, codes: "500", budget: 2, selected: []int{1}, want: [3]int32{1, 1, 0}},
+			{name: "原渠道重试后再切换", status: 503, codes: "503", budget: 2, same: 1, want: [3]int32{2, 1, 0}},
+			{name: "原渠道第二次成功无需切换", status: 503, codes: "503", budget: 2, same: 1, firstRecovers: true, want: [3]int32{2, 0, 0}},
+			{name: "缓存开启时仍先原渠道后备用", status: 503, codes: "503", budget: 2, same: 1, cache: true, want: [3]int32{2, 1, 0}},
+			{name: "独立错误码不限制未勾选备用", status: 503, codes: "503", budget: 2, same: 1, perChannel: true, selected: []int{1}, want: [3]int32{2, 1, 0}},
+			{name: "原渠道次数不占切换预算", status: 429, codes: "429", budget: 1, same: 2, allFail: true, want: [3]int32{3, 3, 0}},
+			{name: "零切换仍可重试原渠道", status: 503, codes: "503", budget: 0, same: 1, allFail: true, want: [3]int32{2, 0, 0}},
+			{name: "未勾选备用失败后不再重试", status: 503, codes: "503", budget: 2, same: 1, selected: []int{1}, allFail: true, want: [3]int32{2, 1, 0}},
+			{name: "原渠道重试开启仍不重发超时", status: 504, codes: "500-599", budget: 2, same: 1, want: [3]int32{1, 0, 0}},
+			{name: "原渠道重试开启仍不重发已接单", status: 503, codes: "503", budget: 2, same: 1, body: `{"task_id":"accepted-job"}`, want: [3]int32{1, 0, 0}},
 			{name: "网关超时不重复扣费", status: 504, codes: "500-599", budget: 2, want: [3]int32{1, 0, 0}},
 			{name: "请求超时不重发", status: 408, codes: "400-599", budget: 2, want: [3]int32{1, 0, 0}},
 			{name: "响应含任务编号不重发", status: 500, codes: "500", budget: 2, body: `{"task_id":"accepted-job","error":{"message":"later error"}}`, want: [3]int32{1, 0, 0}},
@@ -118,9 +132,14 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 					modelName, path, request, format = "sora-2", "/v1/videos", `{"model":"sora-2","prompt":"保留参数","seconds":"4","size":"720x1280","generate_audio":false,"seed":0}`, relaytypes.RelayFormatTask
 				}
 				var hits [3]atomic.Int32
+				var order []int
+				var orderMu sync.Mutex
 				handler := func(index int) http.HandlerFunc {
 					return func(w http.ResponseWriter, r *http.Request) {
-						hits[index].Add(1)
+						count := hits[index].Add(1)
+						orderMu.Lock()
+						order = append(order, index+1)
+						orderMu.Unlock()
 						data, err := io.ReadAll(r.Body)
 						require.NoError(t, err)
 						require.Contains(t, string(data), "保留参数")
@@ -131,7 +150,7 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 							return
 						}
 						w.Header().Set("Content-Type", "application/json")
-						if index == 0 || test.allFail {
+						if (index == 0 && !(test.firstRecovers && count > 1)) || test.allFail {
 							if test.mode == "truncated" {
 								w.Header().Set("Content-Length", "99999")
 							}
@@ -167,9 +186,20 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 					require.NoError(t, model.DB.Create(channel).Error)
 					require.NoError(t, model.DB.Create(&model.Ability{Group: "default", Model: modelName, ChannelId: channel.Id, Enabled: true, Priority: &priority}).Error)
 				}
-				policy, err := common.Marshal(operation_setting.AsyncMediaRetryPolicy{Enabled: true, MaxRetries: test.budget, StatusCodes: test.codes, ChannelIDs: test.selected})
+				config := operation_setting.AsyncMediaRetryPolicy{Enabled: true, MaxRetries: test.budget, SameChannelRetries: test.same, StatusCodes: test.codes, ChannelIDs: test.selected}
+				if test.perChannel {
+					config.ChannelStatusCodes = map[int]string{1: test.codes}
+					config.SelectedChannelsOnly = true
+				}
+				policy, err := common.Marshal(config)
 				require.NoError(t, err)
 				require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, string(policy)))
+				if test.cache {
+					previousCache := common.MemoryCacheEnabled
+					common.MemoryCacheEnabled = true
+					model.InitChannelCache()
+					t.Cleanup(func() { common.MemoryCacheEnabled = previousCache })
+				}
 				response, done, _ := beginAsyncCompatRequest(t, user, token, path, request, format)
 				_, err = ProcessAsyncRelayTasks(context.Background(), 1)
 				require.NoError(t, err)
@@ -181,6 +211,14 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 				for index, want := range test.want {
 					require.Equal(t, want, hits[index].Load(), "渠道%d", index+1)
 				}
+				// 断言完整发送顺序，不能只验证累计次数而漏掉来回切换。
+				var expected []int
+				for index, count := range test.want {
+					for range count {
+						expected = append(expected, index+1)
+					}
+				}
+				require.Equal(t, expected, order)
 				var task model.AsyncRelayTask
 				require.NoError(t, model.DB.First(&task).Error)
 				require.Equal(t, task.TaskID, response.Header().Get("X-New-Api-Task-Id"))
@@ -192,7 +230,7 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 				var log model.Task
 				require.NoError(t, model.DB.First(&log, task.LogID).Error)
 				require.Equal(t, user.Quota-log.Quota, after.Quota, "失败不多扣费，成功只结算一次")
-				if !test.allFail && test.want[1]+test.want[2] > 0 {
+				if !test.allFail && (test.firstRecovers || test.want[1]+test.want[2] > 0) {
 					require.Equal(t, 200, response.Code, response.Body.String())
 					require.Positive(t, log.Quota)
 					if video {
@@ -255,11 +293,12 @@ func TestAsyncMediaRoutingDatabaseMatrix(t *testing.T) {
 			var version string
 			require.NoError(t, db.Raw(query).Scan(&version).Error)
 			t.Logf("数据库版本: %s", version)
-			config := `{"enabled":true,"max_retries":2,"channel_status_codes":{"1":"500","2":"502-503","3":"429"},"channel_ids":[1,2,3]}`
+			config := `{"enabled":true,"max_retries":2,"same_channel_retries":1,"selected_channels_only":true,"channel_status_codes":{"1":"500"},"channel_ids":[1]}`
 			require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, config))
 			var saved model.Option
 			require.NoError(t, db.First(&saved).Error)
 			require.Equal(t, config, saved.Value)
+			require.Equal(t, 1, operation_setting.GetAsyncMediaRetryPolicy().SameChannelRetries)
 			for _, invalid := range []string{`{}`, `{"max_retries":21,"status_codes":"500"}`, `{"max_retries":1.5,"status_codes":"500"}`, `{"status_codes":"200"}`, `{"status_codes":"600"}`, `{"status_codes":"503-500"}`, `{"status_codes":"500","channel_ids":[1,1]}`, `{"status_codes":"500","channel_ids":[0]}`} {
 				require.Error(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, invalid))
 				require.Equal(t, 2, operation_setting.GetAsyncMediaRetryPolicy().MaxRetries)

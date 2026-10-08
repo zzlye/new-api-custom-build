@@ -90,6 +90,38 @@ afterEach(() => {
 })
 
 describe('媒体换渠道重试设置', () => {
+  it('原渠道重试次数独立保存且不占用换渠道次数', async () => {
+    mount()
+    await screen.findByRole('checkbox', { name: /Banana/ })
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Same-channel retry limit' }),
+      { target: { value: '2' } }
+    )
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
+      { target: { value: '5' } }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+    const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
+    expect(JSON.parse(body.value)).toMatchObject({
+      same_channel_retries: 2,
+      max_retries: 5,
+    })
+  })
+
+  it.each(['-1', '6', '1.5'])('原渠道次数 %s 无效时阻止保存', async (value) => {
+    mount()
+    await screen.findByRole('checkbox', { name: /Banana/ })
+    const input = screen.getByRole('spinbutton', {
+      name: 'Same-channel retry limit',
+    })
+    fireEvent.change(input, { target: { value } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+    expect(api.put).not.toHaveBeenCalled()
+  })
+
   it('只展示一个总开关，直接勾选渠道并保存独立错误码', async () => {
     mount()
     const user = userEvent.setup()
@@ -104,7 +136,10 @@ describe('媒体换渠道重试设置', () => {
       screen.getByRole('switch', { name: 'Enable media channel failover' })
     )
     await user.click(screen.getByRole('checkbox', { name: /Banana/ }))
-    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3' } })
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
+      { target: { value: '3' } }
+    )
     fireEvent.change(banana, { target: { value: '500, 502-503' } })
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
@@ -116,6 +151,7 @@ describe('媒体换渠道重试设置', () => {
     expect(JSON.parse(body.value)).toEqual({
       enabled: true,
       max_retries: 3,
+      same_channel_retries: 1,
       channel_status_codes: { '12': '500,502-503' },
       channel_ids: [12],
       selected_channels_only: true,
@@ -163,13 +199,15 @@ describe('媒体换渠道重试设置', () => {
   it.each(['-1', '21', '1.5'])('次数 %s 无效时阻止保存', async (value) => {
     mount()
     await screen.findByRole('checkbox', { name: /Banana/ })
-    fireEvent.change(screen.getByRole('spinbutton'), { target: { value } })
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
+      { target: { value } }
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() =>
-      expect(screen.getByRole('spinbutton')).toHaveAttribute(
-        'aria-invalid',
-        'true'
-      )
+      expect(
+        screen.getByRole('spinbutton', { name: 'Channel switch retry limit' })
+      ).toHaveAttribute('aria-invalid', 'true')
     )
     expect(api.put).not.toHaveBeenCalled()
   })
@@ -292,12 +330,17 @@ describe('媒体换渠道重试设置', () => {
     await userEvent.click(
       await screen.findByRole('checkbox', { name: /Banana/ })
     )
-    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '7' } })
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
+      { target: { value: '7' } }
+    )
     await act(async () =>
       rerender(JSON.stringify({ ...defaultAsyncMediaRetry, max_retries: 5 }))
     )
     expect(screen.getByRole('checkbox', { name: /Banana/ })).toBeChecked()
-    expect(screen.getByRole('spinbutton')).toHaveValue(7)
+    expect(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' })
+    ).toHaveValue(7)
   })
 
   it('保存失败保留草稿并展示服务端错误', async () => {
@@ -306,13 +349,18 @@ describe('媒体换渠道重试设置', () => {
     })
     mount()
     await screen.findByRole('checkbox', { name: /Banana/ })
-    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '4' } })
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
+      { target: { value: '4' } }
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('设置保存失败')
     )
     expect(toast.success).not.toHaveBeenCalled()
-    expect(screen.getByRole('spinbutton')).toHaveValue(4)
+    expect(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' })
+    ).toHaveValue(4)
   })
 
   it('渠道加载失败禁用保存，重新加载后可以清除已删除渠道', async () => {

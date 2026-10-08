@@ -23,6 +23,8 @@ import type { TFunction } from 'i18next'
 // sources reported by the channel operations summary.
 export function policyLabel(t: TFunction, value: string): string {
   switch (value) {
+    case 'retry_same_channel':
+      return t('Status matches the rules; retry the current channel')
     case 'media_retry_disabled':
       return t('Media channel failover is disabled')
     case 'no_retry_channel':

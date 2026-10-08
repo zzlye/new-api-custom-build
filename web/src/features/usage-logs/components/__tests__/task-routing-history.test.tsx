@@ -31,6 +31,27 @@ afterEach(async () => {
 })
 
 describe('媒体任务路由详情', () => {
+  it('原渠道重试不标记成换渠道', () => {
+    render(
+      <TaskRoutingHistory
+        events={[
+          {
+            attempt: 1,
+            channel_id: 113,
+            status: 503,
+            elapsed_ms: 10,
+            decision: {
+              action: 'retry',
+              reason: 'retry_same_channel',
+              source: 'async_media',
+            },
+          },
+        ]}
+      />
+    )
+    expect(screen.getByText('Retry current channel')).toBeVisible()
+    expect(screen.queryByText('Switch channel')).not.toBeInTheDocument()
+  })
   it('中文翻译注册在正确命名空间，切换语言后更新决策文案', async () => {
     i18next.addResourceBundle('zhCN', 'translation', zh.translation)
     await i18next.changeLanguage('zhCN')

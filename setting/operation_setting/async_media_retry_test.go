@@ -31,6 +31,7 @@ func TestAsyncMediaRetryLegacyAndValidation(t *testing.T) {
 	legacy, err := ParseAsyncMediaRetryPolicy(`{"max_retries":2,"status_codes":"500","channel_ids":[12]}`)
 	require.NoError(t, err)
 	require.True(t, legacy.MatchesStatus(12, 500))
+	require.Zero(t, legacy.SameChannelRetries, "旧配置不隐式启用原渠道付费重发")
 	for _, value := range []string{
 		`{"channel_status_codes":{"0":"500"}}`,
 		`{"channel_status_codes":{"12":""}}`,
@@ -38,6 +39,9 @@ func TestAsyncMediaRetryLegacyAndValidation(t *testing.T) {
 		`{"channel_status_codes":{"12":"600"}}`,
 		`{"channel_status_codes":{"12":"503-500"}}`,
 		`{"channel_status_codes":{"abc":"500"}}`,
+		`{"channel_status_codes":{},"same_channel_retries":-1}`,
+		`{"channel_status_codes":{},"same_channel_retries":6}`,
+		`{"channel_status_codes":{},"same_channel_retries":1.5}`,
 	} {
 		_, err := ParseAsyncMediaRetryPolicy(value)
 		require.Error(t, err, value)

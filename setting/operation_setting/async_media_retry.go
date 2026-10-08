@@ -8,17 +8,19 @@ import (
 )
 
 const AsyncMediaRetryOption = "AsyncMediaRetryPolicy"
-const DefaultAsyncMediaRetryJSON = `{"enabled":false,"max_retries":2,"channel_status_codes":{},"channel_ids":[],"selected_channels_only":true}`
+const DefaultAsyncMediaRetryJSON = `{"enabled":false,"max_retries":2,"same_channel_retries":1,"channel_status_codes":{},"channel_ids":[],"selected_channels_only":true}`
 
 // AsyncMediaRetryPolicy 一次保存完整策略，避免开关、状态码和渠道范围出现半更新。
 type AsyncMediaRetryPolicy struct {
 	Enabled    bool `json:"enabled"`
 	MaxRetries int  `json:"max_retries"`
+	// 原渠道重试单独计数，不占用换渠道次数；缺失字段的旧配置保持原行为。
+	SameChannelRetries int `json:"same_channel_retries"`
 	// 旧字段仅用于读取已有配置；新配置按渠道保存，空映射不会回退到通用错误码。
 	StatusCodes        string         `json:"status_codes,omitempty"`
 	ChannelStatusCodes map[int]string `json:"channel_status_codes"`
 	ChannelIDs         []int          `json:"channel_ids"`
-	// 新界面始终使用勾选名单；保留旧配置缺失该字段时的兼容行为。
+	// 名单只限定触发重试的失败渠道，不限定接收切换的备用渠道。
 	SelectedChannelsOnly bool `json:"selected_channels_only,omitempty"`
 	ranges               []StatusCodeRange
 	channelRanges        map[int][]StatusCodeRange
@@ -31,6 +33,9 @@ func ParseAsyncMediaRetryPolicy(value string) (AsyncMediaRetryPolicy, error) {
 	}
 	if policy.MaxRetries < 0 || policy.MaxRetries > 20 {
 		return policy, fmt.Errorf("换渠道重试次数必须是 0 到 20 的整数")
+	}
+	if policy.SameChannelRetries < 0 || policy.SameChannelRetries > 5 {
+		return policy, fmt.Errorf("原渠道重试次数必须是 0 到 5 的整数")
 	}
 	if policy.ChannelStatusCodes == nil {
 		// 尚未保存新版界面的旧配置保留原行为，避免升级时突然丢失路由策略。

@@ -67,6 +67,8 @@ export function AsyncMediaRetrySection(props: { value: string }) {
       const raw = JSON.parse(props.value)
       return schema.parse({
         ...raw,
+        // 旧配置缺失字段时展示为0，不自动增加付费提交次数。
+        same_channel_retries: raw.same_channel_retries ?? 0,
         channel_status_codes: raw.channel_status_codes ?? {},
         selected_channels_only: raw.selected_channels_only ?? false,
       })
@@ -232,6 +234,30 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
           />
           <FormField
             control={form.control}
+            name='same_channel_retries'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Same-channel retry limit')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={5}
+                    step={1}
+                    {...safeNumberFieldProps(field)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Additional attempts on the current channel before switching. Zero skips same-channel retries.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
             name='max_retries'
             render={({ field }) => (
               <FormItem>
@@ -247,7 +273,7 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Excludes the first attempt. Zero disables retries; each channel is tried at most once.'
+                    'Maximum additional channels. Same-channel retries do not consume this limit; zero disables channel switching.'
                   )}
                 </FormDescription>
                 <FormMessage />
@@ -256,7 +282,7 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
           />
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Only selected channels can trigger and receive failover. Unselected channels keep single-attempt behavior.'
+              'Selected channels trigger retries using their own error codes. Any eligible channel can receive failover; unselected channels do not trigger further retries.'
             )}
           </p>
           <div className='min-w-0 space-y-3'>

@@ -32,7 +32,7 @@ func TestAsyncMediaRoutingPerChannelCodes(t *testing.T) {
 	}
 }
 
-// 清空勾选后不允许从空名单随机挑选全站渠道，即使保留了错误码草稿。
+// 清空勾选后不能启动重试，即使保留了错误码草稿；名单不参与备用渠道选择。
 func TestAsyncMediaRoutingEmptySelection(t *testing.T) {
 	prepareAsyncCompatRelay(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
 	require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, `{"enabled":true,"max_retries":2,"channel_ids":[],"channel_status_codes":{"1":"500"},"selected_channels_only":true}`))
@@ -43,7 +43,4 @@ func TestAsyncMediaRoutingEmptySelection(t *testing.T) {
 	require.NoError(t, service.BeginAsyncMediaAttempt(c))
 	service.ObserveAsyncMediaHTTPFailure(c.Request.Context(), &http.Response{StatusCode: 500, Header: http.Header{}}, []byte(`{"error":"rejected"}`), nil)
 	require.Equal(t, "channel_not_selected", service.DecideAsyncMediaRetry(c, 2, false).Reason)
-	channel, _, err := service.SelectAsyncMediaRetryChannel(&service.RetryParam{Ctx: c, TokenGroup: "default", ModelName: "dall-e-3"})
-	require.NoError(t, err)
-	require.Nil(t, channel)
 }

@@ -73,7 +73,11 @@ export function TaskRoutingHistory(props: { events?: TaskRoutingEvent[] }) {
                   {policyLabel(t, event.decision.reason)}
                   {event.decision.action === 'retry' && (
                     <span className='text-primary ml-2'>
-                      {t('Switch channel')}
+                      {t(
+                        event.decision.reason === 'retry_same_channel'
+                          ? 'Retry current channel'
+                          : 'Switch channel'
+                      )}
                     </span>
                   )}
                   {event.error_code && (
