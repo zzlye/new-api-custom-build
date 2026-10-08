@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -79,6 +80,11 @@ func TestAsyncMediaRoutingSwitchesChannel(t *testing.T) {
 
 // 次数、错误码、白名单与接单保护同时经过图片及视频的实际提交链路。
 func TestAsyncMediaRoutingRules(t *testing.T) {
+	previousErrorLog, previousConsumeLog := constant.ErrorLogEnabled, common.LogConsumeEnabled
+	constant.ErrorLogEnabled, common.LogConsumeEnabled = true, true
+	t.Cleanup(func() {
+		constant.ErrorLogEnabled, common.LogConsumeEnabled = previousErrorLog, previousConsumeLog
+	})
 	for _, video := range []bool{false, true} {
 		for _, test := range []struct {
 			name          string
@@ -113,9 +119,14 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 			{name: "原渠道次数不占切换预算", status: 429, codes: "429", budget: 1, same: 2, allFail: true, want: [3]int32{3, 3, 0}},
 			{name: "零切换仍可重试原渠道", status: 503, codes: "503", budget: 0, same: 1, allFail: true, want: [3]int32{2, 0, 0}},
 			{name: "未勾选备用失败后不再重试", status: 503, codes: "503", budget: 2, same: 1, selected: []int{1}, allFail: true, want: [3]int32{2, 1, 0}},
-			{name: "原渠道重试开启仍不重发超时", status: 504, codes: "500-599", budget: 2, same: 1, want: [3]int32{1, 0, 0}},
+			{name: "配置504先自身重试再切渠道", status: 504, codes: "429,503,504", budget: 2, same: 1, perChannel: true, selected: []int{1}, want: [3]int32{2, 1, 0}},
+			{name: "配置504自身重试恢复", status: 504, codes: "504", budget: 2, same: 1, firstRecovers: true, want: [3]int32{2, 0, 0}},
+			{name: "配置504渠道全部失败只留最终日志", status: 504, codes: "500-599", budget: 2, same: 1, allFail: true, want: [3]int32{2, 2, 2}},
+			{name: "未配置504不重试", status: 504, codes: "429,503", budget: 2, same: 1, want: [3]int32{1, 0, 0}},
+			{name: "504已经接单不重发", status: 504, codes: "504", budget: 2, same: 1, body: `{"task_id":"accepted-job"}`, want: [3]int32{1, 0, 0}},
+			{name: "504响应不完整不重发", status: 504, codes: "504", budget: 2, same: 1, mode: "truncated", want: [3]int32{1, 0, 0}},
 			{name: "原渠道重试开启仍不重发已接单", status: 503, codes: "503", budget: 2, same: 1, body: `{"task_id":"accepted-job"}`, want: [3]int32{1, 0, 0}},
-			{name: "网关超时不重复扣费", status: 504, codes: "500-599", budget: 2, want: [3]int32{1, 0, 0}},
+			{name: "配置504直接切换备用", status: 504, codes: "500-599", budget: 2, want: [3]int32{1, 1, 0}},
 			{name: "请求超时不重发", status: 408, codes: "400-599", budget: 2, want: [3]int32{1, 0, 0}},
 			{name: "响应含任务编号不重发", status: 500, codes: "500", budget: 2, body: `{"task_id":"accepted-job","error":{"message":"later error"}}`, want: [3]int32{1, 0, 0}},
 			{name: "错误映射不隐藏上游500", status: 500, mapping: `{"500":"400"}`, codes: "500", budget: 2, want: [3]int32{1, 1, 0}},
@@ -242,8 +253,103 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 				} else {
 					require.Zero(t, log.Quota)
 				}
+				// 一个内部任务只保留最终使用记录，完整尝试过程仍留在任务详情中。
+				var usageLogs []model.Log
+				require.NoError(t, model.LOG_DB.Where("user_id = ?", user.Id).Order("id asc").Find(&usageLogs).Error)
+				require.Len(t, usageLogs, 1, "原渠道重试和切换渠道不得新增使用日志")
+				wantType := model.LogTypeError
+				if response.Code == http.StatusOK {
+					wantType = model.LogTypeConsume
+				}
+				require.Equal(t, wantType, usageLogs[0].Type)
+				require.Equal(t, expected[len(expected)-1], usageLogs[0].ChannelId)
+				var attempts []int
+				for _, event := range details.RoutingEvents {
+					if event.Decision.Action == "attempt" {
+						attempts = append(attempts, event.ChannelID)
+					}
+				}
+				require.Equal(t, expected, attempts, "合并日志不得丢失渠道尝试过程")
+				other, err := common.StrToMap(usageLogs[0].Other)
+				require.NoError(t, err)
+				admin, ok := other["admin_info"].(map[string]any)
+				require.True(t, ok)
+				require.NotEmpty(t, admin["request_policy"], "最终使用日志必须包含完整路由过程")
 			})
 		}
+	}
+}
+
+// 普通同步请求保留原来的逐次错误日志，异步任务终结时重复调用也只能写一条。
+func TestAsyncMediaRoutingErrorLogLifecycle(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			for _, async := range []bool{false, true} {
+				t.Run(fmt.Sprintf("async_%t", async), func(t *testing.T) {
+					prepareAsyncMediaController(t)
+					if dialect != "sqlite" {
+						var driver gorm.Dialector
+						if dialect == "mysql" {
+							if os.Getenv("TEST_MYSQL_DSN") == "" {
+								t.Skip("未设置测试 MySQL")
+							}
+							driver = mysql.Open(os.Getenv("TEST_MYSQL_DSN"))
+						} else {
+							if os.Getenv("TEST_POSTGRES_DSN") == "" {
+								t.Skip("未设置测试 PostgreSQL")
+							}
+							driver = postgres.Open(os.Getenv("TEST_POSTGRES_DSN"))
+						}
+						db, err := gorm.Open(driver, &gorm.Config{NamingStrategy: schema.NamingStrategy{TablePrefix: "merged_retry_logs_test_"}})
+						require.NoError(t, err)
+						sqlDB, err := db.DB()
+						require.NoError(t, err)
+						previousDB, previousLogDB := model.DB, model.LOG_DB
+						model.DB, model.LOG_DB = db, db
+						t.Cleanup(func() {
+							require.NoError(t, db.Migrator().DropTable(&model.Log{}, &model.User{}))
+							model.DB, model.LOG_DB = previousDB, previousLogDB
+							require.NoError(t, sqlDB.Close())
+						})
+						require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
+						var version string
+						require.NoError(t, db.Raw("SELECT version()").Scan(&version).Error)
+						t.Logf("数据库版本: %s", version)
+					}
+					previous := constant.ErrorLogEnabled
+					constant.ErrorLogEnabled = true
+					t.Cleanup(func() { constant.ErrorLogEnabled = previous })
+					user := &model.User{Id: 31, Username: "retry-log-fixture", Group: "default"}
+					require.NoError(t, model.DB.Create(user).Error)
+					c, _ := gin.CreateTestContext(httptest.NewRecorder())
+					c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+					c.Set("id", user.Id)
+					c.Set("group", "default")
+					if async {
+						c.Set(model.AsyncRelayContextKey, "async-log-fixture")
+					}
+					apiErr := relaytypes.NewOpenAIError(errors.New("upstream rejected"), relaytypes.ErrorCodeBadResponseStatusCode, http.StatusServiceUnavailable)
+					for _, channelID := range []int{1, 1, 2} {
+						c.Set("channel_id", channelID)
+						service.RequestPolicy(c).BeginAttempt(&model.Channel{Id: channelID}, "default")
+						service.RecordPolicyFailure(c, channelID, apiErr, service.PolicyDecision{Action: "retry", Source: "async_media"})
+						service.ProcessChannelError(c, relaytypes.ChannelError{ChannelId: channelID}, apiErr, nil)
+					}
+					var before int64
+					require.NoError(t, model.LOG_DB.Model(&model.Log{}).Count(&before).Error)
+					wantCount := int64(3)
+					if async {
+						require.Zero(t, before, "中间失败只能记录过程，不能写独立错误行")
+						wantCount = 1
+					}
+					service.RecordRequestPolicyTermination(c, apiErr)
+					service.RecordRequestPolicyTermination(c, apiErr)
+					var after int64
+					require.NoError(t, model.LOG_DB.Model(&model.Log{}).Count(&after).Error)
+					require.Equal(t, wantCount, after)
+				})
+			}
+		})
 	}
 }
 

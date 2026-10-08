@@ -16,11 +16,15 @@ func TestAsyncMediaRetryChannelCodes(t *testing.T) {
 	require.True(t, policy.MatchesStatus(38, 429))
 	require.False(t, policy.MatchesStatus(99, 500))
 	require.Empty(t, policy.StatusCodes)
-	for _, code := range []int{408, 504, 524} {
+	for _, code := range []int{408, 524} {
 		policy, err = ParseAsyncMediaRetryPolicy(`{"channel_status_codes":{"12":"400-599"}}`)
 		require.NoError(t, err)
 		require.False(t, policy.MatchesStatus(12, code))
 	}
+	policy, err = ParseAsyncMediaRetryPolicy(`{"channel_status_codes":{"12":"429,503,504","38":"429,503"}}`)
+	require.NoError(t, err)
+	require.True(t, policy.MatchesStatus(12, 504), "完整上游504响应必须遵循该渠道的显式配置")
+	require.False(t, policy.MatchesStatus(38, 504))
 	policy, err = ParseAsyncMediaRetryPolicy(`{"status_codes":"500","channel_status_codes":{}}`)
 	require.NoError(t, err)
 	require.False(t, policy.MatchesStatus(12, 500))

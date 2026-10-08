@@ -16,6 +16,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const asyncMediaPendingErrorLogKey = "async_media_pending_error_log"
+
+// asyncMediaPendingErrorLog 保留最后一次失败的渠道快照，任务终结前不写使用日志。
+type asyncMediaPendingErrorLog struct {
+	channel   types.ChannelError
+	relayInfo *relaycommon.RelayInfo
+}
+
 // DecideRelayRetry is the single retry decision for relay attempts. The reason
 // is recorded in the request policy decision events of the log details.
 func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) PolicyDecision {
@@ -79,6 +87,16 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		// 中间失败仍执行渠道健康处理，使用日志由最终结果统一写入。
+		c.Set(asyncMediaPendingErrorLogKey, asyncMediaPendingErrorLog{channel: channelError, relayInfo: relayInfo})
+		return
+	}
+	recordChannelErrorLog(c, channelError, err, relayInfo)
+}
+
+// recordChannelErrorLog 复用同一日志格式，不重复执行禁用渠道或发送通知。
+func recordChannelErrorLog(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		userId := c.GetInt("id")
 		tokenName := c.GetString("token_name")

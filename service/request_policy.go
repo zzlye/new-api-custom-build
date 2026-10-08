@@ -162,10 +162,8 @@ func EffectiveSessionMode(setting *operation_setting.ChannelAffinitySetting, rul
 	return "prefer", "session_rule"
 }
 
-// RecordRequestPolicyTermination appends the final decision after routing has
-// stopped. It never writes a log row itself: the per-channel error log written
-// by ProcessChannelError already carries the decision record, so a second row
-// here would duplicate it.
+// RecordRequestPolicyTermination 记录最终失败决策，内部异步仅在此写入一条最终错误日志。
+// 普通同步请求仍由 ProcessChannelError 逐次记录，此处不再重复写入。
 func RecordRequestPolicyTermination(c *gin.Context, apiErr *types.NewAPIError) {
 	if c == nil || apiErr == nil {
 		return
@@ -178,5 +176,12 @@ func RecordRequestPolicyTermination(c *gin.Context, apiErr *types.NewAPIError) {
 	events := state.Events()
 	if len(events) == 0 || events[len(events)-1].Decision.Action != "stop" {
 		state.AddEvent(PolicyEvent{ChannelID: c.GetInt("channel_id"), Status: asyncMediaUpstreamStatus(c, apiErr.StatusCode), ErrorCode: string(apiErr.GetErrorCode()), Decision: PolicyDecision{Action: "stop", Reason: "request_failed", Source: "system"}, Health: "unchanged"})
+	}
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		if pending, exists := c.Get(asyncMediaPendingErrorLogKey); exists {
+			// 无备用渠道或后续本地失败也在此收口，避免略过中间日志后丢失最终错误。
+			failure := pending.(asyncMediaPendingErrorLog)
+			recordChannelErrorLog(c, failure.channel, apiErr, failure.relayInfo)
+		}
 	}
 }

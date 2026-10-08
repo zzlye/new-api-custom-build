@@ -63,6 +63,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		setTaskImageCount(other, info.PriceData.OtherRatios()["image_count"])
 	}
 	appendTaskLogInfo(task, other)
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		// 视频等原生子任务的最终消费记录也携带完整重试过程，不另写中间错误行。
+		AppendRelayLogAdminInfo(c, info, other)
+	}
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,

@@ -110,10 +110,11 @@ func (policy AsyncMediaRetryPolicy) IncludesChannel(id int) bool {
 }
 
 func (policy AsyncMediaRetryPolicy) MatchesStatus(channelID, code int) bool {
-	// 超时表示上游是否接单不明，即使范围包含这些状态也不重新生成。
+	// 完整上游504错误遵循渠道配置；断网、未读完响应及已接单由响应证据单独阻止重发。
+	// 408和524仍保留请求超时的排除规则。
 	ranges := policy.ranges
 	if policy.ChannelStatusCodes != nil {
 		ranges = policy.channelRanges[channelID]
 	}
-	return code != 408 && code != 504 && code != 524 && shouldMatchStatusCodeRanges(ranges, code)
+	return code != 408 && code != 524 && shouldMatchStatusCodeRanges(ranges, code)
 }
