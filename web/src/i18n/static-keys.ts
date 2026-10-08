@@ -890,4 +890,6 @@ export const STATIC_I18N_KEYS = [
   '{{count}} task logs were kept because they are still running or their files belong to another node.',
   'Expiration removes generated and reference files only. Task logs remain until you clean them here.',
   '{{processed}} of {{total}} records processed.',
+  'Each channel uses its own retry error codes. Leave blank to disable retries from that channel.',
+  'Configure retry error codes for at least one channel.',
 ] as const

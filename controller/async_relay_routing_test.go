@@ -51,7 +51,7 @@ func TestAsyncMediaRoutingSwitchesChannel(t *testing.T) {
 	require.NoError(t, model.DB.Create(channel).Error)
 	require.NoError(t, model.DB.Create(&model.Ability{Group: "default", Model: "dall-e-3", ChannelId: channel.Id, Enabled: true}).Error)
 	common.OptionMapRWMutex.Lock()
-	common.OptionMap["AsyncMediaRetryPolicy"] = `{"enabled":true,"max_retries":2,"status_codes":"500","channel_ids":[]}`
+	common.OptionMap["AsyncMediaRetryPolicy"] = `{"enabled":true,"max_retries":2,"channel_status_codes":{"1":"500","2":"429"},"channel_ids":[]}`
 	common.OptionMapRWMutex.Unlock()
 	response, done, _ := beginAsyncCompatRequest(t, user, token, "/v1/images/generations", `{"model":"dall-e-3","prompt":"路由测试","n":1,"size":"1024x1024"}`)
 	count, err := ProcessAsyncRelayTasks(context.Background(), 1)
@@ -255,7 +255,7 @@ func TestAsyncMediaRoutingDatabaseMatrix(t *testing.T) {
 			var version string
 			require.NoError(t, db.Raw(query).Scan(&version).Error)
 			t.Logf("数据库版本: %s", version)
-			config := `{"enabled":true,"max_retries":2,"status_codes":"500,502-503","channel_ids":[1,2,3]}`
+			config := `{"enabled":true,"max_retries":2,"channel_status_codes":{"1":"500","2":"502-503","3":"429"},"channel_ids":[1,2,3]}`
 			require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, config))
 			var saved model.Option
 			require.NoError(t, db.First(&saved).Error)
@@ -372,7 +372,7 @@ func TestAsyncMediaRoutingConfiguredVideo(t *testing.T) {
 func TestAsyncMediaRoutingRootSettingsAndDetails(t *testing.T) {
 	prepareAsyncMediaController(t)
 	require.NoError(t, model.DB.AutoMigrate(&model.AuditLog{}))
-	value := `{"enabled":true,"max_retries":3,"status_codes":"500-503","channel_ids":[1,2]}`
+	value := `{"enabled":true,"max_retries":3,"channel_status_codes":{"1":"500-503","2":"429"},"channel_ids":[1,2]}`
 	body, err := common.Marshal(map[string]any{"key": operation_setting.AsyncMediaRetryOption, "value": value})
 	require.NoError(t, err)
 	for _, role := range []int{0, common.RoleCommonUser, common.RoleAdminUser} {

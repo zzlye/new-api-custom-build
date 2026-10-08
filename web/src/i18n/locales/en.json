@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Configure retry error codes for at least one channel.": "Configure retry error codes for at least one channel.",
+    "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.": "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.",
     "User pricing": "User pricing",
     "Search users by name or ID": "Search users by name or ID",
     "Selected user": "Selected user",

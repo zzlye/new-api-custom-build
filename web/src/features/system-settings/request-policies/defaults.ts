@@ -49,7 +49,7 @@ export type RequestPolicySettings = RetrySettings &
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
   AsyncMediaRetryPolicy:
-    '{"enabled":false,"max_retries":2,"status_codes":"429,500,502,503","channel_ids":[]}',
+    '{"enabled":false,"max_retries":2,"channel_status_codes":{},"channel_ids":[]}',
   RetryTimes: 0,
   AutomaticRetryStatusCodes:
     '100-199,300-399,401-407,409-499,500-503,505-523,525-599',

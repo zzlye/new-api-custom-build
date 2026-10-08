@@ -21,27 +21,55 @@ import { z } from 'zod'
 
 import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 
-export const defaultAsyncMediaRetry = {
+export type AsyncMediaRetryValues = {
+  enabled: boolean
+  max_retries: number
+  channel_ids: number[]
+  channel_status_codes: Record<string, string>
+  status_codes?: string
+}
+
+export const defaultAsyncMediaRetry: AsyncMediaRetryValues = {
   enabled: false,
   max_retries: 2,
-  status_codes: '429,500,502,503',
+  channel_status_codes: {},
   channel_ids: [] as number[],
 }
 
 export function createAsyncMediaRetrySchema(t: TFunction) {
-  return z.object({
-    enabled: z.boolean(),
-    max_retries: z.number().int().min(0).max(20),
-    status_codes: z.string().refine((value) => {
-      const parsed = parseHttpStatusCodeRules(value)
-      return (
-        parsed.ok &&
-        parsed.ranges.length > 0 &&
-        parsed.ranges.every((range) => range.start >= 400 && range.end <= 599)
-      )
-    }, t('Enter HTTP error codes from 400 to 599, such as 500 or 500-503.')),
-    channel_ids: z.array(z.number().int().positive()).max(10000),
-  })
+  return z
+    .object({
+      enabled: z.boolean(),
+      max_retries: z.number().int().min(0).max(20),
+      // 旧通用字段只用于首次展示已有策略，提交时只保存渠道规则。
+      status_codes: z.string().optional(),
+      channel_status_codes: z.record(
+        z.string().regex(/^[1-9]\d*$/),
+        z.string().refine((value) => {
+          if (!value.trim()) return true
+          const parsed = parseHttpStatusCodeRules(value)
+          return (
+            parsed.ok &&
+            parsed.ranges.length > 0 &&
+            parsed.ranges.every(
+              (range) => range.start >= 400 && range.end <= 599
+            )
+          )
+        }, t('Enter HTTP error codes from 400 to 599, such as 500 or 500-503.'))
+      ),
+      channel_ids: z.array(z.number().int().positive()).max(10000),
+    })
+    .superRefine((value, context) => {
+      if (
+        value.enabled &&
+        !value.status_codes &&
+        !Object.values(value.channel_status_codes).some((codes) => codes.trim())
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['enabled'],
+          message: t('Configure retry error codes for at least one channel.'),
+        })
+      }
+    })
 }
-
-export type AsyncMediaRetryValues = typeof defaultAsyncMediaRetry

@@ -65,7 +65,11 @@ export function AsyncMediaRetrySection(props: { value: string }) {
   const schema = useMemo(() => createAsyncMediaRetrySchema(t), [t])
   const config = useMemo(() => {
     try {
-      return schema.parse(JSON.parse(props.value))
+      const raw = JSON.parse(props.value)
+      return schema.parse({
+        ...raw,
+        channel_status_codes: raw.channel_status_codes ?? {},
+      })
     } catch {
       return null
     }
@@ -111,6 +115,17 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
     },
   })
   const query = search.trim().toLowerCase()
+  // 旧策略只在尚未编辑的渠道行填入原值，保存后不再保留通用错误码。
+  useEffect(() => {
+    if (!channels.data) return
+    for (const channel of channels.data) {
+      const name = `channel_status_codes.${channel.id}` as const
+      if (form.getValues(name) === undefined) {
+        form.setValue(name, props.defaults.status_codes ?? '')
+      }
+    }
+    form.setValue('status_codes', undefined)
+  }, [channels.data, props.defaults, form])
   const visible = (channels.data || []).filter(
     (channel) =>
       channel.name.toLowerCase().includes(query) ||
@@ -143,10 +158,31 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
       setSelectionError(true)
       return
     }
+    if (restricted) {
+      const empty = values.channel_ids.filter(
+        (id) => !values.channel_status_codes[id]?.trim()
+      )
+      for (const id of empty) {
+        form.setError(`channel_status_codes.${id}`, {
+          message: t(
+            'Enter HTTP error codes from 400 to 599, such as 500 or 500-503.'
+          ),
+        })
+      }
+      if (empty.length > 0) return
+    }
     setSelectionError(false)
     save.mutate({
       ...values,
-      status_codes: parseHttpStatusCodeRules(values.status_codes).normalized,
+      status_codes: undefined,
+      channel_status_codes: Object.fromEntries(
+        Object.entries(values.channel_status_codes)
+          .filter(([, value]) => value.trim())
+          .map(([id, value]) => [
+            id,
+            parseHttpStatusCodeRules(value).normalized,
+          ])
+      ),
       channel_ids: restricted ? values.channel_ids : [],
     })
   })
@@ -162,7 +198,7 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
       <SettingsPageFormActions
         onSave={submit}
         isSaving={save.isPending}
-        isSaveDisabled={restricted && !channels.data}
+        isSaveDisabled={!channels.data}
       />
       <SettingsCard title={t('Media task retries')}>
         <fieldset disabled={save.isPending} className='min-w-0 space-y-5'>
@@ -205,24 +241,6 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
               </FormItem>
             )}
           />
-          <FormField
-            control={form.control}
-            name='status_codes'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Retry HTTP error codes')}</FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder='429,500,502,503' />
-                </FormControl>
-                <FormDescription>
-                  {t(
-                    'Match the original upstream status. Timeouts (408, 504, 524), accepted tasks and media download failures never start another generation.'
-                  )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
           <div className='flex items-center justify-between gap-3'>
             <Label htmlFor='async-retry-restricted'>
               {t('Limit failover to selected channels')}
@@ -243,24 +261,24 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                   'Only selected channels can trigger and receive failover. Unselected channels keep single-attempt behavior.'
                 )
               : t(
-                  'All eligible channels may participate; model, group and pinned-channel rules still apply.'
+                  'Each channel uses its own retry error codes. Leave blank to disable retries from that channel.'
                 )}
           </p>
-          {restricted && (
-            <div className='min-w-0 space-y-3'>
-              <Input
-                aria-label={t('Search channels by name or ID')}
-                placeholder={t('Search channels by name or ID')}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
+          <div className='min-w-0 space-y-3'>
+            <Input
+              aria-label={t('Search channels by name or ID')}
+              placeholder={t('Search channels by name or ID')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            {channels.isError ? (
+              <ErrorState
+                title={t('Failed to load channels')}
+                onRetry={() => void channels.refetch()}
               />
-              {channels.isError ? (
-                <ErrorState
-                  title={t('Failed to load channels')}
-                  onRetry={() => void channels.refetch()}
-                />
-              ) : (
-                <>
+            ) : (
+              <>
+                {restricted && (
                   <div className='flex flex-wrap items-center gap-2'>
                     <Button
                       type='button'
@@ -292,32 +310,41 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                       })}
                     </span>
                   </div>
-                  <ScrollArea
-                    className='h-72 rounded-lg border'
-                    aria-label={t('Retry channel list')}
-                  >
-                    <div className='divide-y'>
-                      {channels.isPending && (
-                        <p className='p-4 text-sm'>{t('Loading...')}</p>
-                      )}
-                      {!channels.isPending && visible.length === 0 && (
-                        <p className='p-4 text-sm'>{t('No channels found')}</p>
-                      )}
-                      {visible.map((channel) => (
-                        <Label
-                          key={channel.id}
-                          className='hover:bg-muted/40 flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2 font-normal'
-                        >
-                          <Checkbox
-                            checked={selected.includes(channel.id)}
-                            onCheckedChange={(checked) =>
-                              setSelected(
-                                checked
-                                  ? [...new Set([...selected, channel.id])]
-                                  : selected.filter((id) => id !== channel.id)
-                              )
-                            }
-                          />
+                )}
+                <ScrollArea
+                  className='h-72 rounded-lg border'
+                  aria-label={t('Retry channel list')}
+                >
+                  <div className='divide-y'>
+                    {channels.isPending && (
+                      <p className='p-4 text-sm'>{t('Loading...')}</p>
+                    )}
+                    {!channels.isPending && visible.length === 0 && (
+                      <p className='p-4 text-sm'>{t('No channels found')}</p>
+                    )}
+                    <div className='bg-muted/40 hidden grid-cols-[minmax(0,1fr)_minmax(160px,1fr)] gap-3 px-3 py-2 text-sm font-medium sm:grid'>
+                      <span>{t('Channel')}</span>
+                      <span>{t('Retry HTTP error codes')}</span>
+                    </div>
+                    {visible.map((channel) => (
+                      <div
+                        key={channel.id}
+                        className='hover:bg-muted/40 grid min-h-16 grid-cols-1 items-start gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(160px,1fr)]'
+                      >
+                        <div className='flex min-w-0 items-center gap-3 pt-2'>
+                          {restricted && (
+                            <Checkbox
+                              aria-label={`${channel.name} #${channel.id}`}
+                              checked={selected.includes(channel.id)}
+                              onCheckedChange={(checked) =>
+                                setSelected(
+                                  checked
+                                    ? [...new Set([...selected, channel.id])]
+                                    : selected.filter((id) => id !== channel.id)
+                                )
+                              }
+                            />
+                          )}
                           <span className='min-w-0 flex-1 break-words'>
                             {channel.name}
                           </span>
@@ -329,39 +356,62 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                               {t('Disabled')}
                             </span>
                           )}
-                        </Label>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                  {missing.length > 0 && (
-                    <p className='text-muted-foreground text-sm'>
-                      {t('Selected channels no longer available')}:{' '}
-                      {missing.join(', ')}{' '}
-                      <Button
-                        type='button'
-                        size='sm'
-                        variant='ghost'
-                        onClick={() =>
-                          setSelected(
-                            selected.filter((id) => !missing.includes(id))
-                          )
-                        }
-                      >
-                        {t('Remove')}
-                      </Button>
-                    </p>
-                  )}
-                </>
-              )}
-              {selectionError && (
-                <p role='alert' className='text-destructive text-sm'>
-                  {t(
-                    'Select at least one channel or disable the channel limit.'
-                  )}
-                </p>
-              )}
-            </div>
-          )}
+                        </div>
+                        <FormField
+                          control={form.control}
+                          name={`channel_status_codes.${channel.id}`}
+                          render={({ field }) => (
+                            <FormItem className='min-w-0'>
+                              <FormLabel className='sr-only'>
+                                {t('Retry HTTP error codes')} — {channel.name} #
+                                {channel.id}
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  value={field.value ?? ''}
+                                  placeholder={t('Not configured')}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+                {missing.length > 0 && (
+                  <p className='text-muted-foreground text-sm'>
+                    {t('Selected channels no longer available')}:{' '}
+                    {missing.join(', ')}{' '}
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='ghost'
+                      onClick={() =>
+                        setSelected(
+                          selected.filter((id) => !missing.includes(id))
+                        )
+                      }
+                    >
+                      {t('Remove')}
+                    </Button>
+                  </p>
+                )}
+              </>
+            )}
+            {selectionError && (
+              <p role='alert' className='text-destructive text-sm'>
+                {t('Select at least one channel or disable the channel limit.')}
+              </p>
+            )}
+            {form.formState.errors.enabled?.message && (
+              <p role='alert' className='text-destructive text-sm'>
+                {form.formState.errors.enabled.message}
+              </p>
+            )}
+          </div>
           {Object.keys(dirtyFields).length > 0 && (
             <span className='sr-only'>{t('Unsaved changes')}</span>
           )}

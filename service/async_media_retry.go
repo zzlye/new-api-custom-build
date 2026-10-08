@@ -143,7 +143,7 @@ func DecideAsyncMediaRetry(c *gin.Context, remaining int, explicitlyStopped bool
 		evidence, ok := c.Request.Context().Value(asyncMediaResponseKey{}).(*asyncMediaResponse)
 		if !ok || !evidence.rejected {
 			stop.Reason = "submission_not_rejected"
-		} else if !policy.MatchesStatus(evidence.status) {
+		} else if !policy.MatchesStatus(c.GetInt("channel_id"), evidence.status) {
 			stop.Reason = "status_not_retryable"
 		} else {
 			return PolicyDecision{Action: "retry", Source: "async_media", Reason: "retry_status_matched"}
