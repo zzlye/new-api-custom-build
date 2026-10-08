@@ -8,7 +8,7 @@ import (
 )
 
 const AsyncMediaRetryOption = "AsyncMediaRetryPolicy"
-const DefaultAsyncMediaRetryJSON = `{"enabled":false,"max_retries":2,"channel_status_codes":{},"channel_ids":[]}`
+const DefaultAsyncMediaRetryJSON = `{"enabled":false,"max_retries":2,"channel_status_codes":{},"channel_ids":[],"selected_channels_only":true}`
 
 // AsyncMediaRetryPolicy 一次保存完整策略，避免开关、状态码和渠道范围出现半更新。
 type AsyncMediaRetryPolicy struct {
@@ -18,8 +18,10 @@ type AsyncMediaRetryPolicy struct {
 	StatusCodes        string         `json:"status_codes,omitempty"`
 	ChannelStatusCodes map[int]string `json:"channel_status_codes"`
 	ChannelIDs         []int          `json:"channel_ids"`
-	ranges             []StatusCodeRange
-	channelRanges      map[int][]StatusCodeRange
+	// 新界面始终使用勾选名单；保留旧配置缺失该字段时的兼容行为。
+	SelectedChannelsOnly bool `json:"selected_channels_only,omitempty"`
+	ranges               []StatusCodeRange
+	channelRanges        map[int][]StatusCodeRange
 }
 
 func ParseAsyncMediaRetryPolicy(value string) (AsyncMediaRetryPolicy, error) {
@@ -99,7 +101,7 @@ func GetAsyncMediaRetryPolicy() AsyncMediaRetryPolicy {
 }
 
 func (policy AsyncMediaRetryPolicy) IncludesChannel(id int) bool {
-	return len(policy.ChannelIDs) == 0 || slices.Contains(policy.ChannelIDs, id)
+	return (!policy.SelectedChannelsOnly && len(policy.ChannelIDs) == 0) || slices.Contains(policy.ChannelIDs, id)
 }
 
 func (policy AsyncMediaRetryPolicy) MatchesStatus(channelID, code int) bool {

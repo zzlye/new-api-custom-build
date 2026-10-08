@@ -892,4 +892,5 @@ export const STATIC_I18N_KEYS = [
   '{{processed}} of {{total}} records processed.',
   'Each channel uses its own retry error codes. Leave blank to disable retries from that channel.',
   'Configure retry error codes for at least one channel.',
+  'Select at least one channel before enabling failover.',
 ] as const

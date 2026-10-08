@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Select at least one channel before enabling failover.": "启用换渠道重试前，请至少勾选一个渠道。",
     "Configure retry error codes for at least one channel.": "请至少为一个渠道配置重试错误码。",
     "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.": "每个渠道使用独立的重试错误码，留空时该渠道失败不触发换渠道重试。",
     "User pricing": "用户定价",

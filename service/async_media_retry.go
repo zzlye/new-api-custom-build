@@ -166,7 +166,7 @@ func SelectAsyncMediaRetryChannel(param *RetryParam) (*model.Channel, string, er
 	}
 	filters = append(filters, dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: excluded})
 	policy := AsyncMediaRetryConfig(c)
-	if len(policy.ChannelIDs) > 0 {
+	if policy.SelectedChannelsOnly || len(policy.ChannelIDs) > 0 {
 		allowed := make(map[int]bool)
 		for _, id := range policy.ChannelIDs {
 			allowed[id] = true

@@ -43,3 +43,17 @@ func TestAsyncMediaRetryLegacyAndValidation(t *testing.T) {
 		require.Error(t, err, value)
 	}
 }
+
+// 一个总开关配合显式名单；清空名单不能意外变成全部渠道。
+func TestAsyncMediaRetrySelectedChannelsOnly(t *testing.T) {
+	policy, err := ParseAsyncMediaRetryPolicy(`{"enabled":true,"max_retries":2,"channel_status_codes":{"12":"500","38":"429"},"channel_ids":[12],"selected_channels_only":true}`)
+	require.NoError(t, err)
+	require.True(t, policy.IncludesChannel(12))
+	require.False(t, policy.IncludesChannel(38))
+	policy, err = ParseAsyncMediaRetryPolicy(`{"enabled":false,"channel_status_codes":{"12":"500"},"channel_ids":[],"selected_channels_only":true}`)
+	require.NoError(t, err)
+	require.False(t, policy.IncludesChannel(12))
+	legacy, err := ParseAsyncMediaRetryPolicy(`{"channel_status_codes":{"12":"500"},"channel_ids":[]}`)
+	require.NoError(t, err)
+	require.True(t, legacy.IncludesChannel(12))
+}

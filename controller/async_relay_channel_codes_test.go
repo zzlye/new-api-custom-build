@@ -15,7 +15,7 @@ import (
 // 真实决策链必须匹配失败渠道的原始错误码，后续渠道不能沿用首个渠道的规则。
 func TestAsyncMediaRoutingPerChannelCodes(t *testing.T) {
 	prepareAsyncCompatRelay(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
-	require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, `{"enabled":true,"max_retries":2,"channel_ids":[],"channel_status_codes":{"1":"500","2":"429,503"}}`))
+	require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, `{"enabled":true,"max_retries":2,"channel_ids":[1,2],"channel_status_codes":{"1":"500","2":"429,503","3":"500"},"selected_channels_only":true}`))
 	for _, test := range []struct {
 		channel, status int
 		action          string
@@ -30,4 +30,20 @@ func TestAsyncMediaRoutingPerChannelCodes(t *testing.T) {
 		service.ObserveAsyncMediaHTTPFailure(c.Request.Context(), &http.Response{StatusCode: test.status, Header: http.Header{}}, []byte(`{"error":"rejected"}`), nil)
 		require.Equal(t, test.action, service.DecideAsyncMediaRetry(c, 2, false).Action)
 	}
+}
+
+// 清空勾选后不允许从空名单随机挑选全站渠道，即使保留了错误码草稿。
+func TestAsyncMediaRoutingEmptySelection(t *testing.T) {
+	prepareAsyncCompatRelay(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
+	require.NoError(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, `{"enabled":true,"max_retries":2,"channel_ids":[],"channel_status_codes":{"1":"500"},"selected_channels_only":true}`))
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	c.Set(model.AsyncRelayContextKey, "fixture")
+	c.Set("channel_id", 1)
+	require.NoError(t, service.BeginAsyncMediaAttempt(c))
+	service.ObserveAsyncMediaHTTPFailure(c.Request.Context(), &http.Response{StatusCode: 500, Header: http.Header{}}, []byte(`{"error":"rejected"}`), nil)
+	require.Equal(t, "channel_not_selected", service.DecideAsyncMediaRetry(c, 2, false).Reason)
+	channel, _, err := service.SelectAsyncMediaRetryChannel(&service.RetryParam{Ctx: c, TokenGroup: "default", ModelName: "dall-e-3"})
+	require.NoError(t, err)
+	require.Nil(t, channel)
 }

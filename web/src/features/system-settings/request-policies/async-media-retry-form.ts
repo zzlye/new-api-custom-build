@@ -25,6 +25,7 @@ export type AsyncMediaRetryValues = {
   enabled: boolean
   max_retries: number
   channel_ids: number[]
+  selected_channels_only: boolean
   channel_status_codes: Record<string, string>
   status_codes?: string
 }
@@ -34,6 +35,7 @@ export const defaultAsyncMediaRetry: AsyncMediaRetryValues = {
   max_retries: 2,
   channel_status_codes: {},
   channel_ids: [] as number[],
+  selected_channels_only: true,
 }
 
 export function createAsyncMediaRetrySchema(t: TFunction) {
@@ -43,6 +45,7 @@ export function createAsyncMediaRetrySchema(t: TFunction) {
       max_retries: z.number().int().min(0).max(20),
       // 旧通用字段只用于首次展示已有策略，提交时只保存渠道规则。
       status_codes: z.string().optional(),
+      selected_channels_only: z.boolean(),
       channel_status_codes: z.record(
         z.string().regex(/^[1-9]\d*$/),
         z.string().refine((value) => {

@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Select at least one channel before enabling failover.": "Select at least one channel before enabling failover.",
     "Configure retry error codes for at least one channel.": "Configure retry error codes for at least one channel.",
     "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.": "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.",
     "User pricing": "User pricing",

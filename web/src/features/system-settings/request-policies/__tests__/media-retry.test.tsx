@@ -90,21 +90,22 @@ afterEach(() => {
 })
 
 describe('媒体换渠道重试设置', () => {
-  it('root 能配置次数与必填错误码并一次保存完整策略', async () => {
+  it('只展示一个总开关，直接勾选渠道并保存独立错误码', async () => {
     mount()
     const user = userEvent.setup()
+    const banana = await screen.findByLabelText(
+      'Retry HTTP error codes — Banana 主渠道 #12'
+    )
+    expect(screen.getAllByRole('switch')).toHaveLength(1)
+    expect(
+      screen.queryByText('Limit failover to selected channels')
+    ).not.toBeInTheDocument()
     await user.click(
       screen.getByRole('switch', { name: 'Enable media channel failover' })
     )
+    await user.click(screen.getByRole('checkbox', { name: /Banana/ }))
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3' } })
-    fireEvent.change(
-      await screen.findByLabelText(
-        'Retry HTTP error codes — Banana 主渠道 #12'
-      ),
-      {
-        target: { value: '500, 502-503' },
-      }
-    )
+    fireEvent.change(banana, { target: { value: '500, 502-503' } })
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
     const body = vi.mocked(api.put).mock.calls[0][1] as {
@@ -116,7 +117,8 @@ describe('媒体换渠道重试设置', () => {
       enabled: true,
       max_retries: 3,
       channel_status_codes: { '12': '500,502-503' },
-      channel_ids: [],
+      channel_ids: [12],
+      selected_channels_only: true,
     })
     expect(toast.success).toHaveBeenCalled()
     expect(getPolicySectionNavItems(i18next.t)).toEqual(
@@ -138,17 +140,13 @@ describe('媒体换渠道重试设置', () => {
   })
 
   it.each(['200', '600', 'abc', '503-500'])(
-    '错误码 %s 无效时阻止保存',
+    '渠道错误码 %s 无效时阻止保存',
     async (codes) => {
       mount()
-      fireEvent.change(
-        await screen.findByLabelText(
-          'Retry HTTP error codes — Banana 主渠道 #12'
-        ),
-        {
-          target: { value: codes },
-        }
+      const field = await screen.findByLabelText(
+        'Retry HTTP error codes — Banana 主渠道 #12'
       )
+      fireEvent.change(field, { target: { value: codes } })
       await userEvent.click(
         screen.getByRole('button', { name: 'Save Changes' })
       )
@@ -157,17 +155,14 @@ describe('媒体换渠道重试设置', () => {
           'Enter HTTP error codes from 400 to 599, such as 500 or 500-503.'
         )
       ).toBeVisible()
-      expect(
-        await screen.findByLabelText(
-          'Retry HTTP error codes — Banana 主渠道 #12'
-        )
-      ).toHaveAttribute('aria-invalid', 'true')
+      expect(field).toHaveAttribute('aria-invalid', 'true')
       expect(api.put).not.toHaveBeenCalled()
     }
   )
 
   it.each(['-1', '21', '1.5'])('次数 %s 无效时阻止保存', async (value) => {
     mount()
+    await screen.findByRole('checkbox', { name: /Banana/ })
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value } })
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() =>
@@ -179,21 +174,16 @@ describe('媒体换渠道重试设置', () => {
     expect(api.put).not.toHaveBeenCalled()
   })
 
-  it('名单支持名称和 ID 模糊搜索，隐藏项保持勾选并保存', async () => {
+  it('名称和 ID 模糊搜索保留隐藏行勾选及错误码', async () => {
     mount()
     const user = userEvent.setup()
-    await user.click(
-      screen.getByRole('switch', {
-        name: 'Limit failover to selected channels',
-      })
-    )
     fireEvent.change(
       await screen.findByLabelText(
         'Retry HTTP error codes — Banana 主渠道 #12'
       ),
       { target: { value: '500' } }
     )
-    await user.click(await screen.findByRole('checkbox', { name: /Banana/ }))
+    await user.click(screen.getByRole('checkbox', { name: /Banana/ }))
     const search = screen.getByRole('textbox', {
       name: 'Search channels by name or ID',
     })
@@ -209,9 +199,12 @@ describe('媒体换渠道重试设置', () => {
     await user.clear(search)
     await user.type(search, 'bAn')
     expect(screen.getByRole('checkbox', { name: /Banana/ })).toBeChecked()
+    expect(
+      screen.getByLabelText('Retry HTTP error codes — Banana 主渠道 #12')
+    ).toHaveValue('500')
     expect(screen.getByLabelText('Retry channel list')).toHaveClass('h-72')
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
-    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
     const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
     expect(JSON.parse(body.value).channel_ids).toEqual([12, 38])
     expect(JSON.parse(body.value).channel_status_codes).toEqual({
@@ -220,56 +213,99 @@ describe('媒体换渠道重试设置', () => {
     })
   })
 
-  it('限定渠道时空名单阻止保存，关闭限定后保存空名单', async () => {
-    mount()
-    const user = userEvent.setup()
-    await user.click(
-      screen.getByRole('switch', {
-        name: 'Limit failover to selected channels',
+  it('启用时空名单阻止保存，关闭总开关后可以保存空名单', async () => {
+    mount(
+      JSON.stringify({
+        ...defaultAsyncMediaRetry,
+        enabled: true,
+        channel_ids: [12],
+        channel_status_codes: { '12': '500' },
       })
     )
     await screen.findByRole('checkbox', { name: /Banana/ })
-    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear selection' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Select at least one channel'
+      'Select at least one channel before enabling failover.'
     )
     expect(api.put).not.toHaveBeenCalled()
-    await user.click(
-      screen.getByRole('switch', {
-        name: 'Limit failover to selected channels',
-      })
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Enable media channel failover' })
     )
-    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+    const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
+    expect(JSON.parse(body.value)).toMatchObject({
+      enabled: false,
+      channel_ids: [],
+      selected_channels_only: true,
+    })
   })
 
-  it('设置重新加载不覆盖尚未保存的次数和渠道限定', async () => {
-    const rerender = mount()
-    await userEvent.click(
-      screen.getByRole('switch', {
-        name: 'Limit failover to selected channels',
+  it('已取消的勾选在重新加载已保存设置后不会自动勾回', async () => {
+    mount(
+      JSON.stringify({
+        ...defaultAsyncMediaRetry,
+        channel_status_codes: { '12': '500' },
+        channel_ids: [],
       })
-    )
-    await act(async () =>
-      rerender(JSON.stringify({ ...defaultAsyncMediaRetry, max_retries: 4 }))
     )
     expect(
-      screen.getByRole('switch', {
-        name: 'Limit failover to selected channels',
+      await screen.findByRole('checkbox', { name: /Banana/ })
+    ).not.toBeChecked()
+    expect(
+      screen.getByLabelText('Retry HTTP error codes — Banana 主渠道 #12')
+    ).toHaveValue('500')
+  })
+
+  it('保存后未配置行仍可再次提交，不产生无效输入错误', async () => {
+    mount(
+      JSON.stringify({
+        ...defaultAsyncMediaRetry,
+        enabled: true,
+        channel_ids: [12],
+        channel_status_codes: { '12': '500' },
       })
-    ).toBeChecked()
+    )
+    await screen.findByRole('checkbox', { name: /Banana/ })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear selection' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Select at least one channel before enabling failover.'
+    )
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Enable media channel failover' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText('Invalid input')).not.toBeInTheDocument()
+  })
+
+  it('刷新设置保留未保存的勾选和次数草稿', async () => {
+    const rerender = mount()
+    await userEvent.click(
+      await screen.findByRole('checkbox', { name: /Banana/ })
+    )
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '7' } })
     await act(async () =>
       rerender(JSON.stringify({ ...defaultAsyncMediaRetry, max_retries: 5 }))
     )
+    expect(screen.getByRole('checkbox', { name: /Banana/ })).toBeChecked()
     expect(screen.getByRole('spinbutton')).toHaveValue(7)
   })
 
-  it('保存失败保留草稿并显示服务端错误而非成功提示', async () => {
+  it('保存失败保留草稿并展示服务端错误', async () => {
     vi.mocked(api.put).mockResolvedValue({
       data: { success: false, message: '设置保存失败' },
     })
     mount()
+    await screen.findByRole('checkbox', { name: /Banana/ })
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '4' } })
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() =>
@@ -279,7 +315,7 @@ describe('媒体换渠道重试设置', () => {
     expect(screen.getByRole('spinbutton')).toHaveValue(4)
   })
 
-  it('渠道加载失败提供重试且不允许保存未知白名单', async () => {
+  it('渠道加载失败禁用保存，重新加载后可以清除已删除渠道', async () => {
     vi.mocked(api.get).mockRejectedValue(new Error('offline'))
     mount(JSON.stringify({ ...defaultAsyncMediaRetry, channel_ids: [12] }))
     expect(await screen.findByText('Failed to load channels')).toBeVisible()
@@ -289,47 +325,29 @@ describe('媒体换渠道重试设置', () => {
     expect(await screen.findByText('No channels found')).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Select at least one channel'
-    )
-  })
-  it('列表始终显示，两个渠道错误码独立保存并且空白渠道不继承', async () => {
-    mount()
-    const banana = await screen.findByLabelText(
-      'Retry HTTP error codes — Banana 主渠道 #12'
-    )
-    const video = screen.getByLabelText(
-      'Retry HTTP error codes — Video 备用 #38'
-    )
-    expect(
-      screen.queryByLabelText('Retry HTTP error codes')
-    ).not.toBeInTheDocument()
-    fireEvent.change(banana, { target: { value: '500' } })
-    fireEvent.change(video, { target: { value: '429, 503' } })
-    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
-    const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
-    expect(JSON.parse(body.value).channel_status_codes).toEqual({
-      '12': '500',
-      '38': '429,503',
-    })
-    expect(JSON.parse(body.value)).not.toHaveProperty('status_codes')
   })
 
-  it('启用但所有渠道错误码为空时阻止保存', async () => {
-    mount()
-    await screen.findByLabelText('Retry HTTP error codes — Banana 主渠道 #12')
-    await userEvent.click(
-      screen.getByRole('switch', { name: 'Enable media channel failover' })
+  it('启用时勾选的渠道必须填写错误码', async () => {
+    mount(
+      JSON.stringify({
+        ...defaultAsyncMediaRetry,
+        enabled: true,
+        channel_ids: [12, 38],
+        channel_status_codes: { '12': '500' },
+      })
     )
+    await screen.findByRole('checkbox', { name: /Video/ })
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Configure retry error codes for at least one channel.'
-    )
+    expect(
+      await screen.findByText(
+        'Enter HTTP error codes from 400 to 599, such as 500 or 500-503.'
+      )
+    ).toBeVisible()
     expect(api.put).not.toHaveBeenCalled()
   })
 
-  it('旧通用错误码转换为各渠道独立初值，修改一行不影响另一行', async () => {
+  it('旧不限渠道配置转换成明确勾选，保留各渠道已有错误码', async () => {
     mount(
       JSON.stringify({
         enabled: true,
@@ -338,20 +356,20 @@ describe('媒体换渠道重试设置', () => {
         channel_ids: [],
       })
     )
-    const banana = await screen.findByLabelText(
-      'Retry HTTP error codes — Banana 主渠道 #12'
+    const banana = await screen.findByRole('checkbox', { name: /Banana/ })
+    await waitFor(() => expect(banana).toBeChecked())
+    expect(screen.getByRole('checkbox', { name: /Video/ })).toBeChecked()
+    fireEvent.change(
+      screen.getByLabelText('Retry HTTP error codes — Banana 主渠道 #12'),
+      { target: { value: '429' } }
     )
-    await waitFor(() => expect(banana).toHaveValue('500'))
-    expect(
-      screen.getByLabelText('Retry HTTP error codes — Video 备用 #38')
-    ).toHaveValue('500')
-    fireEvent.change(banana, { target: { value: '429' } })
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
     const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
-    expect(JSON.parse(body.value).channel_status_codes).toEqual({
-      '12': '429',
-      '38': '500',
+    expect(JSON.parse(body.value)).toMatchObject({
+      channel_ids: [12, 38],
+      channel_status_codes: { '12': '429', '38': '500' },
+      selected_channels_only: true,
     })
     expect(JSON.parse(body.value)).not.toHaveProperty('status_codes')
   })

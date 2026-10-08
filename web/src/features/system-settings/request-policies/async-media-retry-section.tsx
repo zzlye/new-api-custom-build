@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -36,7 +36,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
@@ -69,6 +68,7 @@ export function AsyncMediaRetrySection(props: { value: string }) {
       return schema.parse({
         ...raw,
         channel_status_codes: raw.channel_status_codes ?? {},
+        selected_channels_only: raw.selected_channels_only ?? false,
       })
     } catch {
       return null
@@ -89,19 +89,11 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
     defaultValues: props.defaults,
   })
   const { dirtyFields } = form.formState
-  const [restricted, setRestricted] = useState(
-    props.defaults.channel_ids.length > 0
-  )
-  const restrictionDirty = useRef(false)
   const [search, setSearch] = useState('')
   const [selectionError, setSelectionError] = useState(false)
   // 后台刷新不覆盖尚未保存的草稿，渠道搜索也不改变隐藏行的勾选。
   useEffect(() => {
-    const dirty = form.formState.isDirty
     form.reset(props.defaults, { keepDirtyValues: true })
-    if (!dirty && !restrictionDirty.current) {
-      setRestricted(props.defaults.channel_ids.length > 0)
-    }
   }, [props.defaults, form])
   const selected = useWatch({ control: form.control, name: 'channel_ids' })
   const channels = useQuery({
@@ -120,9 +112,31 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
     if (!channels.data) return
     for (const channel of channels.data) {
       const name = `channel_status_codes.${channel.id}` as const
-      if (form.getValues(name) === undefined) {
+      if (
+        form.getValues(name) === undefined ||
+        (props.defaults.status_codes &&
+          !form.getValues(name) &&
+          !form.getFieldState(name).isDirty)
+      ) {
         form.setValue(name, props.defaults.status_codes ?? '')
       }
+    }
+    // 将旧版不限渠道策略转成明确的勾选名单，已取消的勾选不会被再次填回。
+    if (!form.getValues('selected_channels_only')) {
+      if (
+        props.defaults.channel_ids.length === 0 &&
+        !form.getFieldState('channel_ids').isDirty
+      ) {
+        form.setValue(
+          'channel_ids',
+          channels.data
+            .filter((channel) =>
+              form.getValues(`channel_status_codes.${channel.id}`)?.trim()
+            )
+            .map((channel) => channel.id)
+        )
+      }
+      form.setValue('selected_channels_only', true)
     }
     form.setValue('status_codes', undefined)
   }, [channels.data, props.defaults, form])
@@ -146,19 +160,17 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
     },
     onSuccess: (value) => {
       form.reset(value)
-      restrictionDirty.current = false
-      setRestricted(value.channel_ids.length > 0)
       toast.success(t('Settings saved successfully'))
       void client.invalidateQueries({ queryKey: ['system-options'] })
     },
     onError: (error) => handleServerError(error),
   })
   const submit = form.handleSubmit((values) => {
-    if (restricted && values.channel_ids.length === 0) {
+    if (values.enabled && values.channel_ids.length === 0) {
       setSelectionError(true)
       return
     }
-    if (restricted) {
+    if (values.enabled) {
       const empty = values.channel_ids.filter(
         (id) => !values.channel_status_codes[id]?.trim()
       )
@@ -183,7 +195,8 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
             parseHttpStatusCodeRules(value).normalized,
           ])
       ),
-      channel_ids: restricted ? values.channel_ids : [],
+      channel_ids: values.channel_ids,
+      selected_channels_only: true,
     })
   })
   const setSelected = (ids: number[]) => {
@@ -241,28 +254,10 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
               </FormItem>
             )}
           />
-          <div className='flex items-center justify-between gap-3'>
-            <Label htmlFor='async-retry-restricted'>
-              {t('Limit failover to selected channels')}
-            </Label>
-            <Switch
-              id='async-retry-restricted'
-              checked={restricted}
-              onCheckedChange={(checked) => {
-                restrictionDirty.current = true
-                setRestricted(checked)
-                setSelectionError(false)
-              }}
-            />
-          </div>
           <p className='text-muted-foreground text-sm'>
-            {restricted
-              ? t(
-                  'Only selected channels can trigger and receive failover. Unselected channels keep single-attempt behavior.'
-                )
-              : t(
-                  'Each channel uses its own retry error codes. Leave blank to disable retries from that channel.'
-                )}
+            {t(
+              'Only selected channels can trigger and receive failover. Unselected channels keep single-attempt behavior.'
+            )}
           </p>
           <div className='min-w-0 space-y-3'>
             <Input
@@ -278,39 +273,37 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
               />
             ) : (
               <>
-                {restricted && (
-                  <div className='flex flex-wrap items-center gap-2'>
-                    <Button
-                      type='button'
-                      variant='outline'
-                      size='sm'
-                      disabled={channels.isPending}
-                      onClick={() =>
-                        setSelected([
-                          ...new Set([
-                            ...selected,
-                            ...visible.map((channel) => channel.id),
-                          ]),
-                        ])
-                      }
-                    >
-                      {t('Select visible channels')}
-                    </Button>
-                    <Button
-                      type='button'
-                      variant='outline'
-                      size='sm'
-                      onClick={() => setSelected([])}
-                    >
-                      {t('Clear selection')}
-                    </Button>
-                    <span className='text-muted-foreground text-sm'>
-                      {t('{{count}} channels selected', {
-                        count: selected.length,
-                      })}
-                    </span>
-                  </div>
-                )}
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    disabled={channels.isPending}
+                    onClick={() =>
+                      setSelected([
+                        ...new Set([
+                          ...selected,
+                          ...visible.map((channel) => channel.id),
+                        ]),
+                      ])
+                    }
+                  >
+                    {t('Select visible channels')}
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    onClick={() => setSelected([])}
+                  >
+                    {t('Clear selection')}
+                  </Button>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('{{count}} channels selected', {
+                      count: selected.length,
+                    })}
+                  </span>
+                </div>
                 <ScrollArea
                   className='h-72 rounded-lg border'
                   aria-label={t('Retry channel list')}
@@ -332,19 +325,17 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                         className='hover:bg-muted/40 grid min-h-16 grid-cols-1 items-start gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(160px,1fr)]'
                       >
                         <div className='flex min-w-0 items-center gap-3 pt-2'>
-                          {restricted && (
-                            <Checkbox
-                              aria-label={`${channel.name} #${channel.id}`}
-                              checked={selected.includes(channel.id)}
-                              onCheckedChange={(checked) =>
-                                setSelected(
-                                  checked
-                                    ? [...new Set([...selected, channel.id])]
-                                    : selected.filter((id) => id !== channel.id)
-                                )
-                              }
-                            />
-                          )}
+                          <Checkbox
+                            aria-label={`${channel.name} #${channel.id}`}
+                            checked={selected.includes(channel.id)}
+                            onCheckedChange={(checked) =>
+                              setSelected(
+                                checked
+                                  ? [...new Set([...selected, channel.id])]
+                                  : selected.filter((id) => id !== channel.id)
+                              )
+                            }
+                          />
                           <span className='min-w-0 flex-1 break-words'>
                             {channel.name}
                           </span>
@@ -360,6 +351,7 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                         <FormField
                           control={form.control}
                           name={`channel_status_codes.${channel.id}`}
+                          defaultValue=''
                           render={({ field }) => (
                             <FormItem className='min-w-0'>
                               <FormLabel className='sr-only'>
@@ -403,7 +395,7 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
             )}
             {selectionError && (
               <p role='alert' className='text-destructive text-sm'>
-                {t('Select at least one channel or disable the channel limit.')}
+                {t('Select at least one channel before enabling failover.')}
               </p>
             )}
             {form.formState.errors.enabled?.message && (
