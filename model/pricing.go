@@ -371,9 +371,9 @@ func updatePricing() {
 			audioCompletionRatio := ratio_setting.GetAudioCompletionRatio(model)
 			pricing.AudioCompletionRatio = &audioCompletionRatio
 		}
-		if billingMode := billing_setting.GetBillingMode(model); billingMode == billing_setting.BillingModePerSecond && findPrice {
+		if billingMode := billing_setting.GetBillingMode(model); (billingMode == billing_setting.BillingModePerSecond || billingMode == billing_setting.BillingModePerRequest) && findPrice {
 			pricing.BillingMode = billingMode
-			// 按秒模型也返回分辨率定价表达式，供模型详情展示和配置同步使用。
+			// 按秒和按次分辨率规则都返回广场，避免只展示基础兜底价格。
 			if expr, ok := billing_setting.GetBillingExpr(model); ok && strings.TrimSpace(expr) != "" {
 				pricing.BillingExpr = expr
 			}

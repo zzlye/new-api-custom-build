@@ -278,9 +278,10 @@ export const buildModelSnapshots = ({
       }
     }
 
-    if (modeForModel === 'per_second') {
+    if (modeForModel === 'per_second' || modeForModel === 'per_request') {
       return {
         name,
+        pluginBillingExpr: pluginExpressionsByModel.get(name),
         billingExpr: billingExprMap[name] || '',
         price,
         ratio,
@@ -290,7 +291,8 @@ export const buildModelSnapshots = ({
         imageRatio: image,
         audioRatio: audio,
         audioCompletionRatio: audioCompletion,
-        billingMode: 'per-second',
+        billingMode:
+          modeForModel === 'per_second' ? 'per-second' : 'per-request',
         hasConflict:
           price !== '' &&
           (ratio !== '' ||

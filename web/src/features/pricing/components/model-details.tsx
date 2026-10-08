@@ -85,6 +85,7 @@ import {
 } from '../lib/model-helpers'
 import { withPluginPricing } from '../lib/plugin-pricing'
 import {
+  getResolutionPriceRows,
   formatFixedPrice,
   formatGroupPerSecondPrice,
   formatGroupPrice,
@@ -839,6 +840,38 @@ function PriceSection(props: {
     )
   }
 
+  const resolutionPrices = getResolutionPriceRows(props.model)
+  if (resolutionPrices.length > 0) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <div className='space-y-3'>
+          {resolutionPrices.map(({ resolution, price }) => (
+            <div
+              key={resolution}
+              className='flex items-baseline justify-between gap-3'
+            >
+              <span className='text-muted-foreground text-sm'>
+                {resolution}
+              </span>
+              <span className='font-mono text-sm font-semibold tabular-nums'>
+                {formatFixedPrice(
+                  { ...props.model, model_price: price },
+                  baseGroupKey,
+                  props.showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  baseGroupRatioMap
+                )}{' '}
+                / {t(isPerSecond ? 'second' : 'request')}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
   if (isPerSecond) {
     return (
       <section>
@@ -1417,7 +1450,29 @@ function ProviderGroupPricingSection(
     )
 
   let groupPriceColumns
-  if (isTokenBased) {
+  const resolutionPrices = getResolutionPriceRows(props.model)
+  if (resolutionPrices.length > 0) {
+    // 每个分辨率单独一列，分组倍率为零时保持免费价格。
+    groupPriceColumns = resolutionPrices.map(({ resolution, price }) => ({
+      id: resolution,
+      header: resolution,
+      className: `${thClass} text-right`,
+      cellClassName: 'py-2.5 text-right font-mono',
+      cell: (group: string) => (
+        <>
+          {formatFixedPrice(
+            { ...props.model, model_price: price },
+            group,
+            showRechargePrice,
+            props.priceRate,
+            props.usdExchangeRate,
+            props.groupRatio
+          )}{' '}
+          / {t(isPerSecond ? 'second' : 'request')}
+        </>
+      ),
+    }))
+  } else if (isTokenBased) {
     groupPriceColumns = [
       {
         id: 'input',
@@ -1490,7 +1545,7 @@ function ProviderGroupPricingSection(
             header: t('Ratio'),
             className: thClass,
             cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
+            cell: (group) => `${props.groupRatio[group] ?? 1}x`,
           },
           ...groupPriceColumns,
         ]}

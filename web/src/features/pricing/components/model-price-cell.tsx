@@ -32,6 +32,7 @@ import {
 } from '../lib/dynamic-price'
 import { isPerSecondModel, isTokenBasedModel } from '../lib/model-helpers'
 import {
+  getResolutionPriceRows,
   formatPerSecondPrice,
   formatPrice,
   formatRequestPrice,
@@ -99,7 +100,14 @@ export function ModelPriceCell(props: {
     unit: tokenUnitLabel,
   })
 
-  if (dynamic) {
+  const resolutionPrices = getResolutionPriceRows(props.model)
+  if (resolutionPrices.length > 0) {
+    metrics = resolutionPrices.map(({ resolution, price }) => ({
+      label: resolution,
+      value: `${formatRequestPrice({ ...props.model, model_price: price }, options.showRechargePrice, options.priceRate, options.usdExchangeRate, options.selectedGroup, false)}/${t(isPerSecondModel(props.model) ? 'second' : 'request')}`,
+    }))
+    caption = currencyLabel
+  } else if (dynamic) {
     if (dynamic.isSpecialExpression) {
       return (
         <span className='block max-w-full min-w-0'>

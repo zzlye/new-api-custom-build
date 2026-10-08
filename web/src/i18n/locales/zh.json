@@ -4416,6 +4416,7 @@
     "Price mode (USD per 1M tokens)": "价格模式（每 100 万个 token 的美元价格）",
     "Price per image": "每张图片价格",
     "Price per request": "每次请求价格",
+    "Price per request by resolution": "各分辨率每次价格",
     "Price per second": "每秒价格",
     "Price per second by resolution": "各分辨率每秒价格",
     "Price source": "价格来源",

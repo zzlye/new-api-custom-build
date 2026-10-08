@@ -406,7 +406,7 @@ func validateModelPricing(name string, values, previous PricingValues) error {
 			return fmt.Errorf("unsupported pricing field: %s", key)
 		}
 		if key == "billing_setting.billing_mode" {
-			if value != "ratio" && value != "tiered_expr" && value != billing_setting.BillingModePerSecond {
+			if value != "ratio" && value != "tiered_expr" && value != billing_setting.BillingModePerSecond && value != billing_setting.BillingModePerRequest {
 				return errors.New("invalid billing mode")
 			}
 			continue
@@ -422,8 +422,8 @@ func validateModelPricing(name string, values, previous PricingValues) error {
 				return fmt.Errorf("model %s: %w", name, err)
 			}
 			var err error
-			if values["billing_setting.billing_mode"] == billing_setting.BillingModePerSecond {
-				// 定制分辨率表达式返回每秒单价，不使用任务插件的用量表达式语义。
+			if mode := values["billing_setting.billing_mode"]; mode == billing_setting.BillingModePerSecond || mode == billing_setting.BillingModePerRequest {
+				// 分辨率表达式返回每秒或每次单价，不使用任务插件的用量表达式语义。
 				err = billing_setting.SmokeTestExpr(expression)
 			} else if plugins := generation.PluginsByModel(name); len(plugins) > 0 {
 				for _, plugin := range plugins {

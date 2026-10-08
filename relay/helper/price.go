@@ -262,8 +262,8 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	}
 
 	if !success && userPricing == nil {
-		// 按秒模式必须显式配置当前模型价格，禁止把内置按次默认价误当成每秒价格。
-		if billingMode == billing_setting.BillingModePerSecond {
+		// 按秒及分辨率按次模式必须显式配置基础价，禁止回退到内置默认价。
+		if billingMode == billing_setting.BillingModePerSecond || billingMode == billing_setting.BillingModePerRequest {
 			return hosttypes.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
 		}
 		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
@@ -284,9 +284,8 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 		}
 	}
 	perSecondBilling := billingMode == billing_setting.BillingModePerSecond && usePrice
-	if perSecondBilling {
-		// 按秒模型配置表达式后，表达式返回当前分辨率对应的每秒美元价格。
-		// 将结果换算成 resolution 倍率，保留原有秒数计费和结算链路。
+	if usePrice && (perSecondBilling || billingMode == billing_setting.BillingModePerRequest) {
+		// 分辨率表达式返回美元单价；按秒保留时长链路，按次直接使用整条任务价格。
 		expr, ok := billing_setting.GetBillingExpr(info.OriginModelName)
 		if userPricing != nil {
 			expr, ok = userPricing["billing_setting.billing_expr"].(string)
@@ -296,6 +295,13 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 			if err != nil {
 				return hosttypes.PriceData{}, fmt.Errorf("读取分辨率定价请求失败: %w", err)
 			}
+			if len(requestInput.Body) == 0 && c != nil && c.Request != nil && strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+				// 带参考文件的视频使用表单提交，只提取分辨率，不读取媒体文件内容。
+				requestInput.Body, err = common.Marshal(map[string]string{"resolution": c.PostForm("resolution")})
+				if err != nil {
+					return hosttypes.PriceData{}, fmt.Errorf("读取表单分辨率失败: %w", err)
+				}
+			}
 			effectivePrice, _, err := billingexpr.RunExprWithRequest(expr, billingexpr.TokenParams{}, requestInput)
 			if err != nil || effectivePrice <= 0 || math.IsNaN(effectivePrice) || math.IsInf(effectivePrice, 0) {
 				if err == nil {
@@ -303,12 +309,18 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 				}
 				return hosttypes.PriceData{}, fmt.Errorf("分辨率定价表达式执行失败: %w", err)
 			}
-			if modelPrice > 0 {
+			if billingMode == billing_setting.BillingModePerRequest {
+				modelPrice = effectivePrice
+			} else if modelPrice > 0 {
 				preservedRatios["resolution"] = effectivePrice / modelPrice
 			} else {
 				modelPrice = effectivePrice
 			}
 		}
+	}
+	if billingMode == billing_setting.BillingModePerRequest && usePrice {
+		// 按次分辨率定价已经选出最终单价，适配器秒数及分辨率倍率不再重复参与。
+		preservedRatios = nil
 	}
 
 	var quota int
@@ -367,7 +379,7 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 }
 
 func HasModelBillingConfig(modelName string) bool {
-	if billing_setting.GetBillingMode(modelName) == billing_setting.BillingModePerSecond {
+	if mode := billing_setting.GetBillingMode(modelName); mode == billing_setting.BillingModePerSecond || mode == billing_setting.BillingModePerRequest {
 		_, ok := ratio_setting.GetModelPrice(modelName, false)
 		return ok
 	}

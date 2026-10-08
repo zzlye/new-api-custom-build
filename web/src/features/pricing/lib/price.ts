@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  readResolutionPrices,
+  VIDEO_RESOLUTIONS,
+} from '@/features/system-settings/models/resolution-pricing'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 
 import { QUOTA_TYPE_VALUES, TOKEN_UNIT_DIVISORS } from '../constants'
@@ -29,6 +33,23 @@ import {
 // ----------------------------------------------------------------------------
 // Price Calculation Utilities
 // ----------------------------------------------------------------------------
+
+// 只展示编辑器支持的三档规则，自定义表达式仍由原有表达式界面处理。
+export function getResolutionPriceRows(model: PricingModel) {
+  if (
+    model.quota_type !== QUOTA_TYPE_VALUES.REQUEST ||
+    (!isPerSecondModel(model) && model.billing_mode !== 'per_request')
+  ) {
+    return []
+  }
+  const prices = readResolutionPrices(model.billing_expr ?? '')
+  return prices
+    ? VIDEO_RESOLUTIONS.map((resolution) => ({
+        resolution,
+        price: Number(prices[resolution]),
+      }))
+    : []
+}
 
 /**
  * Strip trailing zeros from formatted price string while preserving currency symbols

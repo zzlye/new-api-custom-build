@@ -230,3 +230,25 @@ test('切换不同模型后回填对应价格且清除前一个模型错误', as
   assert.equal(container.querySelector('[role="alert"]'), null)
   assert.equal((await save())?.name, 'video-other')
 })
+
+test('按次模式也支持三档分辨率并保存每条任务价格', async () => {
+  await render({ ...fixture, billingMode: 'per-request' })
+  assert.equal(input('1080p').value, '0.75')
+  assert.ok(
+    container.querySelector('aside')?.textContent?.includes('/ request')
+  )
+  await change('1080p', '0.9')
+  const saved = await save()
+  assert.equal(saved?.billingMode, 'per-request')
+  assert.equal(saved?.price, '0.4')
+  assert.equal(saved?.billingExpr, expression.replace('0.75', '0.9'))
+  await click('固定价格')
+  assert.equal((await save())?.billingExpr, '')
+})
+
+test('按次分辨率缺少一档时阻止提交', async () => {
+  await render({ ...fixture, billingMode: 'per-request' })
+  await change('480p', '')
+  assert.equal(await save(), null)
+  assert.ok(container.querySelector('[role="alert"]'))
+})

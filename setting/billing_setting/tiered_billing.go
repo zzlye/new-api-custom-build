@@ -21,7 +21,9 @@ const (
 	BillingModeRatio      = "ratio"
 	BillingModeTieredExpr = "tiered_expr"
 	// BillingModePerSecond 表示视频等异步媒体任务按实际秒数计费。
-	BillingModePerSecond    = "per_second"
+	BillingModePerSecond = "per_second"
+	// BillingModePerRequest 按请求参数选择整条任务价格，不叠加视频时长倍率。
+	BillingModePerRequest   = "per_request"
 	BillingModeField        = "billing_mode"
 	BillingExprField        = "billing_expr"
 	PluginBillingExprOption = "billing_setting.plugin_billing_expr"

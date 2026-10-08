@@ -202,7 +202,9 @@ export function pricingRow(
 export function pricingFromDraft(data: ModelRatioData): PricingValues {
   let billingMode = 'ratio'
   if (data.billingMode === 'per-second') billingMode = 'per_second'
-  else if (data.billingMode === 'tiered_expr') billingMode = 'tiered_expr'
+  else if (data.billingMode === 'per-request' && data.billingExpr?.trim()) {
+    billingMode = 'per_request'
+  } else if (data.billingMode === 'tiered_expr') billingMode = 'tiered_expr'
 
   const values: PricingValues = {
     ...(data.pluginBillingExpr === undefined
@@ -226,7 +228,7 @@ export function pricingFromDraft(data: ModelRatioData): PricingValues {
       values[key] = number
     }
   }
-  if (data.billingMode === 'per-second') {
+  if (data.billingMode === 'per-second' || data.billingMode === 'per-request') {
     if (data.billingExpr?.trim()) {
       values['billing_setting.billing_expr'] = data.billingExpr
     }
@@ -342,7 +344,16 @@ export function applyPriceSyncSelections(
     const expression =
       typeof fields.billing_expr === 'string' &&
       fields.billing_expr.trim() !== ''
-    if (expression) {
+    const resolutionMode =
+      fields.model_price !== undefined &&
+      (fields.billing_mode === 'per_second' ||
+        fields.billing_mode === 'per_request')
+    if (resolutionMode) {
+      // 同步分辨率定价时保留按秒或按次单位，避免被当作普通用量表达式。
+      next.ModelPrice = fields.model_price
+      next['billing_setting.billing_mode'] = fields.billing_mode
+      if (expression) next['billing_setting.billing_expr'] = fields.billing_expr
+    } else if (expression) {
       next['billing_setting.billing_mode'] = 'tiered_expr'
       next['billing_setting.billing_expr'] = fields.billing_expr
     } else {

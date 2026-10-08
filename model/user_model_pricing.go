@@ -223,7 +223,7 @@ func UpdateUserModelPricing(userID int, changes []ModelPricingChange) error {
 				if expr, _ := pricing["billing_setting.billing_expr"].(string); strings.TrimSpace(expr) == "" {
 					return errors.New("请设置用户的计费表达式")
 				}
-			} else if pricing["ModelPrice"] == nil && (mode == billing_setting.BillingModePerSecond || pricing["ModelRatio"] == nil) {
+			} else if pricing["ModelPrice"] == nil && (mode == billing_setting.BillingModePerSecond || mode == billing_setting.BillingModePerRequest || pricing["ModelRatio"] == nil) {
 				return errors.New("请设置用户的模型基础价格")
 			}
 			rules[change.ModelName] = EffectiveUserModelPricing(change.ModelName, pricing)

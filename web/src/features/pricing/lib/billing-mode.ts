@@ -29,6 +29,8 @@ export type BillingModeLabelKey =
 export function getBillingModeLabelKey(
   model: PricingModel
 ): BillingModeLabelKey {
+  // 明确按次的分辨率定价保留计费单位，不被插件的用量元数据覆盖。
+  if (model.billing_mode === 'per_request') return 'Per Request'
   // Task-usage models badge as one business category; the metering unit
   // ($/1M token, $/credit, $/second) is already carried by the price line.
   if (hasTaskUsageSchema(model)) return 'Task billing'

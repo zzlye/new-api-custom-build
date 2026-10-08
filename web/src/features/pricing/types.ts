@@ -27,7 +27,11 @@ export type PricingVendor = {
   description?: string
 }
 
-export type PricingBillingMode = 'ratio' | 'per_second' | 'tiered_expr'
+export type PricingBillingMode =
+  | 'ratio'
+  | 'per_second'
+  | 'per_request'
+  | 'tiered_expr'
 
 export type BillingUsageUnit = 'second' | 'count' | 'token' | 'credit'
 

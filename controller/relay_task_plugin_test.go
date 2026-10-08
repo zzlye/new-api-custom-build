@@ -671,6 +671,10 @@ export function parseTaskResult(){return {status:"SUCCESS"};}
 		{"按次分组折扣", "ratio", "", "SUCCESS", 8, 2, 0.5, 2.5, 1.25},
 		{"按次失败全退", "ratio", "", "FAILURE", 8, 2, 1, 2.5, 0},
 		{"按次零价", "ratio", "", "SUCCESS", 8, 2, 1, 0, 0},
+		{"按次分辨率四秒", "per_request", `param("resolution") == "1080p" ? 0.93 : 0.48`, "SUCCESS", 4, 2, 1, 0.48, 0.93},
+		{"按次分辨率八秒", "per_request", `param("resolution") == "1080p" ? 0.93 : 0.48`, "SUCCESS", 8, 2, 1, 0.48, 0.93},
+		{"按次分辨率分组折扣", "per_request", `param("resolution") == "1080p" ? 0.93 : 0.48`, "SUCCESS", 8, 2, 0.5, 0.48, 0.465},
+		{"按次分辨率失败全退", "per_request", `param("resolution") == "1080p" ? 0.93 : 0.48`, "FAILURE", 8, 2, 1, 0.48, 0},
 		{"按秒四秒", "per_second", "", "SUCCESS", 4, 1, 1, 2.5, 10},
 		{"按秒八秒", "per_second", "", "SUCCESS", 8, 1, 1, 2.5, 20},
 		{"按秒分辨率倍率", "per_second", "", "SUCCESS", 4, 2, 0.5, 2.5, 10},
@@ -706,10 +710,13 @@ export function parseTaskResult(){return {status:"SUCCESS"};}
 			ch := model.Channel{Name: "test video", Type: constant.ChannelTypeTaskPlugin}
 			require.NoError(t, db.Create(&ch).Error)
 			c := taskSubmissionTestContext()
-			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+			requestBody, err := common.Marshal(map[string]any{"model": "video-price", "seconds": tc.seconds, "ratio": tc.ratio, "resolution": "1080p"})
+			require.NoError(t, err)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", strings.NewReader(string(requestBody)))
+			c.Request.Header.Set("Content-Type", "application/json")
 			c.Set("group", "default")
 			c.Set("username", user.Username)
-			c.Set("task_request", map[string]any{"model": "video-price", "seconds": tc.seconds, "ratio": tc.ratio})
+			c.Set("task_request", map[string]any{"model": "video-price", "seconds": tc.seconds, "ratio": tc.ratio, "resolution": "1080p"})
 			c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{Plugin: plugin})
 			common.SetContextKey(c, constant.ContextKeyOriginalModel, "video-price")
 			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, server.URL)

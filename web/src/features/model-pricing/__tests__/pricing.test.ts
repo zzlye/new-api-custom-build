@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
+import { getBillingModeLabelKey } from '@/features/pricing/lib/billing-mode'
+
 import { buildPricingChanges, type ModelPricingConfig } from '../api'
 import {
   applyPriceSyncSelections,
@@ -28,6 +30,62 @@ import {
 } from '../pricing'
 
 describe('shared model pricing', () => {
+  it('按次分辨率模型带有插件计量字段时仍显示按次标签', () => {
+    expect(
+      getBillingModeLabelKey({
+        id: 1,
+        model_name: 'video',
+        billing_mode: 'per_request',
+        quota_type: 1,
+        model_ratio: 0,
+        completion_ratio: 0,
+        enable_groups: [],
+        billing_usage_schema: { seconds: { type: 'number', unit: 'second' } },
+      })
+    ).toBe('Per Request')
+  })
+  it.each(['per_second', 'per_request'])(
+    '同步%s分辨率价格保留单位和表达式',
+    (mode) => {
+      const expression = 'param("resolution") == "1080p" ? 0.93 : 0.48'
+      const result = applyPriceSyncSelections(pricingOptions({}), {
+        video: {
+          model_price: 0.48,
+          billing_mode: mode,
+          billing_expr: expression,
+        },
+      })
+      expect(JSON.parse(result['billing_setting.billing_mode'])).toEqual({
+        video: mode,
+      })
+      expect(JSON.parse(result['billing_setting.billing_expr'])).toEqual({
+        video: expression,
+      })
+      expect(JSON.parse(result.ModelPrice)).toEqual({ video: 0.48 })
+    }
+  )
+  it('保存并重新读取按次分辨率规则，切回固定价后清除规则', () => {
+    const expression =
+      'param("resolution") == "1080p" ? 0.93 : param("resolution") == "720p" ? 0.48 : 0.27'
+    const values = pricingFromDraft({
+      name: 'video',
+      billingMode: 'per-request',
+      price: '0.48',
+      billingExpr: expression,
+    })
+    expect(values).toEqual({
+      ModelPrice: 0.48,
+      'billing_setting.billing_mode': 'per_request',
+      'billing_setting.billing_expr': expression,
+    })
+    const row = pricingRow('video', values)
+    expect(row.billingMode).toBe('per-request')
+    expect(row.billingExpr).toBe(expression)
+    expect(pricingFromDraft({ ...row, billingExpr: '' })).toEqual({
+      ModelPrice: 0.48,
+      'billing_setting.billing_mode': 'ratio',
+    })
+  })
   it('preserves explicit zero prices and cache-write configuration', () => {
     expect(
       pricingFromDraft({

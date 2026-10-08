@@ -392,7 +392,10 @@ export const ModelPricingEditorPanel = forwardRef<
       setPricingMode(initialPricingMode)
       setBillingExpr(initialBillingExpr)
       const resolutionExpr =
-        initialPricingMode === 'per-second' ? editData.billingExpr || '' : ''
+        initialPricingMode === 'per-second' ||
+        initialPricingMode === 'per-request'
+          ? editData.billingExpr || ''
+          : ''
       setResolutionPricing(resolutionExpr ? 'resolution' : 'fixed')
       setResolutionPrices(
         readResolutionPrices(resolutionExpr) ?? { ...EMPTY_RESOLUTION_PRICES }
@@ -444,7 +447,7 @@ export const ModelPricingEditorPanel = forwardRef<
       form.formState.isDirty ||
         pricingMode !== initialPricingMode ||
         billingExpr !== initialBillingExpr ||
-        (pricingMode === 'per-second' &&
+        ((pricingMode === 'per-second' || pricingMode === 'per-request') &&
           (resolutionPricing !==
             (initialBillingExpr ? 'resolution' : 'fixed') ||
             (resolutionPricing === 'resolution' &&
@@ -593,12 +596,15 @@ export const ModelPricingEditorPanel = forwardRef<
 
   const previewRows = useMemo(() => {
     // 分辨率预览直接读取当前草稿，保证修改后立即显示实际待保存的价格。
-    if (pricingMode === 'per-second' && resolutionPricing === 'resolution') {
+    if (
+      (pricingMode === 'per-second' || pricingMode === 'per-request') &&
+      resolutionPricing === 'resolution'
+    ) {
       return VIDEO_RESOLUTIONS.map((resolution) => ({
         key: resolution,
         label: resolution,
         value: resolutionPrices[resolution]
-          ? `${formatPricingAmount(resolutionPrices[resolution], currency)} / ${t('second')}`
+          ? `${formatPricingAmount(resolutionPrices[resolution], currency)} / ${t(pricingMode === 'per-second' ? 'second' : 'request')}`
           : t('Empty'),
         multiline: false,
       }))
@@ -687,7 +693,10 @@ export const ModelPricingEditorPanel = forwardRef<
   }, [editData, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
   const validatePricingValues = useCallback(() => {
-    if (pricingMode === 'per-second' && resolutionPricing === 'resolution') {
+    if (
+      (pricingMode === 'per-second' || pricingMode === 'per-request') &&
+      resolutionPricing === 'resolution'
+    ) {
       const valid = hasValidResolutionPrices(resolutionPrices)
       setResolutionError(!valid)
       return valid
@@ -776,10 +785,10 @@ export const ModelPricingEditorPanel = forwardRef<
         audioCompletionRatio: values.audioCompletionRatio || '',
       }
 
-      if (pricingMode === 'per-second') {
+      if (pricingMode === 'per-second' || pricingMode === 'per-request') {
         data.billingExpr = ''
         if (resolutionPricing === 'resolution') {
-          // 基础单价使用720p价格，后端按请求分辨率计算倍率，无需另填隐藏字段。
+          // 基础单价使用720p价格；后端按模式计算每秒或整条任务费用。
           data.price = String(Number(resolutionPrices['720p']))
           data.billingExpr = buildResolutionExpression(resolutionPrices)
         }
@@ -1211,47 +1220,99 @@ export const ModelPricingEditorPanel = forwardRef<
                       </div>
                     </TabsContent>
 
-                    <TabsContent value='per-second' className='pt-0'>
-                      <FieldGroup className='gap-5'>
-                        <Field>
-                          <FieldLabel>{t('Video pricing method')}</FieldLabel>
-                          <div className='flex gap-2'>
-                            {(
-                              [
-                                ['fixed', t('Fixed price')],
-                                ['resolution', t('By resolution')],
-                              ] as const
-                            ).map(([value, label]) => (
-                              <Button
-                                key={value}
-                                type='button'
-                                variant={
-                                  resolutionPricing === value
-                                    ? 'default'
-                                    : 'outline'
-                                }
-                                size='sm'
-                                aria-pressed={resolutionPricing === value}
-                                onClick={() => {
-                                  setResolutionPricing(value)
-                                  setResolutionError(false)
-                                  form.clearErrors('price')
-                                }}
-                              >
-                                {label}
-                              </Button>
-                            ))}
-                          </div>
-                        </Field>
-                        {resolutionPricing === 'fixed' && (
-                          <FormField
-                            control={form.control}
-                            name='price'
-                            render={({ field }) => (
-                              <FormItem className='contents'>
-                                <Field>
-                                  <FieldLabel>{t('Fixed price')}</FieldLabel>
-                                  <FormControl>
+                    {(['per-second', 'per-request'] as const).map((mode) => (
+                      <TabsContent key={mode} value={mode} className='pt-0'>
+                        <FieldGroup className='gap-5'>
+                          <Field>
+                            <FieldLabel>{t('Video pricing method')}</FieldLabel>
+                            <div className='flex gap-2'>
+                              {(
+                                [
+                                  ['fixed', t('Fixed price')],
+                                  ['resolution', t('By resolution')],
+                                ] as const
+                              ).map(([value, label]) => (
+                                <Button
+                                  key={value}
+                                  type='button'
+                                  variant={
+                                    resolutionPricing === value
+                                      ? 'default'
+                                      : 'outline'
+                                  }
+                                  size='sm'
+                                  aria-pressed={resolutionPricing === value}
+                                  onClick={() => {
+                                    setResolutionPricing(value)
+                                    setResolutionError(false)
+                                    form.clearErrors('price')
+                                  }}
+                                >
+                                  {label}
+                                </Button>
+                              ))}
+                            </div>
+                          </Field>
+                          {resolutionPricing === 'fixed' && (
+                            <FormField
+                              control={form.control}
+                              name='price'
+                              render={({ field }) => (
+                                <FormItem className='contents'>
+                                  <Field>
+                                    <FieldLabel>{t('Fixed price')}</FieldLabel>
+                                    <FormControl>
+                                      <InputGroup>
+                                        <InputGroupAddon>
+                                          {currency.symbol}
+                                        </InputGroupAddon>
+                                        <PricingAmountInput
+                                          grouped
+                                          currency={currency}
+                                          inputMode='decimal'
+                                          placeholder='0.35'
+                                          {...field}
+                                          value={field.value ?? ''}
+                                          onChange={field.onChange}
+                                        />
+                                        <InputGroupAddon align='inline-end'>
+                                          {t(
+                                            mode === 'per-second'
+                                              ? 'per second'
+                                              : 'per request'
+                                          )}
+                                        </InputGroupAddon>
+                                      </InputGroup>
+                                    </FormControl>
+                                    <FieldDescription>
+                                      {t(
+                                        mode === 'per-second'
+                                          ? 'Per-second billing'
+                                          : 'Cost in {{currency}} per request, regardless of tokens used.',
+                                        { currency: currency.label }
+                                      )}
+                                    </FieldDescription>
+                                    <FormMessage />
+                                  </Field>
+                                </FormItem>
+                              )}
+                            />
+                          )}
+                          {resolutionPricing === 'resolution' && (
+                            <Field>
+                              <FieldLabel>
+                                {t(
+                                  mode === 'per-second'
+                                    ? 'Price per second by resolution'
+                                    : 'Price per request by resolution'
+                                )}
+                              </FieldLabel>
+                              <div className='grid gap-3 sm:grid-cols-3'>
+                                {VIDEO_RESOLUTIONS.map((resolution) => (
+                                  <Field key={resolution}>
+                                    <FieldLabel className='text-xs'>
+                                      {resolution}
+                                    </FieldLabel>
                                     <InputGroup>
                                       <InputGroupAddon>
                                         {currency.symbol}
@@ -1260,129 +1321,60 @@ export const ModelPricingEditorPanel = forwardRef<
                                         grouped
                                         currency={currency}
                                         inputMode='decimal'
-                                        placeholder='0.35'
-                                        {...field}
-                                        value={field.value ?? ''}
-                                        onChange={field.onChange}
+                                        placeholder='0.00'
+                                        aria-label={`${resolution} ${t(mode === 'per-second' ? 'Price per second' : 'Price per request')}`}
+                                        aria-invalid={
+                                          resolutionError &&
+                                          !(
+                                            Number(
+                                              resolutionPrices[resolution]
+                                            ) > 0 &&
+                                            Number.isFinite(
+                                              Number(
+                                                resolutionPrices[resolution]
+                                              )
+                                            )
+                                          )
+                                        }
+                                        value={resolutionPrices[resolution]}
+                                        onChange={(value) => {
+                                          const next = {
+                                            ...resolutionPrices,
+                                            [resolution]: value,
+                                          }
+                                          setResolutionPrices(next)
+                                          if (hasValidResolutionPrices(next)) {
+                                            setResolutionError(false)
+                                          }
+                                        }}
                                       />
                                       <InputGroupAddon align='inline-end'>
-                                        {t('per second')}
+                                        /
+                                        {t(
+                                          mode === 'per-second'
+                                            ? 'second'
+                                            : 'request'
+                                        )}
                                       </InputGroupAddon>
                                     </InputGroup>
-                                  </FormControl>
-                                  <FieldDescription>
-                                    {t('Per-second billing')}
-                                  </FieldDescription>
-                                  <FormMessage />
-                                </Field>
-                              </FormItem>
-                            )}
-                          />
-                        )}
-                        {resolutionPricing === 'resolution' && (
-                          <Field>
-                            <FieldLabel>
-                              {t('Price per second by resolution')}
-                            </FieldLabel>
-                            <div className='grid gap-3 sm:grid-cols-3'>
-                              {VIDEO_RESOLUTIONS.map((resolution) => (
-                                <Field key={resolution}>
-                                  <FieldLabel className='text-xs'>
-                                    {resolution}
-                                  </FieldLabel>
-                                  <InputGroup>
-                                    <InputGroupAddon>
-                                      {currency.symbol}
-                                    </InputGroupAddon>
-                                    <PricingAmountInput
-                                      grouped
-                                      currency={currency}
-                                      inputMode='decimal'
-                                      placeholder='0.00'
-                                      aria-label={`${resolution} ${t('Price per second')}`}
-                                      aria-invalid={
-                                        resolutionError &&
-                                        !(
-                                          Number(resolutionPrices[resolution]) >
-                                            0 &&
-                                          Number.isFinite(
-                                            Number(resolutionPrices[resolution])
-                                          )
-                                        )
-                                      }
-                                      value={resolutionPrices[resolution]}
-                                      onChange={(value) => {
-                                        const next = {
-                                          ...resolutionPrices,
-                                          [resolution]: value,
-                                        }
-                                        setResolutionPrices(next)
-                                        if (hasValidResolutionPrices(next)) {
-                                          setResolutionError(false)
-                                        }
-                                      }}
-                                    />
-                                    <InputGroupAddon align='inline-end'>
-                                      /{t('second')}
-                                    </InputGroupAddon>
-                                  </InputGroup>
-                                </Field>
-                              ))}
-                            </div>
-                            {resolutionError && (
-                              <p
-                                role='alert'
-                                className='text-destructive text-sm'
-                              >
-                                {t(
-                                  'Enter a price greater than zero for every resolution.'
-                                )}
-                              </p>
-                            )}
-                          </Field>
-                        )}
-                      </FieldGroup>
-                    </TabsContent>
-                    <TabsContent value='per-request' className='pt-0'>
-                      <FieldGroup className='gap-5'>
-                        <FormField
-                          control={form.control}
-                          name='price'
-                          render={({ field }) => (
-                            <FormItem className='contents'>
-                              <Field>
-                                <FormLabel>{t('Fixed price')}</FormLabel>
-                                <InputGroup className='has-[[data-pricing-error]]:h-auto has-[[data-pricing-error]]:flex-wrap'>
-                                  <InputGroupAddon>
-                                    {currency.symbol}
-                                  </InputGroupAddon>
-                                  <FormControl>
-                                    <PricingAmountInput
-                                      {...field}
-                                      value={field.value ?? ''}
-                                      currency={currency}
-                                      grouped
-                                      placeholder='0.01'
-                                      onChange={field.onChange}
-                                    />
-                                  </FormControl>
-                                  <InputGroupAddon align='inline-end'>
-                                    {t('per request')}
-                                  </InputGroupAddon>
-                                </InputGroup>
-                                <FormDescription>
+                                  </Field>
+                                ))}
+                              </div>
+                              {resolutionError && (
+                                <p
+                                  role='alert'
+                                  className='text-destructive text-sm'
+                                >
                                   {t(
-                                    'Cost in {{currency}} per request, regardless of tokens used.',
-                                    { currency: currency.label }
+                                    'Enter a price greater than zero for every resolution.'
                                   )}
-                                </FormDescription>
-                                <FormMessage />
-                              </Field>
-                            </FormItem>
+                                </p>
+                              )}
+                            </Field>
                           )}
-                        />
-                      </FieldGroup>
-                    </TabsContent>
+                        </FieldGroup>
+                      </TabsContent>
+                    ))}
 
                     <TabsContent value='tiered_expr' className='pt-0'>
                       <FieldGroup className='gap-5'>

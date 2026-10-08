@@ -110,6 +110,7 @@ export const STATIC_I18N_KEYS = [
   'The model routing configuration could not be verified.',
   'Audio and Realtime pricing must be converted manually.',
   'Video pricing must be converted manually.',
+  'Price per request by resolution',
   'Image prices with count, size or quality adjustments must be converted manually.',
   'Configure an input price before converting this model.',
   'Prices changed while preparing the conversion. Try again.',

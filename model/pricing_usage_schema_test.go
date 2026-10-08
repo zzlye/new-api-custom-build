@@ -30,6 +30,39 @@ export function parseTaskResult() { return {}; }
 `, version, usageSchema)
 }
 
+// 广场接口必须同时返回计费单位与分辨率规则，且规则不依赖插件计量字段。
+func TestPricingCarriesResolutionUnitPrices(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error { savedConfig[key] = value; return nil }))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+		InvalidatePricingCache()
+	})
+	expression := `param("resolution") == "1080p" ? 0.93 : param("resolution") == "720p" ? 0.48 : 0.27`
+	insertPricingEndpointChannel(t, 904, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 904, "resolution-video")
+	for _, mode := range []string{billing_setting.BillingModePerSecond, billing_setting.BillingModePerRequest} {
+		t.Run(mode, func(t *testing.T) {
+			require.NoError(t, ValidateModelPricing("resolution-video", PricingValues{"ModelPrice": 0.48, "billing_setting.billing_mode": mode, "billing_setting.billing_expr": expression}))
+			modes, err := common.Marshal(map[string]string{"resolution-video": mode})
+			require.NoError(t, err)
+			expressions, err := common.Marshal(map[string]string{"resolution-video": expression})
+			require.NoError(t, err)
+			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"billing_setting.billing_mode": string(modes), "billing_setting.billing_expr": string(expressions)}))
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"resolution-video":0.48}`))
+			InvalidatePricingCache()
+			pricing := pricingByModel(GetPricing())["resolution-video"]
+			assert.Equal(t, mode, pricing.BillingMode)
+			assert.Equal(t, expression, pricing.BillingExpr)
+			assert.Equal(t, 0.48, pricing.ModelPrice)
+			assert.Equal(t, 1, pricing.QuotaType)
+		})
+	}
+}
+
 func TestPricingCarriesTaskUsageSchemaAndRefreshesWithPluginGeneration(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 	const pluginKey = "pricing-usage-probe"

@@ -51,6 +51,7 @@ import {
 import { parseTags } from '../lib/filters'
 import { isPerSecondModel, isTokenBasedModel } from '../lib/model-helpers'
 import {
+  getResolutionPriceRows,
   formatPerSecondPrice,
   formatPrice,
   formatRequestPrice,
@@ -242,6 +243,28 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       )
     }
+  } else if (getResolutionPriceRows(props.model).length > 0) {
+    // 广场卡片显示三档实际单价，并沿用当前分组及充值价格换算。
+    priceSummary = getResolutionPriceRows(props.model).map(
+      ({ resolution, price }) => (
+        <div key={resolution} className='flex min-w-0 flex-col gap-1'>
+          <span className='text-muted-foreground text-xs'>{resolution}</span>
+          <span className='font-mono text-sm font-semibold tabular-nums'>
+            {formatRequestPrice(
+              { ...props.model, model_price: price },
+              showRechargePrice,
+              priceRate,
+              usdExchangeRate,
+              props.selectedGroup
+            )}
+            <span className='text-muted-foreground text-xs font-normal'>
+              {' '}
+              / {t(isPerSecond ? 'second' : 'request')}
+            </span>
+          </span>
+        </div>
+      )
+    )
   } else if (isPerSecond) {
     priceSummary = (
       <span className='text-muted-foreground whitespace-nowrap'>

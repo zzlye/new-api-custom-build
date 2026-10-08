@@ -1,7 +1,9 @@
 package helper
 
 import (
+	"bytes"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -859,6 +861,65 @@ func TestModelPriceHelperPerCallPerSecondRejectsDefaultPriceFallback(t *testing.
 
 	_, err := ModelPriceHelperPerCall(ctx, info)
 	require.Error(t, err)
+}
+
+// 覆盖各档整条任务价格、不同视频时长及分组倍率，防止重复乘秒数。
+func TestModelPriceHelperPerRequestResolutionPrice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	savedConfig := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error { savedConfig[key] = value; return nil }))
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(savedConfig))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"video-resolution-request":0.48}`))
+	for _, tc := range []struct {
+		resolution            string
+		seconds, group, price float64
+		multipart             bool
+	}{
+		{"480p", 4, 1, 0.27, false}, {"720p", 8, 1, 0.48, false}, {"1080p", 4, 1, 0.93, false}, {"1080p", 8, 0.5, 0.93, false}, {"1080p", 8, 0, 0.93, false},
+		{"720p", 4, 1, 0.48, true}, {"1080p", 8, 0.5, 0.93, true},
+	} {
+		t.Run(fmt.Sprintf("%s_%g秒_%g倍率", tc.resolution, tc.seconds, tc.group), func(t *testing.T) {
+			groups, err := common.Marshal(map[string]float64{"default": tc.group})
+			require.NoError(t, err)
+			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+				"billing_setting.billing_mode":    `{"video-resolution-request":"per_request"}`,
+				"billing_setting.billing_expr":    `{"video-resolution-request":"param(\"resolution\") == \"1080p\" ? 0.93 : param(\"resolution\") == \"720p\" ? 0.48 : 0.27"}`,
+				"group_ratio_setting.group_ratio": string(groups),
+			}))
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			requestBody, err := common.Marshal(map[string]any{"resolution": tc.resolution, "seconds": tc.seconds})
+			require.NoError(t, err)
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(requestBody))
+			ctx.Request.Header.Set("Content-Type", "application/json")
+			if tc.multipart {
+				var body bytes.Buffer
+				writer := multipart.NewWriter(&body)
+				require.NoError(t, writer.WriteField("resolution", tc.resolution))
+				reference, err := writer.CreateFormFile("input_reference", "reference.png")
+				require.NoError(t, err)
+				_, err = reference.Write([]byte("参考图数据不参与价格表达式"))
+				require.NoError(t, err)
+				require.NoError(t, writer.Close())
+				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", &body)
+				ctx.Request.Header.Set("Content-Type", writer.FormDataContentType())
+			}
+			ctx.Set("group", "default")
+			ctx.Set("task_request", map[string]any{"resolution": tc.resolution, "seconds": tc.seconds})
+			info := &relaycommon.RelayInfo{OriginModelName: "video-resolution-request", UserGroup: "default", UsingGroup: "default"}
+			info.PriceData.AddOtherRatio("seconds", tc.seconds)
+			info.PriceData.AddOtherRatio("resolution", 2)
+			price, err := ModelPriceHelperPerCall(ctx, info)
+			require.NoError(t, err)
+			assert.False(t, price.PerSecondBilling)
+			assert.Equal(t, tc.price, price.ModelPrice)
+			assert.Empty(t, price.OtherRatios())
+			assert.Equal(t, common.QuotaRound(tc.price*tc.group*common.QuotaPerUnit), price.Quota)
+		})
+	}
 }
 
 func TestModelPriceHelperPerSecondRequiresModelPrice(t *testing.T) {
