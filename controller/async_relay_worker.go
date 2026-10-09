@@ -555,20 +555,31 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 		}
 		if task.RequestPath == "/v1/midjourney/generations" {
 			// 只归档有序单图，拼图和上游私有编号不进入对外结果。
-			var result struct {
-				Data struct {
-					Result struct {
-						Data struct {
-							ImageURLs []string `json:"image_urls"`
-						} `json:"data"`
-					} `json:"result"`
-				} `json:"data"`
+			type midjourneyTaskResult struct {
+				Result struct {
+					Data struct {
+						ImageURLs []string `json:"image_urls"`
+					} `json:"data"`
+				} `json:"result"`
 			}
-			if common.Unmarshal(child.Data, &result) != nil || len(result.Data.Result.Data.ImageURLs) == 0 || len(result.Data.Result.Data.ImageURLs) > 4 {
+			var response struct {
+				midjourneyTaskResult
+				Data *midjourneyTaskResult `json:"data"`
+			}
+			if common.Unmarshal(child.Data, &response) != nil {
 				failAsyncRelayTask(task, "MJ 已完成但未返回有效单图结果")
 				return
 			}
-			payload, err := common.Marshal(gin.H{"data": result.Data.Result.Data.ImageURLs})
+			// 完成响应同时兼容顶层任务和 data 包装，不依赖处理中响应的外层结构。
+			result := &response.midjourneyTaskResult
+			if response.Data != nil {
+				result = response.Data
+			}
+			if len(result.Result.Data.ImageURLs) == 0 || len(result.Result.Data.ImageURLs) > 4 {
+				failAsyncRelayTask(task, "MJ 已完成但未返回有效单图结果")
+				return
+			}
+			payload, err := common.Marshal(gin.H{"data": result.Result.Data.ImageURLs})
 			if err != nil {
 				failAsyncRelayTask(task, "编码 MJ 图片结果失败")
 				return

@@ -52,18 +52,28 @@ export const native = {
 
 export function buildSubmitRequest(ctx) {
   validateRequest(ctx.requestBody);
+  const body = Object.assign({}, ctx.requestBody, { model: ctx.upstreamModel || ctx.model });
+  // Niji 默认品质为 1，省略等价默认值避开上游错误的图片校验；非默认品质保持原样。
+  if (ctx.model === "mj-niji7" && body.quality === 1) delete body.quality;
   // 只替换已经由渠道配置解析出的上游模型名，不改提示词或参考图顺序。
   return {
     url: ctx.baseUrl.replace(/\/$/, "") + "/v1/midjourney/generations",
     method: "POST",
     headers: { Authorization: "Bearer " + ctx.apiKey, "Content-Type": "application/json" },
-    body: Object.assign({}, ctx.requestBody, { model: ctx.upstreamModel || ctx.model }),
+    body,
   };
 }
 
+// 上游提交可能返回单元素数组，查询可能返回顶层对象；拒绝多任务以免遗漏结果和结算。
+function taskData(body) {
+  const data = body && body.data !== undefined ? body.data : body;
+  if (Array.isArray(data)) return data.length === 1 && data[0] && typeof data[0] === "object" ? data[0] : {};
+  return data && typeof data === "object" ? data : {};
+}
+
 export function parseSubmitResponse(ctx, resp) {
-  const body = resp.body || {}, data = body.data || {};
-  if (typeof data.task_id !== "string" || !data.task_id) throw new Error(data.error_message || body.message || "missing task_id");
+  const body = resp.body || {}, data = taskData(body);
+  if (typeof data.task_id !== "string" || !data.task_id) throw new Error(data.error_message || body.message || (body.error && body.error.message) || "missing task_id");
   return { taskId: data.task_id, taskData: body };
 }
 
@@ -76,7 +86,7 @@ export function buildQueryRequest(ctx) {
 }
 
 export function parseTaskResult(ctx, body) {
-  const data = body.data || {};
+  const data = taskData(body);
   const statuses = { submitted: "SUBMITTED", queued: "QUEUED", pending: "QUEUED", processing: "IN_PROGRESS", in_progress: "IN_PROGRESS", completed: "SUCCESS", failed: "FAILURE", cancelled: "FAILURE", canceled: "FAILURE" };
   const status = statuses[data.status];
   if (!status) return { status: "UNKNOWN", reason: "unknown task status: " + String(data.status || "") };

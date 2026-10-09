@@ -32,12 +32,16 @@ func TestAsyncRelayMidjourneyNativeLifecycle(t *testing.T) {
 		model       string
 		channelType int
 		failed      bool
+		shape       string
 	}{
-		{"mj-v8.2", constant.ChannelTypeMidjourney, false},
-		{"mj-niji7", constant.ChannelTypeMidjourneyPlus, false},
-		{"mj-niji7", constant.ChannelTypeMidjourney, true},
+		{"mj-v8.2", constant.ChannelTypeMidjourney, false, "wrapped"},
+		{"mj-niji7", constant.ChannelTypeMidjourneyPlus, false, "wrapped"},
+		{"mj-niji7", constant.ChannelTypeMidjourney, true, "wrapped"},
+		{"mj-v8.2", constant.ChannelTypeMidjourney, false, "top"},
+		{"mj-niji7", constant.ChannelTypeMidjourneyPlus, false, "array"},
+		{"mj-niji7", constant.ChannelTypeMidjourney, true, "array"},
 	} {
-		t.Run(fmt.Sprintf("%s_失败_%v", scenario.model, scenario.failed), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s_%s_失败_%v", scenario.model, scenario.shape, scenario.failed), func(t *testing.T) {
 			generation := pluginruntime.DefaultRegistry.Generation()
 			binding, found := generation.LookupDeclaredRoute(http.MethodPost, "/v1/midjourney/generations")
 			require.True(t, found, "MJ 新接口必须注册到任务插件路由")
@@ -62,16 +66,40 @@ func TestAsyncRelayMidjourneyNativeLifecycle(t *testing.T) {
 					assert.Equal(t, "16:9", body["size"])
 					assert.Equal(t, false, body["raw"])
 					assert.Equal(t, float64(1), body["n"])
-					assert.Equal(t, float64(0.5), body["quality"])
-					assert.Equal(t, []any{"https://example.com/reference.jpg", "data:image/png;base64," + asyncFixturePNG}, body["images"])
-					fmt.Fprint(w, `{"data":{"task_id":"private-mj-task","status":"submitted","progress":"0%"}}`)
-				case "/v1/tasks/private-mj-task":
-					queries.Add(1)
-					assert.Equal(t, "Bearer fixture-upstream", r.Header.Get("Authorization"))
-					if scenario.failed {
-						fmt.Fprint(w, `{"data":{"task_id":"private-mj-task","status":"failed","error_code":"moderation","error_message":"上游拒绝生成"}}`)
+					if scenario.shape == "wrapped" {
+						assert.Equal(t, float64(0.5), body["quality"])
+						assert.Equal(t, []any{"https://example.com/reference.jpg", "data:image/png;base64," + asyncFixturePNG}, body["images"])
 					} else {
-						fmt.Fprintf(w, `{"data":{"task_id":"private-mj-task","status":"completed","progress":"100%%","result":{"data":{"image_urls":["http://%s/image/1","http://%s/image/2","http://%s/image/3","http://%s/image/4"],"grid_image_url":"http://%s/grid"}}}}`, r.Host, r.Host, r.Host, r.Host, r.Host)
+						// 真实文生图没有参考图；默认品质不应触发上游错误的图片校验。
+						assert.NotContains(t, body, "quality")
+						assert.NotContains(t, body, "image")
+						assert.NotContains(t, body, "images")
+					}
+					switch scenario.shape {
+					case "array":
+						fmt.Fprint(w, `{"code":200,"data":[{"task_id":"private-mj-task","status":"submitted"}]}`)
+					case "top":
+						fmt.Fprint(w, `{"task_id":"private-mj-task","status":"submitted"}`)
+					default:
+						fmt.Fprint(w, `{"data":{"task_id":"private-mj-task","status":"submitted","progress":"0%"}}`)
+					}
+				case "/v1/tasks/private-mj-task":
+					queryCount := queries.Add(1)
+					assert.Equal(t, "Bearer fixture-upstream", r.Header.Get("Authorization"))
+					if scenario.shape != "wrapped" && queryCount == 1 {
+						fmt.Fprint(w, `{"id":"private-mj-task","task_id":"private-mj-task","status":"processing","progress":"59%"}`)
+						return
+					}
+					var result string
+					if scenario.failed {
+						result = `{"task_id":"private-mj-task","status":"failed","error_code":"service_error","error_message":"上游拒绝生成"}`
+					} else {
+						result = fmt.Sprintf(`{"task_id":"private-mj-task","status":"completed","progress":"100%%","result":{"data":{"image_urls":["http://%s/image/1","http://%s/image/2","http://%s/image/3","http://%s/image/4"],"grid_image_url":"http://%s/grid"}}}`, r.Host, r.Host, r.Host, r.Host, r.Host)
+					}
+					if scenario.shape == "wrapped" {
+						fmt.Fprintf(w, `{"data":%s}`, result)
+					} else {
+						fmt.Fprint(w, result)
 					}
 				case "/image/1", "/image/2", "/image/3", "/image/4":
 					downloads.Add(1)
@@ -93,6 +121,12 @@ func TestAsyncRelayMidjourneyNativeLifecycle(t *testing.T) {
 			service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor { return relay.GetTaskAdaptor(platform) }
 			t.Cleanup(func() { service.GetTaskAdaptorFunc = previousFactory })
 			body := fmt.Sprintf(`{"model":"%s","prompt":"  保留原提示词 --ar 16:9  ","size":"16:9","raw":false,"n":1,"quality":0.5,"images":["https://example.com/reference.jpg","data:image/png;base64,%s"]}`, scenario.model, asyncFixturePNG)
+			if scenario.shape != "wrapped" {
+				body = fmt.Sprintf(`{"model":"%s","prompt":"  保留原提示词 --ar 16:9  ","size":"16:9","raw":false,"n":1}`, scenario.model)
+				if scenario.model == "mj-niji7" {
+					body = strings.TrimSuffix(body, "}") + `,"quality":1}`
+				}
+			}
 			response, done, _ := beginAsyncCompatRequest(t, user, token, "/v1/midjourney/generations", body, relaytypes.RelayFormatTask)
 			processed, err := ProcessAsyncRelayTasks(t.Context(), 1)
 			require.NoError(t, err)
@@ -117,6 +151,12 @@ func TestAsyncRelayMidjourneyNativeLifecycle(t *testing.T) {
 			assert.Equal(t, "IMAGE", taskLog.Action)
 			service.DispatchPlatformUpdate(t.Context(), child.Platform, map[int][]string{child.ChannelId: {"private-mj-task"}}, map[string]*model.Task{"private-mj-task": &child})
 			require.NoError(t, model.DB.First(&child, child.ID).Error)
+			if scenario.shape != "wrapped" {
+				assert.Equal(t, model.TaskStatus(model.TaskStatusInProgress), child.Status)
+				assert.Equal(t, "59%", child.Progress)
+				service.DispatchPlatformUpdate(t.Context(), child.Platform, map[int][]string{child.ChannelId: {"private-mj-task"}}, map[string]*model.Task{"private-mj-task": &child})
+				require.NoError(t, model.DB.First(&child, child.ID).Error)
+			}
 			// 恢复执行只查询已经持久化的子任务，不得再次提交上游。
 			require.NoError(t, model.DB.Model(&model.AsyncRelayTask{}).Where("id = ?", parent.ID).Updates(map[string]any{"next_attempt_at": 0, "updated_at": common.GetTimestamp() - 10}).Error)
 			processed, err = ProcessAsyncRelayTasks(t.Context(), 1)
@@ -124,7 +164,11 @@ func TestAsyncRelayMidjourneyNativeLifecycle(t *testing.T) {
 			require.Equal(t, 1, processed)
 			require.NoError(t, model.DB.First(&parent, parent.ID).Error)
 			assert.Equal(t, int32(1), submits.Load())
-			assert.Equal(t, int32(1), queries.Load())
+			expectedQueries := int32(1)
+			if scenario.shape != "wrapped" {
+				expectedQueries = 2
+			}
+			assert.Equal(t, expectedQueries, queries.Load())
 			query := func(tokenID int) *httptest.ResponseRecorder {
 				recorder := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(recorder)
