@@ -2,8 +2,11 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,11 +15,179 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/relay"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+// MJ 新接口经过真实后台队列，验证模型映射、四图一次收费及断线后只查询原任务。
+func TestAsyncRelayMidjourneyNativeLifecycle(t *testing.T) {
+	for _, scenario := range []struct {
+		model       string
+		channelType int
+		failed      bool
+	}{
+		{"mj-v8.2", constant.ChannelTypeMidjourney, false},
+		{"mj-niji7", constant.ChannelTypeMidjourneyPlus, false},
+		{"mj-niji7", constant.ChannelTypeMidjourney, true},
+	} {
+		t.Run(fmt.Sprintf("%s_失败_%v", scenario.model, scenario.failed), func(t *testing.T) {
+			generation := pluginruntime.DefaultRegistry.Generation()
+			binding, found := generation.LookupDeclaredRoute(http.MethodPost, "/v1/midjourney/generations")
+			require.True(t, found, "MJ 新接口必须注册到任务插件路由")
+			require.Equal(t, "midjourney", binding.Plugin.Meta.Key)
+			// 本地替身使用回环地址和随机端口，测试结束后恢复媒体下载策略。
+			fetchSetting := system_setting.GetFetchSetting()
+			previousFetchSetting := *fetchSetting
+			fetchSetting.AllowPrivateIp = true
+			fetchSetting.AllowedPorts = []string{"1-65535"}
+			t.Cleanup(func() { *fetchSetting = previousFetchSetting })
+			var submits, queries, downloads atomic.Int32
+			user, token := prepareAsyncCompatRelay(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/v1/midjourney/generations":
+					submits.Add(1)
+					assert.Equal(t, "Bearer fixture-upstream", r.Header.Get("Authorization"))
+					var body map[string]any
+					assert.NoError(t, common.DecodeJson(r.Body, &body))
+					assert.Equal(t, "上游自定义名称", body["model"])
+					assert.Equal(t, "  保留原提示词 --ar 16:9  ", body["prompt"])
+					assert.Equal(t, "16:9", body["size"])
+					assert.Equal(t, false, body["raw"])
+					assert.Equal(t, float64(1), body["n"])
+					assert.Equal(t, float64(0.5), body["quality"])
+					assert.Equal(t, []any{"https://example.com/reference.jpg", "data:image/png;base64," + asyncFixturePNG}, body["images"])
+					fmt.Fprint(w, `{"data":{"task_id":"private-mj-task","status":"submitted","progress":"0%"}}`)
+				case "/v1/tasks/private-mj-task":
+					queries.Add(1)
+					assert.Equal(t, "Bearer fixture-upstream", r.Header.Get("Authorization"))
+					if scenario.failed {
+						fmt.Fprint(w, `{"data":{"task_id":"private-mj-task","status":"failed","error_code":"moderation","error_message":"上游拒绝生成"}}`)
+					} else {
+						fmt.Fprintf(w, `{"data":{"task_id":"private-mj-task","status":"completed","progress":"100%%","result":{"data":{"image_urls":["http://%s/image/1","http://%s/image/2","http://%s/image/3","http://%s/image/4"],"grid_image_url":"http://%s/grid"}}}}`, r.Host, r.Host, r.Host, r.Host, r.Host)
+					}
+				case "/image/1", "/image/2", "/image/3", "/image/4":
+					downloads.Add(1)
+					assert.Empty(t, r.Header.Get("Authorization"), "媒体下载不能携带渠道密钥")
+					w.Header().Set("Content-Type", "image/png")
+					png, err := base64.StdEncoding.DecodeString(asyncFixturePNG)
+					assert.NoError(t, err)
+					_, err = w.Write(png)
+					assert.NoError(t, err)
+				default:
+					t.Errorf("不应调用旧 MJ 路径或下载拼图: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}), scenario.model)
+			require.NoError(t, model.DB.Model(&model.Channel{}).Where("models = ?", scenario.model).Updates(map[string]any{
+				"type": scenario.channelType, "model_mapping": fmt.Sprintf(`{"%s":"上游自定义名称"}`, scenario.model),
+			}).Error)
+			previousFactory := service.GetTaskAdaptorFunc
+			service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor { return relay.GetTaskAdaptor(platform) }
+			t.Cleanup(func() { service.GetTaskAdaptorFunc = previousFactory })
+			body := fmt.Sprintf(`{"model":"%s","prompt":"  保留原提示词 --ar 16:9  ","size":"16:9","raw":false,"n":1,"quality":0.5,"images":["https://example.com/reference.jpg","data:image/png;base64,%s"]}`, scenario.model, asyncFixturePNG)
+			response, done, _ := beginAsyncCompatRequest(t, user, token, "/v1/midjourney/generations", body, relaytypes.RelayFormatTask)
+			processed, err := ProcessAsyncRelayTasks(t.Context(), 1)
+			require.NoError(t, err)
+			require.Equal(t, 1, processed)
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("MJ 提交未返回任务编号")
+			}
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.NotContains(t, response.Body.String(), "private-mj-task")
+			var parent model.AsyncRelayTask
+			require.NoError(t, model.DB.First(&parent).Error)
+			require.NotEmpty(t, parent.LinkedTaskID)
+			var child model.Task
+			require.NoError(t, model.DB.Where("task_id = ?", parent.LinkedTaskID).First(&child).Error)
+			assert.Equal(t, constant.TaskPlatform("midjourney"), child.Platform)
+			assert.Equal(t, scenario.model, child.Properties.OriginModelName)
+			assert.Equal(t, "上游自定义名称", child.Properties.UpstreamModelName)
+			var taskLog model.Task
+			require.NoError(t, model.DB.First(&taskLog, parent.LogID).Error)
+			assert.Equal(t, "IMAGE", taskLog.Action)
+			service.DispatchPlatformUpdate(t.Context(), child.Platform, map[int][]string{child.ChannelId: {"private-mj-task"}}, map[string]*model.Task{"private-mj-task": &child})
+			require.NoError(t, model.DB.First(&child, child.ID).Error)
+			// 恢复执行只查询已经持久化的子任务，不得再次提交上游。
+			require.NoError(t, model.DB.Model(&model.AsyncRelayTask{}).Where("id = ?", parent.ID).Updates(map[string]any{"next_attempt_at": 0, "updated_at": common.GetTimestamp() - 10}).Error)
+			processed, err = ProcessAsyncRelayTasks(t.Context(), 1)
+			require.NoError(t, err)
+			require.Equal(t, 1, processed)
+			require.NoError(t, model.DB.First(&parent, parent.ID).Error)
+			assert.Equal(t, int32(1), submits.Load())
+			assert.Equal(t, int32(1), queries.Load())
+			query := func(tokenID int) *httptest.ResponseRecorder {
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(http.MethodGet, "/v1/tasks/"+parent.TaskID, nil)
+				c.Params = gin.Params{{Key: "key", Value: parent.TaskID}}
+				c.Set("id", user.Id)
+				c.Set("token_id", tokenID)
+				GetTask(c)
+				return recorder
+			}
+			result := query(token.Id)
+			require.Equal(t, http.StatusOK, result.Code, result.Body.String())
+			assert.NotContains(t, result.Body.String(), "private-mj-task")
+			assert.Equal(t, http.StatusNotFound, query(token.Id+1).Code)
+			var after model.User
+			require.NoError(t, model.DB.First(&after, user.Id).Error)
+			if scenario.failed {
+				assert.Equal(t, model.AsyncRelayTaskStatusFailed, parent.Status)
+				assert.Contains(t, result.Body.String(), "上游拒绝生成")
+				assert.Equal(t, user.Quota, after.Quota)
+				assert.Zero(t, downloads.Load())
+			} else {
+				assert.Equal(t, model.AsyncRelayTaskStatusSucceeded, parent.Status, parent.Error)
+				assert.Equal(t, int32(4), downloads.Load())
+				assert.Equal(t, int64(4), gjson.Get(result.Body.String(), "result.data.image_urls.#").Int())
+				assert.Equal(t, int(0.04*common.QuotaPerUnit), user.Quota-after.Quota)
+				for _, url := range gjson.Get(result.Body.String(), "result.data.image_urls").Array() {
+					assert.Contains(t, url.String(), "/task-media/")
+				}
+				assert.Equal(t, "completed", gjson.Get(result.Body.String(), "data.status").String())
+				assert.Equal(t, int64(4), gjson.Get(result.Body.String(), "data.result.data.image_urls.#").Int())
+				preview := asyncControllerRequest(GetAsyncRelayMedia, http.MethodGet, "/", user.Id, common.RoleCommonUser, gin.Params{{Key: "task_id", Value: parent.TaskID}, {Key: "index", Value: "0"}}, "")
+				require.Equal(t, http.StatusOK, preview.Code, preview.Body.String())
+				assert.Contains(t, preview.Header().Get("Content-Type"), "image/png")
+			}
+		})
+	}
+}
+
+func TestMidjourneyNativeValidation(t *testing.T) {
+	plugin, found := pluginruntime.DefaultRegistry.Generation().Get("midjourney")
+	require.True(t, found)
+	for _, body := range []string{
+		`{"model":"mj-niji7","prompt":"cat","n":4}`,
+		`{"model":"mj-niji7","prompt":"cat","raw":"false"}`,
+		`{"model":"mj-niji7","prompt":"cat","quality":3}`,
+		`{"model":"mj-niji7","prompt":"cat","size":"1024x1024"}`,
+		`{"model":"mj-niji7","prompt":"cat","images":["http://a","http://b","http://c","http://d","http://e","http://f"]}`,
+		`{"model":"mj-niji7","prompt":"cat","action":"upscale","task_id":"private-id"}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			var value map[string]any
+			require.NoError(t, common.DecodeJson(strings.NewReader(body), &value))
+			_, err := plugin.Engine.CallMember(t.Context(), "native", "decodeSubmit", map[string]any{"body": map[string]any{"kind": "json", "value": value}})
+			require.Error(t, err)
+		})
+	}
+	unknown, err := plugin.Engine.Call(t.Context(), "parseTaskResult", map[string]any{}, map[string]any{"data": map[string]any{"status": "unrecognized"}})
+	require.NoError(t, err)
+	encoded, err := common.Marshal(unknown)
+	require.NoError(t, err)
+	assert.Equal(t, "UNKNOWN", gjson.GetBytes(encoded, "status").String())
+}
 
 // 新版插件必须继续经过内部队列，对普通图片客户端保持同步响应与一次结算。
 func TestAsyncRelayPluginImagePreservesResponseBillingAndExpiry(t *testing.T) {

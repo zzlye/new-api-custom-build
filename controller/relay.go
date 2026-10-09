@@ -876,6 +876,11 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 	}
 	if pinnedValue, exists := c.Get(pluginruntime.ContextKeyPinnedRoute); exists {
 		if pinned, ok := pinnedValue.(pluginruntime.PinnedRoute); ok && pinned.Plugin != nil && pinned.Route.Render != "" {
+			// 新 MJ 客户端只查询持久化父任务，断线后继续归档而不重新生成。
+			if pinned.Plugin.Meta.Key == "midjourney" && c.GetString(model.AsyncRelayContextKey) != "" {
+				c.JSON(http.StatusOK, gin.H{"data": gin.H{"task_id": c.GetString(model.AsyncRelayContextKey), "status": "submitted", "progress": "0%"}})
+				return
+			}
 			view, err := service.BuildTaskPluginView(outcome.Task)
 			requestValue, _ := c.Get(pluginruntime.ContextKeyRouteRequest)
 			requestContext, _ := requestValue.(pluginruntime.RouteRequestContext)

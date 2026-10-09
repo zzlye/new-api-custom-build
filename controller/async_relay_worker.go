@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -398,6 +399,19 @@ func executeAsyncRelayRequest(ctx context.Context, task *model.AsyncRelayTask, w
 		worker.Set(service.VideoAdapterSnapshotKey, metadata.VideoAdapters)
 	}
 	// 重建官方协议解析和插件绑定，再走原有渠道选择及独立后台执行。
+	if task.RequestPath == "/v1/midjourney/generations" {
+		// MJ 原生入口没有共享协议声明，后台必须恢复提交时的原生路由绑定。
+		generation := pluginruntime.DefaultRegistry.Generation()
+		binding, found := generation.LookupDeclaredRoute(task.RequestMethod, task.RequestPath)
+		if !found || binding.Plugin.Meta.Key != "midjourney" {
+			return fmt.Errorf("恢复 MJ 任务插件失败")
+		}
+		worker.Set(pluginruntime.ContextKeyPinnedRoute, pluginruntime.PinnedRoute{Generation: generation, Plugin: binding.Plugin, Route: binding.Route})
+		middleware.PrepareTaskPluginRoute()(worker)
+		if worker.IsAborted() {
+			return fmt.Errorf("恢复 MJ 请求参数失败")
+		}
+	}
 	middleware.PinTaskPluginEndpoint()(worker)
 	if worker.IsAborted() {
 		return fmt.Errorf("恢复任务插件匹配失败")
@@ -537,6 +551,43 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 			return
 		}
 		if !beginAsyncRelayMediaSave(task) {
+			return
+		}
+		if task.RequestPath == "/v1/midjourney/generations" {
+			// 只归档有序单图，拼图和上游私有编号不进入对外结果。
+			var result struct {
+				Data struct {
+					Result struct {
+						Data struct {
+							ImageURLs []string `json:"image_urls"`
+						} `json:"data"`
+					} `json:"result"`
+				} `json:"data"`
+			}
+			if common.Unmarshal(child.Data, &result) != nil || len(result.Data.Result.Data.ImageURLs) == 0 || len(result.Data.Result.Data.ImageURLs) > 4 {
+				failAsyncRelayTask(task, "MJ 已完成但未返回有效单图结果")
+				return
+			}
+			payload, err := common.Marshal(gin.H{"data": result.Data.Result.Data.ImageURLs})
+			if err != nil {
+				failAsyncRelayTask(task, "编码 MJ 图片结果失败")
+				return
+			}
+			path, file, err := common.CreateAsyncMediaFile()
+			if err != nil {
+				failAsyncRelayTask(task, "创建 MJ 图片结果文件失败")
+				return
+			}
+			_, writeErr := file.Write(payload)
+			syncErr, closeErr := file.Sync(), file.Close()
+			if writeErr != nil || syncErr != nil || closeErr != nil {
+				_ = common.RemoveAsyncMediaFile(path)
+				failAsyncRelayTask(task, "保存 MJ 图片结果失败")
+				return
+			}
+			if !finalizeAsyncRelayResult(ctx, task, path, "application/json") {
+				_ = common.RemoveAsyncMediaFile(path)
+			}
 			return
 		}
 		path, file, err := common.CreateAsyncMediaFile()

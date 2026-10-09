@@ -201,7 +201,7 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 		defer asyncRelayDeliveries.Delete(task.TaskID)
 	}
 	action := "IMAGE"
-	if format == relaytypes.RelayFormatTask || strings.HasSuffix(task.RequestPath, "/video") {
+	if (format == relaytypes.RelayFormatTask && task.RequestPath != "/v1/midjourney/generations") || strings.HasSuffix(task.RequestPath, "/video") {
 		action = "VIDEO"
 	}
 	if err := task.InsertWithLog(common.GetContextKeyString(c, constant.ContextKeyUsingGroup), action); err != nil {

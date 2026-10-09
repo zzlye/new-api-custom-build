@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedKeys = []string{"alibaba", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu"}
+var expectedKeys = []string{"alibaba", "doubao", "google", "hailuo", "jimeng", "kling", "midjourney", "sora", "sunoapi", "vertex-ai", "vidu"}
 
 func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing.T) {
 	generation := jsplugin.DefaultRegistry.Generation()
@@ -36,6 +36,7 @@ func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing
 		{"POST", "/doubao/api/v3/contents/generations/tasks", "doubao", jsplugin.RouteTypeSubmit, "", "taskCreated"},
 		{"GET", "/doubao/api/v3/contents/generations/tasks/:task_id", "doubao", jsplugin.RouteTypeQuery, "", "taskStatus"},
 		{"POST", "/doubao/api/v3/images/generations", "doubao", jsplugin.RouteTypeSubmit, "", "imageCreated"},
+		{"POST", "/v1/midjourney/generations", "midjourney", jsplugin.RouteTypeSubmit, "IMAGE", "taskCreated"},
 	}
 	for _, expected := range routes {
 		t.Run(expected.method+" "+expected.path, func(t *testing.T) {
@@ -60,6 +61,8 @@ func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing
 		key   string
 	}{
 		{1, "sora"},
+		{2, "midjourney"},
+		{5, "midjourney"},
 		{36, "sunoapi"},
 		{45, "doubao"},
 		{50, "kling"},
@@ -99,6 +102,11 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 			plugin, registerErr := registry.RegisterFactory(source, jsplugin.Options{Key: key})
 			require.NoError(t, registerErr)
 
+			// MJ 只拥有新原生生成接口，不抢占其他插件的图片或 Responses 协议。
+			if key == "midjourney" {
+				assert.Empty(t, plugin.Meta.Protocols)
+				return
+			}
 			var responsesClaim jsplugin.ProtocolClaim
 			foundResponses := false
 			for _, claim := range plugin.Meta.Protocols {
@@ -136,6 +144,9 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 func TestBuiltInResponsesDecodersEchoChannelMappedAlias(t *testing.T) {
 	bodyOverrides := map[string]map[string]any{}
 	for _, key := range expectedKeys {
+		if key == "midjourney" {
+			continue
+		}
 		t.Run(key, func(t *testing.T) {
 			source, sourceErr := Source(key)
 			require.NoError(t, sourceErr)

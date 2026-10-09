@@ -37,6 +37,11 @@ func loadAsyncRelayTask(c *gin.Context) *model.AsyncRelayTask {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"message": "任务不存在"}})
 		return nil
 	}
+	// MJ 公共接口必须使用提交任务时的令牌，后台管理入口仍沿用会话权限。
+	if task.RequestPath == "/v1/midjourney/generations" && strings.HasPrefix(c.Request.URL.Path, "/v1/") && task.TokenID != c.GetInt("token_id") {
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"message": "任务不存在"}})
+		return nil
+	}
 	return task
 }
 
@@ -94,6 +99,32 @@ func GetAsyncRelayTask(c *gin.Context) {
 	}
 	if task.Status == model.AsyncRelayTaskStatusFailed || task.Status == model.AsyncRelayTaskStatusCancelled {
 		response["error"] = gin.H{"message": task.Error}
+	}
+	if task.RequestPath == "/v1/midjourney/generations" {
+		status, progress := "submitted", "0%"
+		if task.Status == model.AsyncRelayTaskStatusSucceeded {
+			status, progress = "completed", "100%"
+		} else if task.Status == model.AsyncRelayTaskStatusFailed || task.Status == model.AsyncRelayTaskStatusCancelled {
+			status = "failed"
+		} else if task.Status == model.AsyncRelayTaskStatusProcessing {
+			status = "processing"
+		}
+		// 返回受控媒体链接，不能把归档用的私有上游 URL 直接交给客户端。
+		delete(response, "result")
+		response["object"] = "image_generation"
+		data := gin.H{"task_id": task.TaskID, "status": status, "progress": progress}
+		if status == "completed" && !expired {
+			urls := make([]string, 0)
+			for _, media := range asyncRelayMediaLinks(task, "/v1/tasks/") {
+				urls = append(urls, media.PreviewURL)
+			}
+			result := gin.H{"data": gin.H{"image_urls": urls}}
+			data["result"], response["result"] = result, result
+		}
+		if status == "failed" {
+			data["error_code"], data["error_message"] = "task_failed", task.Error
+		}
+		response["data"] = data
 	}
 	c.JSON(http.StatusOK, response)
 }
