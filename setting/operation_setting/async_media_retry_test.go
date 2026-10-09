@@ -3,8 +3,52 @@ package operation_setting
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// 保存和重读都逐个保留错误码，区间输入仅作为兼容格式，不影响实际匹配集合。
+func TestAsyncMediaRetryIndividualStatusCodes(t *testing.T) {
+	for _, tc := range []struct {
+		input    string
+		expected string
+		matches  []int
+		excludes []int
+	}{
+		{"502,503", "502,503", []int{502, 503}, []int{501, 504, 505}},
+		{"429,502,503,504", "429,502,503,504", []int{429, 502, 503, 504}, []int{501, 505}},
+		{"429,502-504,503", "429,502,503,504", []int{429, 502, 503, 504}, []int{501, 505}},
+		{" 503，502，503，504，429 ", "429,502,503,504", []int{429, 502, 503, 504}, []int{501, 505}},
+		{"500-503", "500,501,502,503", []int{500, 501, 502, 503}, []int{499, 504}},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			value, err := common.Marshal(AsyncMediaRetryPolicy{
+				Enabled:              true,
+				MaxRetries:           2,
+				SameChannelRetries:   1,
+				ChannelStatusCodes:   map[int]string{113: tc.input},
+				ChannelIDs:           []int{113},
+				SelectedChannelsOnly: true,
+			})
+			require.NoError(t, err)
+			policy, err := ParseAsyncMediaRetryPolicy(string(value))
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, policy.ChannelStatusCodes[113])
+			for _, code := range tc.matches {
+				assert.True(t, policy.MatchesStatus(113, code), "错误码 %d 应参与匹配", code)
+			}
+			for _, code := range tc.excludes {
+				assert.False(t, policy.MatchesStatus(113, code), "未配置的错误码 %d 不应匹配", code)
+			}
+			value, err = common.Marshal(policy)
+			require.NoError(t, err)
+			reloaded, err := ParseAsyncMediaRetryPolicy(string(value))
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, reloaded.ChannelStatusCodes[113])
+		})
+	}
+}
 
 // 不同渠道的相同响应必须使用各自规则，未配置渠道不能继承通用状态码。
 func TestAsyncMediaRetryChannelCodes(t *testing.T) {

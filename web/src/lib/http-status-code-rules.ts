@@ -30,7 +30,8 @@ export type ParsedHttpStatusCodeRules = {
 }
 
 export function parseHttpStatusCodeRules(
-  input: unknown
+  input: unknown,
+  options?: { expandRanges?: boolean }
 ): ParsedHttpStatusCodeRules {
   const raw = (input ?? '').toString().trim()
   if (raw.length === 0) {
@@ -43,7 +44,7 @@ export function parseHttpStatusCodeRules(
     }
   }
 
-  const sanitized = raw.replace(/[，]/g, ',')
+  const sanitized = raw.replaceAll('，', ',')
   const segments = sanitized
     .split(',')
     .map((s) => s.trim())
@@ -72,9 +73,15 @@ export function parseHttpStatusCodeRules(
   }
 
   const merged = mergeRanges(ranges)
-  const tokens = merged.map((r) =>
-    r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`
-  )
+  // 匹配保留合并区间；需要逐个展示的配置不再把相邻错误码压成区间。
+  const tokens = merged.flatMap((r) => {
+    if (options?.expandRanges) {
+      return Array.from({ length: r.end - r.start + 1 }, (_, i) =>
+        String(r.start + i)
+      )
+    }
+    return [r.start === r.end ? `${r.start}` : `${r.start}-${r.end}`]
+  })
   const normalized = tokens.join(',')
 
   return {
@@ -87,7 +94,7 @@ export function parseHttpStatusCodeRules(
 }
 
 function parseToken(token: string): StatusCodeRange | null {
-  const cleaned = token.trim().replace(/\s/g, '')
+  const cleaned = token.trim().replaceAll(/\s/g, '')
   if (!cleaned) return null
 
   const isValidCode = (code: number) =>
@@ -123,7 +130,7 @@ function mergeRanges(ranges: StatusCodeRange[]): StatusCodeRange[] {
   )
 
   return sorted.reduce<StatusCodeRange[]>((merged, current) => {
-    const last = merged[merged.length - 1]
+    const last = merged.at(-1)
 
     if (!last || current.start > last.end + 1) {
       merged.push({ ...current })

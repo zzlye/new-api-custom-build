@@ -90,6 +90,40 @@ afterEach(() => {
 })
 
 describe('媒体换渠道重试设置', () => {
+  it.each([
+    ['502,503', '502,503'],
+    ['429,502,503,504', '429,502,503,504'],
+    ['429,502-504,503', '429,502,503,504'],
+    [' 503，502，503，504，429 ', '429,502,503,504'],
+  ])('错误码 %s 保存和重新加载后逐个显示', async (input, expected) => {
+    const rerender = mount()
+    const field = await screen.findByLabelText(
+      'Retry HTTP error codes — Banana 主渠道 #12'
+    )
+    fireEvent.change(field, { target: { value: input } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+    const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
+    expect(JSON.parse(body.value).channel_status_codes['12']).toBe(expected)
+    await waitFor(() => expect(field).toHaveValue(expected))
+    await act(async () => rerender(body.value))
+    expect(field).toHaveValue(expected)
+  })
+
+  it('加载旧区间配置时逐个显示错误码且不自动保存', async () => {
+    mount(
+      JSON.stringify({
+        ...defaultAsyncMediaRetry,
+        channel_ids: [12],
+        channel_status_codes: { '12': '429,502-504,503' },
+      })
+    )
+    expect(
+      await screen.findByLabelText('Retry HTTP error codes — Banana 主渠道 #12')
+    ).toHaveValue('429,502,503,504')
+    expect(api.put).not.toHaveBeenCalled()
+  })
+
   it('原渠道重试次数独立保存且不占用换渠道次数', async () => {
     mount()
     await screen.findByRole('checkbox', { name: /Banana/ })
@@ -152,7 +186,7 @@ describe('媒体换渠道重试设置', () => {
       enabled: true,
       max_retries: 3,
       same_channel_retries: 1,
-      channel_status_codes: { '12': '500,502-503' },
+      channel_status_codes: { '12': '500,502,503' },
       channel_ids: [12],
       selected_channels_only: true,
     })
@@ -334,13 +368,24 @@ describe('媒体换渠道重试设置', () => {
       screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
       { target: { value: '7' } }
     )
+    const codes = screen.getByLabelText(
+      'Retry HTTP error codes — Banana 主渠道 #12'
+    )
+    fireEvent.change(codes, { target: { value: '502, 503' } })
     await act(async () =>
-      rerender(JSON.stringify({ ...defaultAsyncMediaRetry, max_retries: 5 }))
+      rerender(
+        JSON.stringify({
+          ...defaultAsyncMediaRetry,
+          max_retries: 5,
+          channel_status_codes: { '12': '429,502-504' },
+        })
+      )
     )
     expect(screen.getByRole('checkbox', { name: /Banana/ })).toBeChecked()
     expect(
       screen.getByRole('spinbutton', { name: 'Channel switch retry limit' })
     ).toHaveValue(7)
+    expect(codes).toHaveValue('502, 503')
   })
 
   it('保存失败保留草稿并展示服务端错误', async () => {
@@ -400,7 +445,7 @@ describe('媒体换渠道重试设置', () => {
       JSON.stringify({
         enabled: true,
         max_retries: 2,
-        status_codes: '500',
+        status_codes: '502-503',
         channel_ids: [],
       })
     )
@@ -416,7 +461,7 @@ describe('媒体换渠道重试设置', () => {
     const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
     expect(JSON.parse(body.value)).toMatchObject({
       channel_ids: [12, 38],
-      channel_status_codes: { '12': '429', '38': '500' },
+      channel_status_codes: { '12': '429', '38': '502,503' },
       selected_channels_only: true,
     })
     expect(JSON.parse(body.value)).not.toHaveProperty('status_codes')

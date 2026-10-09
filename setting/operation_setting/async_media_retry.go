@@ -3,6 +3,8 @@ package operation_setting
 import (
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -58,7 +60,14 @@ func ParseAsyncMediaRetryPolicy(value string) (AsyncMediaRetryPolicy, error) {
 				return policy, fmt.Errorf("渠道 #%d：%w", id, err)
 			}
 			policy.channelRanges[id] = ranges
-			policy.ChannelStatusCodes[id] = statusCodeRangesToString(ranges)
+			// 保存值逐个列出错误码；内部匹配仍使用已去重的合并区间。
+			var statusCodes []string
+			for _, r := range ranges {
+				for code := r.Start; code <= r.End; code++ {
+					statusCodes = append(statusCodes, strconv.Itoa(code))
+				}
+			}
+			policy.ChannelStatusCodes[id] = strings.Join(statusCodes, ",")
 		}
 		// 明确进入按渠道模式后，旧错误码字段不再参与任何决策。
 		policy.StatusCodes = ""

@@ -65,13 +65,27 @@ export function AsyncMediaRetrySection(props: { value: string }) {
   const config = useMemo(() => {
     try {
       const raw = JSON.parse(props.value)
-      return schema.parse({
+      const config = schema.parse({
         ...raw,
         // 旧配置缺失字段时展示为0，不自动增加付费提交次数。
         same_channel_retries: raw.same_channel_retries ?? 0,
         channel_status_codes: raw.channel_status_codes ?? {},
         selected_channels_only: raw.selected_channels_only ?? false,
       })
+      // 旧配置中的区间也逐个展开，避免保存前后出现两种错误码显示方式。
+      return {
+        ...config,
+        status_codes:
+          config.status_codes &&
+          parseHttpStatusCodeRules(config.status_codes, { expandRanges: true })
+            .normalized,
+        channel_status_codes: Object.fromEntries(
+          Object.entries(config.channel_status_codes).map(([id, codes]) => [
+            id,
+            parseHttpStatusCodeRules(codes, { expandRanges: true }).normalized,
+          ])
+        ),
+      }
     } catch {
       return null
     }
@@ -194,7 +208,7 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
           .filter(([, value]) => value.trim())
           .map(([id, value]) => [
             id,
-            parseHttpStatusCodeRules(value).normalized,
+            parseHttpStatusCodeRules(value, { expandRanges: true }).normalized,
           ])
       ),
       channel_ids: values.channel_ids,
