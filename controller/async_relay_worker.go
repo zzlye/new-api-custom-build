@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tidwall/sjson"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -354,12 +357,29 @@ func executeAsyncRelayRequest(ctx context.Context, task *model.AsyncRelayTask, w
 	if task.RequestQuery != "" {
 		requestURL += "?" + task.RequestQuery
 	}
-	request, err := http.NewRequestWithContext(ctx, task.RequestMethod, requestURL, requestFile)
+	var requestBody io.Reader = requestFile
+	contentLength := info.Size()
+	// 本地返回选项不属于 Gemini 上游参数；透传和关闭总开关时也不能把它送给上游。
+	if task.RequestFormat == string(relaytypes.RelayFormatGemini) {
+		var details model.AsyncRelayRequestDetails
+		if common.UnmarshalJsonStr(task.RequestDetails, &details) == nil && details.Parameters["response_format"] == "url" {
+			raw, err := io.ReadAll(requestFile)
+			if err != nil {
+				return fmt.Errorf("读取 Gemini 返回选项失败")
+			}
+			raw, err = sjson.DeleteBytes(raw, "response_format")
+			if err != nil {
+				return fmt.Errorf("移除 Gemini 本地返回选项失败")
+			}
+			requestBody, contentLength = bytes.NewReader(raw), int64(len(raw))
+		}
+	}
+	request, err := http.NewRequestWithContext(ctx, task.RequestMethod, requestURL, requestBody)
 	if err != nil {
 		return fmt.Errorf("恢复请求地址失败")
 	}
 	// 保留原始入口信息，原生任务适配器继续按原地址选择返回结构和生成链接。
-	request.ContentLength, request.Host, request.RequestURI = info.Size(), metadata.Host, requestURL
+	request.ContentLength, request.Host, request.RequestURI = contentLength, metadata.Host, requestURL
 	if request.Host == "" {
 		request.Host = "async-worker"
 	}

@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Enable Gemini Image URL Responses": "Autoriser les liens des images Gemini",
+    "Allow Gemini image requests with response_format set to url to return image links. Requests without this option keep their original response.": "Les requêtes Gemini avec response_format défini sur url renvoient des liens vers les images. Sans cette option, la réponse reste inchangée.",
     "User pricing": "Tarifs utilisateur",
     "Search users by name or ID": "Rechercher par nom ou ID",
     "Selected user": "Utilisateur sélectionné",

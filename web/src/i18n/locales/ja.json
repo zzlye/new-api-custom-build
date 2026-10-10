@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Enable Gemini Image URL Responses": "Gemini の画像 URL 応答を有効にする",
+    "Allow Gemini image requests with response_format set to url to return image links. Requests without this option keep their original response.": "response_format に url を指定した Gemini 画像リクエストでは画像リンクを返します。指定しないリクエストの応答は変わりません。",
     "User pricing": "ユーザー別料金",
     "Search users by name or ID": "ユーザー名またはIDで検索",
     "Selected user": "選択中のユーザー",

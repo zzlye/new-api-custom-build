@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Enable Gemini Image URL Responses": "Enable Gemini Image URL Responses",
+    "Allow Gemini image requests with response_format set to url to return image links. Requests without this option keep their original response.": "Allow Gemini image requests with response_format set to url to return image links. Requests without this option keep their original response.",
     "Select at least one channel before enabling failover.": "Select at least one channel before enabling failover.",
     "Configure retry error codes for at least one channel.": "Configure retry error codes for at least one channel.",
     "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.": "Each channel uses its own retry error codes. Leave blank to disable retries from that channel.",

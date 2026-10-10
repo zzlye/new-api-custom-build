@@ -1,5 +1,7 @@
 {
   "translation": {
+    "Enable Gemini Image URL Responses": "允許 Gemini 生圖回傳圖片連結",
+    "Allow Gemini image requests with response_format set to url to return image links. Requests without this option keep their original response.": "開啟後，請求傳入 response_format: url 時回傳圖片連結；未傳入時維持原本的回傳格式。",
     "User pricing": "使用者定價",
     "Search users by name or ID": "搜尋使用者名稱或 ID",
     "Selected user": "已選使用者",

@@ -14,6 +14,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +22,7 @@ const asyncRelayMaxBatch = 4
 
 // asyncRelayMetadata 仅保存重建请求所需的非密钥信息，不把令牌或会话写入任务文件。
 type asyncRelayMetadata struct {
+	GeminiImageURL  bool                                 `json:"gemini_image_url,omitempty"`
 	VideoAdapters   map[int]service.VideoAdapterSnapshot `json:"video_adapters,omitempty"`
 	Host            string                               `json:"host,omitempty"`
 	Params          gin.Params                           `json:"params"`
@@ -149,14 +151,11 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 	}
 	snapshot, _ := c.Get(service.VideoAdapterSnapshotKey)
 	videoAdapters, _ := snapshot.(map[int]service.VideoAdapterSnapshot)
-	metadata, err := common.Marshal(asyncRelayMetadata{VideoAdapters: videoAdapters, Host: c.Request.Host, Params: c.Params, ClientIP: c.ClientIP(), SpecificChannel: c.GetString("specific_channel_id"), Action: c.GetString("action"), RelayMode: c.GetInt("relay_mode")})
-	if err != nil {
-		return err
-	}
+	metadata := asyncRelayMetadata{VideoAdapters: videoAdapters, Host: c.Request.Host, Params: c.Params, ClientIP: c.ClientIP(), SpecificChannel: c.GetString("specific_channel_id"), Action: c.GetString("action"), RelayMode: c.GetInt("relay_mode")}
 	task := &model.AsyncRelayTask{UserID: c.GetInt("id"), TokenID: c.GetInt("token_id"), ModelName: modelName,
 		NodeID: common.NodeName, RequestMethod: http.MethodPost,
 		RequestPath: c.Request.URL.Path, RequestQuery: removeAsyncQuery(c.Request.URL.RawQuery), RequestContentType: contentType,
-		RequestFormat: string(format), RequestFilePath: requestPath, RequestFiles: headers, RequestMetadata: string(metadata),
+		RequestFormat: string(format), RequestFilePath: requestPath, RequestFiles: headers,
 	}
 	// 在原请求文件清理前保存提示词及参考图，采集过程不发起任何远程请求。
 	inputDetails = captureAsyncRequestDetails(task)
@@ -165,6 +164,18 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 		return err
 	}
 	task.RequestDetails = string(encodedDetails)
+	// 将返回方式随任务持久化，排队后更改总开关也不会改变已提交任务的约定。
+	metadata.GeminiImageURL = format == relaytypes.RelayFormatGemini && model_setting.GetGlobalSettings().GeminiImageURLEnabled && inputDetails.Parameters["response_format"] == "url"
+	if metadata.GeminiImageURL {
+		if err := service.ValidateTaskArtifactBaseURL(geminiImageURLBaseAddress()); err != nil {
+			return fmt.Errorf("请先配置有效的任务公开地址或服务器地址，再使用图片 URL 返回")
+		}
+	}
+	encodedMetadata, err := common.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	task.RequestMetadata = string(encodedMetadata)
 	if task.ModelName == "" {
 		task.ModelName = inputDetails.Parameters["model"]
 	}
@@ -194,7 +205,7 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 	}
 	taskMode := wantsAsyncRelayTask(c)
 	var delivery *asyncRelayDelivery
-	if !taskMode {
+	if !taskMode && !metadata.GeminiImageURL {
 		// 在任务可被领取前登记响应接收方，避免快速任务先执行完而错过响应。
 		delivery = &asyncRelayDelivery{changed: make(chan struct{}, 1)}
 		asyncRelayDeliveries.Store(task.TaskID, delivery)
@@ -211,6 +222,9 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 	c.Header("X-New-Api-Task-Id", task.TaskID)
 	WakeAsyncRelayWorkers()
 	if !taskMode {
+		if metadata.GeminiImageURL {
+			return serveGeminiImageURLTask(c, task.TaskID)
+		}
 		return delivery.serve(c, task.TaskID)
 	}
 	c.Header("Location", "/v1/tasks/"+task.TaskID)

@@ -37,8 +37,10 @@ func (p ChatCompletionsToResponsesPolicy) IsChannelEnabled(channelID int, channe
 }
 
 type GlobalSettings struct {
-	PassThroughRequestEnabled bool     `json:"pass_through_request_enabled"`
-	ThinkingModelBlacklist    []string `json:"thinking_model_blacklist"`
+	PassThroughRequestEnabled bool `json:"pass_through_request_enabled"`
+	// 只允许显式选择 URL 的 Gemini 生图请求转换返回格式，普通请求保持原样。
+	GeminiImageURLEnabled  bool     `json:"gemini_image_url_enabled"`
+	ThinkingModelBlacklist []string `json:"thinking_model_blacklist"`
 	// EffortTailModelIDs lists real model IDs that sit inside the GPT/o-series
 	// family whitelist but whose names already end in an effort word.
 	EffortTailModelIDs               []string                         `json:"effort_tail_model_ids"`

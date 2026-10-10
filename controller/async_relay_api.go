@@ -84,7 +84,18 @@ func GetAsyncRelayTask(c *gin.Context) {
 		response["media"] = media
 		response["response_status_code"] = task.ResponseStatusCode
 		response["content_type"] = task.ResultContentType
-		if strings.Contains(task.ResultContentType, "json") && task.ResultFilePath != "" {
+		if isGeminiImageURLTask(task) && task.Status == model.AsyncRelayTaskStatusSucceeded {
+			result, err := geminiImageURLResponse(task)
+			if err != nil {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": err.Error()}})
+				return
+			}
+			response["result"] = result
+			response["content_type"] = "application/json"
+		} else if isGeminiImageURLTask(task) {
+			// 失败时只展示错误，不把已归档的原始图片数据放回 URL 模式的查询结果。
+			response["result"] = gin.H{"media": media}
+		} else if strings.Contains(task.ResultContentType, "json") && task.ResultFilePath != "" {
 			result, err := os.ReadFile(task.ResultFilePath)
 			if err != nil {
 				c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"message": "当前节点尚未读取到生成结果，请稍后重试"}})
