@@ -210,7 +210,7 @@ describe('视频页面背景', () => {
     secondContainer.remove()
   })
 
-  test('窗口失去焦点时暂停并在重新聚焦后恢复播放', async () => {
+  test('复制权限引起短暂失焦和回焦时不重新加载或播放背景视频', async () => {
     const container = document.createElement('div')
     document.body.append(container)
     const root = createRoot(container)
@@ -230,26 +230,61 @@ describe('视频页面背景', () => {
     const video = container.querySelector('video')
     assert.ok(video)
     const playCountBeforeBlur = playbackCalls.play
+    const loadCountBeforeBlur = playbackCalls.load
+    const pauseCountBeforeBlur = playbackCalls.pause
 
-    pageFocused = false
-    await act(async () => window.dispatchEvent(new Event('blur')))
-    assert.ok(playbackCalls.pause > 0)
-    assert.equal(video.getAttribute('src'), null)
-    assert.ok(playbackCalls.load > 0)
-    assert.equal(pendingTimers.size, 0)
+    try {
+      pageFocused = false
+      await act(async () => window.dispatchEvent(new Event('blur')))
+      assert.equal(playbackCalls.pause, pauseCountBeforeBlur)
+      assert.equal(video.getAttribute('src'), '/background.mp4')
+      assert.equal(playbackCalls.load, loadCountBeforeBlur)
+      assert.equal(pendingTimers.size, 0)
 
-    pageFocused = true
-    await act(async () => window.dispatchEvent(new Event('focus')))
-    assert.equal(video.getAttribute('src'), '/background.mp4')
-    assert.equal(pendingTimers.size, 1)
+      pageFocused = true
+      await act(async () => window.dispatchEvent(new Event('focus')))
+      assert.equal(video.getAttribute('src'), '/background.mp4')
+      assert.equal(pendingTimers.size, 0)
+      await act(async () => {
+        for (const callback of pendingTimers.values()) callback()
+        pendingTimers.clear()
+      })
+      assert.equal(playbackCalls.play, playCountBeforeBlur)
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+    }
+  })
+
+  test('背景视频在首次播放前声明静音与移动端内嵌播放并禁止播放器控件', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
     await act(async () => {
-      for (const callback of pendingTimers.values()) callback()
-      pendingTimers.clear()
+      root.render(
+        <PageBackground
+          config={{ type: 'video', color: '#000000', media: '/background.mp4' }}
+        />
+      )
     })
-    assert.equal(playbackCalls.play, playCountBeforeBlur + 1)
-
-    await act(async () => root.unmount())
-    container.remove()
+    const video = container.querySelector('video')
+    assert.ok(video)
+    try {
+      assert.equal(playbackCalls.play, 0)
+      assert.equal(video.muted, true)
+      assert.equal(video.defaultMuted, true)
+      assert.equal(video.hasAttribute('muted'), true)
+      assert.equal(video.hasAttribute('playsinline'), true)
+      assert.equal(video.hasAttribute('webkit-playsinline'), true)
+      assert.equal(video.hasAttribute('x5-playsinline'), true)
+      assert.equal(video.getAttribute('x5-video-player-type'), 'h5')
+      assert.equal(video.getAttribute('x5-video-player-fullscreen'), 'false')
+      assert.equal(video.controls, false)
+      assert.equal(video.getAttribute('tabindex'), '-1')
+    } finally {
+      await act(async () => root.unmount())
+      container.remove()
+    }
   })
 
   test('标签页隐藏时释放视频源，恢复可见后重新加载播放', async () => {

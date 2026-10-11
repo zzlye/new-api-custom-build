@@ -86,6 +86,15 @@ export function PageBackground({
     const video = videoRef.current
     if (!video || !hasVideoBackground || !config.media) return
 
+    // 同时声明默认静音属性和当前静音状态，避免移动浏览器把背景识别为有声视频。
+    video.defaultMuted = true
+    video.muted = true
+    // 兼容旧版 WebKit 与 X5 内核，优先使用页面内播放而非浏览器全屏播放器。
+    video.setAttribute('webkit-playsinline', '')
+    video.setAttribute('x5-playsinline', '')
+    video.setAttribute('x5-video-player-type', 'h5')
+    video.setAttribute('x5-video-player-fullscreen', 'false')
+    video.setAttribute('x-webkit-airplay', 'deny')
     const media = config.media
     // JSX 已经提供媒体源，仅在源不一致时补绑定，避免重复触发加载。
     if (video.getAttribute('src') !== media) {
@@ -108,7 +117,7 @@ export function PageBackground({
     let resumeTimer: number | undefined
     const media = config.media
 
-    // 标签页隐藏或窗口失焦时释放视频源，避免浏览器继续保留网络和解码资源。
+    // 仅在标签页真正隐藏时释放视频源，复制权限等短暂失焦不应触发重新播放。
     const releaseMediaSource = () => {
       video.pause()
       if (!video.hasAttribute('src')) return
@@ -127,9 +136,7 @@ export function PageBackground({
       if (resumeTimer !== undefined) {
         window.clearTimeout(resumeTimer)
       }
-      const windowBlurred =
-        typeof document.hasFocus === 'function' && !document.hasFocus()
-      if (document.hidden || windowBlurred) {
+      if (document.hidden) {
         releaseMediaSource()
         return
       }
@@ -147,16 +154,12 @@ export function PageBackground({
     }
 
     document.addEventListener('visibilitychange', syncPlayback)
-    window.addEventListener('blur', syncPlayback)
-    window.addEventListener('focus', syncPlayback)
     syncPlayback()
     return () => {
       if (resumeTimer !== undefined) {
         window.clearTimeout(resumeTimer)
       }
       document.removeEventListener('visibilitychange', syncPlayback)
-      window.removeEventListener('blur', syncPlayback)
-      window.removeEventListener('focus', syncPlayback)
     }
   }, [config.media, hasVideoBackground, suspendVideo, videoPlaybackKey])
 
@@ -208,6 +211,9 @@ export function PageBackground({
           muted
           loop
           playsInline
+          controls={false}
+          controlsList='nodownload nofullscreen noremoteplayback'
+          tabIndex={-1}
           preload='none'
           disablePictureInPicture
           disableRemotePlayback
