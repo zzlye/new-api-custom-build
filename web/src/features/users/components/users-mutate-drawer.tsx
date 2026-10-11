@@ -144,6 +144,7 @@ export function UsersMutateDrawer({
         .then((result) => {
           if (result.success && result.data) {
             form.reset(transformUserToFormDefaults(result.data))
+            setCurrentGiftQuota(result.data.gift_quota ?? 0)
           } else {
             handleServerError(result, t('Failed to load'))
           }
@@ -159,6 +160,9 @@ export function UsersMutateDrawer({
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
 
+  const [currentGiftQuota, setCurrentGiftQuota] = useState(
+    currentRow?.gift_quota ?? 0
+  )
   const currentQuotaRaw = form.watch('quota_dollars') || 0
   const selectedRole = form.watch('role')
   const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
@@ -210,6 +214,7 @@ export function UsersMutateDrawer({
       const result = requireServerSuccess(await getUser(currentRow.id))
       if (result.success && result.data) {
         form.reset(transformUserToFormDefaults(result.data))
+        setCurrentGiftQuota(result.data.gift_quota ?? 0)
       }
       triggerRefresh()
     } catch (error) {
@@ -415,7 +420,7 @@ export function UsersMutateDrawer({
                           </Button>
                         </div>
                         <FormDescription>
-                          {formatQuota(parseQuotaFromDollars(field.value || 0))}
+                          {t('Gift Balance')}: {formatQuota(currentGiftQuota)}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -585,6 +590,7 @@ export function UsersMutateDrawer({
           onOpenChange={setQuotaDialogOpen}
           userId={currentRow.id}
           currentQuota={parseQuotaFromDollars(currentQuotaRaw || 0)}
+          currentGiftQuota={currentGiftQuota}
           onSuccess={refreshUserData}
         />
       )}

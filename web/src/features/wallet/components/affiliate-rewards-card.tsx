@@ -70,7 +70,7 @@ export function AffiliateRewardsCard({
             </h3>
             <p className='text-muted-foreground line-clamp-1 text-xs'>
               {t(
-                'Earn rewards when your referrals add funds. Rewards are added to your balance automatically.'
+                'Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.'
               )}
             </p>
           </div>

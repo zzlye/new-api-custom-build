@@ -347,6 +347,12 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+	// 按保留账单划分历史赠金，缺失记录不补算，总余额始终不变。
+	if common.IsMasterNode {
+		if err := model.ReconcileLegacyGiftQuotas(); err != nil {
+			return fmt.Errorf("核对历史赠金失败: %w", err)
+		}
+	}
 
 	// Initialize Redis
 	err = common.InitRedisClient()

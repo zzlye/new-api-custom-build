@@ -230,6 +230,8 @@ export interface UserWalletData {
   username: string
   /** Current quota balance */
   quota: number
+  /** 总余额中可用的赠金 */
+  gift_quota?: number
   /** Total used quota */
   used_quota: number
   /** Total request count */

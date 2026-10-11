@@ -7159,6 +7159,14 @@
     "No untried eligible channel remains": "没有尚未尝试的可用渠道",
     "This channel is not selected for failover": "该渠道未勾选参与重试",
     "Submission was accepted or its outcome is unknown": "请求已接单或接单结果不明，停止重发",
-    "Response already started or execution was cancelled": "已开始返回响应或执行已取消"
+    "Response already started or execution was cancelled": "已开始返回响应或执行已取消",
+    "Gift Balance": "赠金",
+    "Regular Balance": "普通余额",
+    "Balance Type": "金额类型",
+    "Regular balance: {{amount}}": "普通余额：{{amount}}",
+    "Included in available balance": "已计入可用总余额",
+    "Insufficient gift balance": "赠金不足",
+    "Gift balance change": "赠金变动",
+    "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "邀请用户充值即可获得奖励，奖励自动计入赠金。"
   }
 }

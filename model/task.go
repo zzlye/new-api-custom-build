@@ -71,6 +71,7 @@ type Task struct {
 	Properties    Properties            `json:"properties" gorm:"type:json"`
 	Username      string                `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
+	GiftQuota   int             `json:"-" gorm:"type:bigint;not null;default:0"` // 任务实际扣除的赠金
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
 }
@@ -556,7 +557,7 @@ func (Task *Task) Update() error {
 }
 
 func (t *Task) UpdateQuota() error {
-	return DB.Model(t).Update("quota", t.Quota).Error
+	return DB.Model(t).Select("quota", "gift_quota").Updates(t).Error
 }
 
 // UpdateWithStatus performs a conditional UPDATE guarded by fromStatus (CAS).

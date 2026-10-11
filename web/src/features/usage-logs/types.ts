@@ -543,6 +543,7 @@ export interface UserInfo {
   username: string
   display_name?: string
   quota: number
+  gift_quota?: number
   used_quota: number
   request_count: number
   group?: string

@@ -202,6 +202,39 @@ func createQuotaTestOperator(t *testing.T, db *gorm.DB, role int) model.User {
 	return operator
 }
 
+func TestManageUserGiftQuotaRecordsCategoryAndRejectsOverdraw(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	user := model.User{Username: "gift-owner", Role: common.RoleCommonUser, Quota: 1000, GiftQuota: 400, AffCode: "gift-owner-aff"}
+	require.NoError(t, db.Create(&user).Error)
+	createQuotaTestOperator(t, db, common.RoleRootUser)
+	for _, tc := range []struct {
+		amount  int
+		success bool
+	}{{150, true}, {251, false}} {
+		response := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"subtract","quota_type":"gift","value":%d}`, user.Id, tc.amount))
+		assert.Contains(t, response.Body.String(), fmt.Sprintf(`"success":%t`, tc.success))
+	}
+	require.NoError(t, db.First(&user, user.Id).Error)
+	assert.Equal(t, 850, user.Quota)
+	assert.Equal(t, 250, user.GiftQuota)
+	var log model.Log
+	require.NoError(t, model.LOG_DB.Where("user_id = ? AND type = ?", user.Id, model.LogTypeTopup).First(&log).Error)
+	var detail struct {
+		Op *struct {
+			Params struct {
+				QuotaType string `json:"quota_type"`
+				GiftFrom  int    `json:"gift_from"`
+				GiftTo    int    `json:"gift_to"`
+			} `json:"params"`
+		} `json:"op"`
+	}
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &detail))
+	require.NotNil(t, detail.Op)
+	assert.Equal(t, "gift", detail.Op.Params.QuotaType)
+	assert.Equal(t, 400, detail.Op.Params.GiftFrom)
+	assert.Equal(t, 250, detail.Op.Params.GiftTo)
+}
+
 func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 	for _, tc := range []struct {
 		name, mode, action, content string

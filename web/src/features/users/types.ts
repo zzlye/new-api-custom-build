@@ -43,6 +43,7 @@ export const userSchema = z.object({
   telegram_id: z.string().optional(),
   email: z.string().optional(),
   quota: z.number(),
+  gift_quota: z.number().optional(),
   used_quota: z.number(),
   request_count: z.number(),
   group: z.string(),
@@ -141,6 +142,7 @@ export type QuotaAdjustMode = 'add' | 'subtract' | 'override'
 export interface ManageUserQuotaPayload {
   id: number
   action: 'add_quota'
+  quota_type?: 'balance' | 'gift'
   mode: QuotaAdjustMode
   value: number
 }

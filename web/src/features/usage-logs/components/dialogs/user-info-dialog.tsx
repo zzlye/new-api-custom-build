@@ -107,7 +107,17 @@ export function UserInfoDialog({
             )}
           </div>
 
-          {/* Balance Info */}
+          {/* 余额详情同时展示赠金，数值已包含在可用总余额中。 */}
+          <div className='grid grid-cols-2 gap-4'>
+            <InfoItem
+              label={t('Regular Balance')}
+              value={formatQuota(userInfo.quota - (userInfo.gift_quota ?? 0))}
+            />
+            <InfoItem
+              label={t('Gift Balance')}
+              value={formatQuota(userInfo.gift_quota ?? 0)}
+            />
+          </div>
           <div className='grid grid-cols-2 gap-4'>
             <InfoItem
               label={t('Balance')}

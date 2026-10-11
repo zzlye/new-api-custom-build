@@ -65,7 +65,7 @@ await i18n.init({
   initAsync: false,
 })
 
-function QuotaTable(props: { remaining: number; used: number }) {
+function QuotaTable(props: { remaining: number; used: number; gift?: number }) {
   const columns = useUsersColumns().filter((column) =>
     ['quota', 'used_quota'].includes(
       column.id ?? ('accessorKey' in column ? String(column.accessorKey) : '')
@@ -81,6 +81,7 @@ function QuotaTable(props: { remaining: number; used: number }) {
         role: 1,
         status: 1,
         quota: props.remaining,
+        gift_quota: props.gift ?? 0,
         used_quota: props.used,
         request_count: 0,
         group: 'default',
@@ -165,7 +166,7 @@ it('shows balance above secondary usage text and opens quota details on click', 
   const detail = await screen.findByRole('dialog', { name: 'Quota ($)' })
   expect(within(detail).getByText('Available Balance')).toBeInTheDocument()
   expect(within(detail).getByText('Total Used')).toBeInTheDocument()
-  expect(within(detail).getByText('0.0038')).toBeInTheDocument()
+  expect(within(detail).getAllByText('0.0038')).toHaveLength(2)
   expect(within(detail).getByText('0.0022')).toBeInTheDocument()
   expect(within(detail).queryByRole('progressbar')).not.toBeInTheDocument()
   await userEvent.keyboard('{Escape}')
@@ -188,7 +189,7 @@ it.each([0, 500000])(
       expect(screen.queryByText('Used amount')).not.toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'No Quota' }))
       const detail = await screen.findByRole('dialog', { name: 'Quota ($)' })
-      expect(within(detail).getAllByText('0')).toHaveLength(2)
+      expect(within(detail).getAllByText('0')).toHaveLength(4)
       return
     }
     expect(screen.queryByText('No Quota')).not.toBeInTheDocument()
@@ -212,7 +213,7 @@ it('preserves negative balances in details opened with the keyboard', async () =
   await userEvent.tab()
   await userEvent.keyboard('{Enter}')
   const detail = await screen.findByRole('dialog')
-  expect(within(detail).getByText('-1')).toBeInTheDocument()
+  expect(within(detail).getAllByText('-1')).toHaveLength(2)
   expect(within(detail).getByText('2')).toBeInTheDocument()
 })
 
@@ -434,4 +435,25 @@ it('labels raw quota mode as tokens without introducing a currency symbol', () =
   expect(
     within(screen.getAllByRole('cell')[0]).getByText('200')
   ).toBeInTheDocument()
+})
+
+it('列表显示赠金，详情的总余额等于普通余额加赠金', async () => {
+  i18n.addResourceBundle('zh', 'translation', zh.translation)
+  await i18n.changeLanguage('zh')
+  try {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <QuotaTable remaining={5000000} used={1500000} gift={2000000} />
+      </I18nextProvider>
+    )
+    expect(screen.getByText('赠金 4')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /可用余额 10/ }))
+    const detail = await screen.findByRole('dialog')
+    expect(within(detail).getByText('普通余额')).toBeInTheDocument()
+    expect(within(detail).getByText('赠金')).toBeInTheDocument()
+    expect(within(detail).getByText('6')).toBeInTheDocument()
+    expect(within(detail).getByText('4')).toBeInTheDocument()
+  } finally {
+    await i18n.changeLanguage('en')
+  }
 })

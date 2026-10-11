@@ -909,6 +909,51 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Zero(t, getTaskQuota(t, task.ID))
 }
 
+func TestWalletGiftSettlementAndDurableTaskRefund(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).Update("gift_quota", 400).Error)
+	funding := &WalletFunding{userId: 1}
+	require.NoError(t, funding.PreConsume(600))
+	assert.Equal(t, 400, funding.giftConsumed)
+	task := makeTask(1, 0, 600, 0, BillingSourceWallet, 0)
+	task.GiftQuota = funding.giftConsumed
+	require.NoError(t, model.DB.Create(task).Error)
+	RecalculateTaskQuota(context.Background(), task, 200, "赠金部分退款回归")
+	// 重载任务模拟后续轮询或进程重启，退款分类不能依赖请求内存。
+	var saved model.Task
+	require.NoError(t, model.DB.First(&saved, task.ID).Error)
+	assert.Equal(t, 200, saved.Quota)
+	assert.Equal(t, 200, saved.GiftQuota)
+	assert.True(t, RefundTaskQuota(context.Background(), &saved, "生成失败"))
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	assert.Equal(t, 1000, user.Quota)
+	assert.Equal(t, 400, user.GiftQuota)
+	assert.True(t, RefundTaskQuota(context.Background(), &saved, "重复结束通知"))
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	assert.Equal(t, 1000, user.Quota)
+	assert.Equal(t, 400, user.GiftQuota)
+}
+
+func TestWalletGiftRefundPreservesRewardsReceivedDuringRequest(t *testing.T) {
+	truncate(t)
+	seedUser(t, 1, 1000)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1).Update("gift_quota", 100).Error)
+	funding := &WalletFunding{userId: 1}
+	require.NoError(t, funding.PreConsume(300))
+	require.NoError(t, model.CreditGiftQuota(1, 50))
+	require.NoError(t, funding.Settle(-200))
+	var user model.User
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	assert.Equal(t, 950, user.Quota)
+	assert.Equal(t, 50, user.GiftQuota)
+	require.NoError(t, funding.Refund())
+	require.NoError(t, model.DB.First(&user, 1).Error)
+	assert.Equal(t, 1050, user.Quota)
+	assert.Equal(t, 150, user.GiftQuota)
+}
+
 func TestRefundTaskQuota_Subscription(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()

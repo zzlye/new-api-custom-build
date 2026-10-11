@@ -7143,6 +7143,14 @@
     "No untried eligible channel remains": "No untried eligible channel remains",
     "This channel is not selected for failover": "This channel is not selected for failover",
     "Submission was accepted or its outcome is unknown": "Submission was accepted or its outcome is unknown",
-    "Response already started or execution was cancelled": "Response already started or execution was cancelled"
+    "Response already started or execution was cancelled": "Response already started or execution was cancelled",
+    "Gift Balance": "Số dư thưởng",
+    "Regular Balance": "Số dư thường",
+    "Balance Type": "Loại số dư",
+    "Regular balance: {{amount}}": "Số dư thường: {{amount}}",
+    "Included in available balance": "Đã tính trong tổng số dư khả dụng",
+    "Insufficient gift balance": "Số dư thưởng không đủ",
+    "Gift balance change": "Thay đổi số dư thưởng",
+    "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "Nhận thưởng khi người bạn giới thiệu nạp tiền. Phần thưởng được tự động cộng vào số dư thưởng."
   }
 }

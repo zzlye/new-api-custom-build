@@ -27,6 +27,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 type UserQuotaCellProps = {
   remaining: number
   used: number
+  gift?: number
 }
 
 export function UserQuotaCell(props: UserQuotaCellProps) {
@@ -35,10 +36,18 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
 
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
-  const hasQuota = props.remaining !== 0 || props.used !== 0
+  const hasQuota =
+    props.remaining !== 0 || props.used !== 0 || (props.gift ?? 0) !== 0
   const formattedRemaining = formatQuotaWithCurrency(props.remaining, {
     showSymbol: false,
   })
+  const formattedGift = formatQuotaWithCurrency(props.gift ?? 0, {
+    showSymbol: false,
+  })
+  const formattedRegular = formatQuotaWithCurrency(
+    props.remaining - (props.gift ?? 0),
+    { showSymbol: false }
+  )
   const formattedUsed = formatQuotaWithCurrency(props.used, {
     showSymbol: false,
   })
@@ -53,6 +62,8 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
       }
       details={[
         { label: t('Available Balance'), value: formattedRemaining },
+        { label: t('Regular Balance'), value: formattedRegular },
+        { label: t('Gift Balance'), value: formattedGift },
         { label: t('Total Used'), value: formattedUsed },
       ]}
     >
@@ -65,6 +76,9 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
             )}
           >
             {formattedRemaining}
+          </span>
+          <span className='text-muted-foreground text-xs font-normal'>
+            {t('Gift Balance')} {formattedGift}
           </span>
           <span
             data-table-text='secondary'

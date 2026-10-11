@@ -7143,6 +7143,14 @@
     "No untried eligible channel remains": "No untried eligible channel remains",
     "This channel is not selected for failover": "This channel is not selected for failover",
     "Submission was accepted or its outcome is unknown": "Submission was accepted or its outcome is unknown",
-    "Response already started or execution was cancelled": "Response already started or execution was cancelled"
+    "Response already started or execution was cancelled": "Response already started or execution was cancelled",
+    "Gift Balance": "Бонусный баланс",
+    "Regular Balance": "Основной баланс",
+    "Balance Type": "Тип баланса",
+    "Regular balance: {{amount}}": "Основной баланс: {{amount}}",
+    "Included in available balance": "Включён в доступный баланс",
+    "Insufficient gift balance": "Недостаточно бонусных средств",
+    "Gift balance change": "Изменение бонусного баланса",
+    "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "Получайте вознаграждения за пополнения приглашённых пользователей. Они автоматически зачисляются на бонусный баланс."
   }
 }

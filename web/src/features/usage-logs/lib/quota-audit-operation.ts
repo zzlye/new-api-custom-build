@@ -90,6 +90,18 @@ export function buildQuotaAuditOperation(
     },
     { label: t('Requested quota'), value: amount },
   ]
+  if (params.quota_type === 'gift' || params.quota_type === 'balance') {
+    const label =
+      params.quota_type === 'gift' ? t('Gift Balance') : t('Regular Balance')
+    fields.push({ label: t('Balance Type'), value: label })
+    description = `${label} · ${description}`
+  }
+  if (success && params.gift_from !== undefined) {
+    fields.push({
+      label: t('Gift balance change'),
+      value: `${quotaText(params.gift_from, t)} → ${quotaText(params.gift_to, t)}`,
+    })
+  }
   if (success) {
     const before = quotaText(params.from, t)
     const after = quotaText(params.to, t)
@@ -112,6 +124,7 @@ export function buildQuotaAuditOperation(
       permission_denied: t('Insufficient permission to adjust this user'),
       target_not_found: t('Target user not found'),
       quota_limit_exceeded: t('Wallet quota limit exceeded'),
+      insufficient_gift_quota: t('Insufficient gift balance'),
       database_error: t('Quota update failed'),
     }
     const reason =

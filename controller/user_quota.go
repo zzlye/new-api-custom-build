@@ -18,6 +18,9 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 		"mode":            req.Mode,
 		"requested_quota": req.Value,
 	}
+	if req.QuotaType != "" {
+		params["quota_type"] = req.QuotaType
+	}
 	switch req.Mode {
 	case "add":
 		action = "user.quota_add"
@@ -44,7 +47,7 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 		markAuditLogged(c)
 	}()
 
-	adjustment, err := model.AdjustUserQuota(req.Id, c.GetInt("role"), req.Mode, req.Value)
+	adjustment, err := model.AdjustUserQuota(req.Id, c.GetInt("role"), req.Mode, req.Value, req.QuotaType)
 	if err != nil {
 		switch {
 		case errors.Is(err, model.ErrInvalidUserQuotaAdjustment):
@@ -63,6 +66,9 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 		case errors.Is(err, model.ErrWalletQuotaLimitExceeded):
 			params["failure_reason"] = "quota_limit_exceeded"
 			common.ApiError(c, err)
+		case errors.Is(err, model.ErrInsufficientGiftQuota):
+			params["failure_reason"] = "insufficient_gift_quota"
+			common.ApiError(c, err)
 		default:
 			params["failure_reason"] = "database_error"
 			common.ApiError(c, err)
@@ -73,6 +79,11 @@ func manageUserQuota(c *gin.Context, req ManageRequest) {
 	params["target_username"] = adjustment.Username
 	params["from"] = adjustment.Before
 	params["to"] = adjustment.After
+	if req.QuotaType != "" || adjustment.GiftBefore != adjustment.GiftAfter {
+		params["quota_type"] = adjustment.Target
+		params["gift_from"] = adjustment.GiftBefore
+		params["gift_to"] = adjustment.GiftAfter
+	}
 	if req.Mode != "override" {
 		params["quota"] = req.Value
 	}

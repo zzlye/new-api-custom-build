@@ -52,6 +52,7 @@ export interface UserProfile {
   /** Current quota balance */
   quota: number
   /** Total used quota */
+  gift_quota?: number
   used_quota: number
   /** Total request count */
   request_count: number

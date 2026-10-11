@@ -40,6 +40,7 @@ func TestGrantTopUpInviteCommissionCreditsBalanceImmediately(t *testing.T) {
 	var got User
 	require.NoError(t, DB.First(&got, inviter.Id).Error)
 	assert.Equal(t, 250, got.Quota)
+	assert.Equal(t, 150, got.GiftQuota)
 	assert.Zero(t, got.AffQuota)
 	assert.Equal(t, 150, got.AffHistoryQuota)
 }
@@ -69,6 +70,7 @@ func TestReconcileAffiliateDataMigratesLegacyRewardsOnce(t *testing.T) {
 	var got User
 	require.NoError(t, DB.First(&got, inviter.Id).Error)
 	assert.Equal(t, 250, got.Quota)
+	assert.Equal(t, 150, got.GiftQuota)
 	assert.Zero(t, got.AffQuota)
 	assert.Equal(t, 150, got.AffHistoryQuota)
 	assert.Equal(t, 1, got.AffCount)
@@ -123,6 +125,7 @@ func TestRechargeEpayInviteCommissionIsAtomicAndIdempotent(t *testing.T) {
 			var got User
 			require.NoError(t, DB.First(&got, inviter.Id).Error)
 			assert.Equal(t, 150100, got.Quota)
+			assert.Equal(t, 150000, got.GiftQuota)
 			assert.Equal(t, 150000, got.AffHistoryQuota)
 		})
 	}

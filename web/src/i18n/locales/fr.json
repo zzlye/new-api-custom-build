@@ -7143,6 +7143,14 @@
     "No untried eligible channel remains": "No untried eligible channel remains",
     "This channel is not selected for failover": "This channel is not selected for failover",
     "Submission was accepted or its outcome is unknown": "Submission was accepted or its outcome is unknown",
-    "Response already started or execution was cancelled": "Response already started or execution was cancelled"
+    "Response already started or execution was cancelled": "Response already started or execution was cancelled",
+    "Gift Balance": "Solde offert",
+    "Regular Balance": "Solde ordinaire",
+    "Balance Type": "Type de solde",
+    "Regular balance: {{amount}}": "Solde ordinaire : {{amount}}",
+    "Included in available balance": "Inclus dans le solde disponible",
+    "Insufficient gift balance": "Solde offert insuffisant",
+    "Gift balance change": "Variation du solde offert",
+    "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "Recevez des récompenses lorsque vos filleuls rechargent leur compte. Elles sont automatiquement ajoutées au solde offert."
   }
 }

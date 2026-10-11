@@ -271,7 +271,7 @@ func InitLogDB() (err error) {
 	return err
 }
 
-var userQuotaColumns = []string{"quota", "used_quota", "aff_quota", "aff_history"}
+var userQuotaColumns = []string{"quota", "gift_quota", "used_quota", "aff_quota", "aff_history"}
 
 // ensureUserQuotaColumns rejects a legacy 32-bit wallet schema before any
 // migrations run. The 64-bit-only build intentionally does not auto-upgrade

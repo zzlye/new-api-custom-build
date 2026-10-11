@@ -791,7 +791,10 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 		if requiredQuota > 0 {
 			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
+				Updates(map[string]any{
+					"quota":      user.Quota - requiredQuota,
+					"gift_quota": user.GiftQuota - min(max(user.GiftQuota, 0), requiredQuota),
+				}).Error; err != nil {
 				return err
 			}
 		}

@@ -7159,6 +7159,14 @@
     "No untried eligible channel remains": "No untried eligible channel remains",
     "This channel is not selected for failover": "This channel is not selected for failover",
     "Submission was accepted or its outcome is unknown": "Submission was accepted or its outcome is unknown",
-    "Response already started or execution was cancelled": "Response already started or execution was cancelled"
+    "Response already started or execution was cancelled": "Response already started or execution was cancelled",
+    "Gift Balance": "Gift Balance",
+    "Regular Balance": "Regular Balance",
+    "Balance Type": "Balance Type",
+    "Regular balance: {{amount}}": "Regular balance: {{amount}}",
+    "Included in available balance": "Included in available balance",
+    "Insufficient gift balance": "Insufficient gift balance",
+    "Gift balance change": "Gift balance change",
+    "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance."
   }
 }

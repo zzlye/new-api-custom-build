@@ -145,7 +145,8 @@ type RelayInfo struct {
 	Billing BillingSettler
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
-	BillingSource string
+	WalletGiftConsumed int // 钱包扣款中的赠金，用于跨阶段结算和退款
+	BillingSource      string
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
 	SubscriptionId int
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)

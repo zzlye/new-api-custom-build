@@ -108,9 +108,18 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
 	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta, false)
+		gift, err := model.ConsumeWalletQuota(task.UserId, delta, false)
+		if err == nil {
+			task.GiftQuota += gift
+		}
+		return err
 	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
+	gift := model.WalletGiftRefund(task.Quota, task.GiftQuota, -delta)
+	err := model.RefundWalletQuota(task.UserId, -delta, gift)
+	if err == nil {
+		task.GiftQuota -= gift
+	}
+	return err
 }
 
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。

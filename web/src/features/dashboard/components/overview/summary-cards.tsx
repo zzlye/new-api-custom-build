@@ -308,6 +308,15 @@ export function SummaryCards() {
             <div className='font-mono text-xl font-semibold tracking-tight sm:text-2xl'>
               {formatQuota(remainQuota)}
             </div>
+            <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums'>
+              <span>
+                {t('Regular Balance')}:{' '}
+                {formatQuota(remainQuota - (user?.gift_quota ?? 0))}
+              </span>
+              <span>
+                {t('Gift Balance')}: {formatQuota(user?.gift_quota ?? 0)}
+              </span>
+            </div>
 
             <div className='grid grid-cols-2 gap-2'>
               <div className='bg-background/60 rounded-lg px-2.5 py-2'>

@@ -27,7 +27,6 @@ import { Label } from '@/components/ui/label'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
-import { cn } from '@/lib/utils'
 
 import { adjustUserQuota } from '../api'
 import type { QuotaAdjustMode } from '../types'
@@ -37,11 +36,13 @@ interface UserQuotaDialogProps {
   onOpenChange: (open: boolean) => void
   userId: number
   currentQuota: number
+  currentGiftQuota?: number
   onSuccess: () => void
 }
 
 export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const { t } = useTranslation()
+  const [quotaType, setQuotaType] = useState<'balance' | 'gift'>('balance')
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
@@ -50,11 +51,16 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
 
+  // 总余额始终包含赠金，普通余额调整只影响非赠金部分。
+  const selectedQuota =
+    quotaType === 'gift'
+      ? (props.currentGiftQuota ?? 0)
+      : props.currentQuota - (props.currentGiftQuota ?? 0)
   const amountValue = Number.parseFloat(amount) || 0
   const quotaValue = parseQuotaFromDollars(Math.abs(amountValue))
 
   const getPreviewText = () => {
-    const current = props.currentQuota
+    const current = selectedQuota
     const val = quotaValue
     switch (mode) {
       case 'add':
@@ -71,9 +77,17 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   }
 
   const handleConfirm = async () => {
-    if (!amount && mode !== 'override') return
+    if (loading || !amount.trim() || !Number.isFinite(Number(amount))) return
     if (quotaValue <= 0 && mode !== 'override') return
 
+    if (
+      quotaType === 'gift' &&
+      ((mode === 'subtract' && quotaValue > selectedQuota) ||
+        (mode === 'override' && amountValue < 0))
+    ) {
+      toast.error(t('Insufficient gift balance'))
+      return
+    }
     setLoading(true)
     try {
       const value =
@@ -81,6 +95,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
       const result = await adjustUserQuota({
         id: props.userId,
         action: 'add_quota',
+        quota_type: quotaType,
         mode,
         value: mode === 'override' ? value : Math.abs(value),
       })
@@ -88,6 +103,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         toast.success(t('Quota adjusted successfully'))
         setAmount('')
         setMode('add')
+        setQuotaType('balance')
         props.onOpenChange(false)
         props.onSuccess()
       } else {
@@ -103,6 +119,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const handleCancel = () => {
     setAmount('')
     setMode('add')
+    setQuotaType('balance')
     props.onOpenChange(false)
   }
 
@@ -113,23 +130,61 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   return (
     <Dialog
       open={props.open}
-      onOpenChange={props.onOpenChange}
+      onOpenChange={(open) => {
+        if (loading) return
+        if (!open) handleCancel()
+        else props.onOpenChange(true)
+      }}
       title={t('Adjust Quota')}
       description={t('Select an operation mode and enter the amount')}
       contentHeight='auto'
       bodyClassName='space-y-4'
       footer={
         <>
-          <Button variant='outline' onClick={handleCancel}>
+          <Button variant='outline' onClick={handleCancel} disabled={loading}>
             {t('Cancel')}
           </Button>
-          <Button onClick={handleConfirm} disabled={loading}>
+          <Button onClick={handleConfirm} disabled={loading || !amount.trim()}>
             {loading ? t('Processing...') : t('Confirm')}
           </Button>
         </>
       }
     >
       <div className='space-y-4'>
+        <div className='grid grid-cols-2 gap-2 text-sm tabular-nums'>
+          <div>
+            {t('Regular Balance')}:{' '}
+            {formatQuota(props.currentQuota - (props.currentGiftQuota ?? 0))}
+          </div>
+          <div>
+            {t('Gift Balance')}: {formatQuota(props.currentGiftQuota ?? 0)}
+          </div>
+        </div>
+        <div className='space-y-2'>
+          <Label>{t('Balance Type')}</Label>
+          <div
+            className='flex gap-1'
+            role='group'
+            aria-label={t('Balance Type')}
+          >
+            {(['balance', 'gift'] as const).map((target) => (
+              <Button
+                key={target}
+                type='button'
+                variant={quotaType === target ? 'default' : 'outline'}
+                size='sm'
+                aria-pressed={quotaType === target}
+                disabled={loading}
+                onClick={() => {
+                  setQuotaType(target)
+                  setAmount('')
+                }}
+              >
+                {target === 'gift' ? t('Gift Balance') : t('Regular Balance')}
+              </Button>
+            ))}
+          </div>
+        </div>
         <div className='text-muted-foreground text-sm'>{getPreviewText()}</div>
 
         <div className='space-y-2'>
@@ -139,12 +194,10 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
               <Button
                 key={m}
                 type='button'
-                variant='outline'
+                variant={mode === m ? 'default' : 'outline'}
                 size='sm'
-                className={cn(
-                  mode === m &&
-                    'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-                )}
+                aria-pressed={mode === m}
+                disabled={loading}
                 onClick={() => {
                   setMode(m)
                   setAmount('')
@@ -159,13 +212,15 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         </div>
 
         <div className='space-y-2'>
-          <Label>
+          <Label htmlFor='wallet-quota-amount'>
             {t('Amount')} ({currencyLabel})
           </Label>
           <Input
+            id='wallet-quota-amount'
+            disabled={loading}
             type='number'
             step={tokensOnly ? 1 : 0.000001}
-            min={mode === 'override' ? undefined : 0}
+            min={mode === 'override' && quotaType !== 'gift' ? undefined : 0}
             placeholder={placeholder}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}

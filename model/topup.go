@@ -37,7 +37,7 @@ func grantTopUpInviteCommissionTx(tx *gorm.DB, userId, quotaToAdd int) (*TopUpIn
 	if commission <= 0 {
 		return nil, nil
 	}
-	if err := creditTopUpQuota(tx, user.InviterId, commission, map[string]any{"aff_history": gorm.Expr("aff_history + ?", commission)}); err != nil {
+	if err := creditGiftQuota(tx, user.InviterId, commission, map[string]any{"aff_history": gorm.Expr("aff_history + ?", commission)}); err != nil {
 		return nil, err
 	}
 	return &TopUpInviteCommissionResult{InviterId: user.InviterId, CommissionQuota: commission}, nil
@@ -66,7 +66,7 @@ func finishTopUpInviteCommission(result *TopUpInviteCommissionResult) {
 }
 
 func creditTopUpWithCommission(tx *gorm.DB, commission **TopUpInviteCommissionResult, userId, quota int, updates map[string]any) error {
-	if err := creditTopUpQuota(tx, userId, quota, updates); err != nil {
+	if err := creditTopUpQuota(tx, userId, quota, updates, 0); err != nil {
 		return err
 	}
 	var err error
@@ -148,19 +148,25 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 // creditTopUpQuota atomically enforces the wallet ceiling while adding quota.
 // Keeping the predicate and increment in one UPDATE prevents two
 // concurrent callbacks from both passing a separate read/check.
-func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]any) error {
+func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]any, gift int) error {
 	maxCurrentQuota, err := topUpQuotaMaxCurrent(creditedQuota)
 	if err != nil {
 		return err
+	}
+	if gift < 0 || gift > creditedQuota {
+		return ErrInvalidTopUpQuota
 	}
 
 	updateFields := make(map[string]any, len(updates)+1)
 	maps.Copy(updateFields, updates)
 	updateFields["quota"] = gorm.Expr("quota + ?", creditedQuota)
-
-	result := tx.Model(&User{}).
-		Where("id = ? AND quota <= ?", userId, maxCurrentQuota).
-		Updates(updateFields)
+	query := tx.Model(&User{}).Where("id = ? AND quota <= ?", userId, maxCurrentQuota)
+	if gift > 0 {
+		// 总余额允许欠费，赠金必须单独检查上限，不能借负的普通余额绕过限制。
+		query = query.Where("gift_quota <= ?", common.MaxWalletQuota-gift)
+		updateFields["gift_quota"] = gorm.Expr("gift_quota + ?", gift)
+	}
+	result := query.Updates(updateFields)
 	if result.Error != nil {
 		return result.Error
 	}

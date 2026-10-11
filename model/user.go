@@ -95,6 +95,8 @@ type User struct {
 	AccessToken          *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	AccessTokenCreatedAt *int64                     `json:"-" gorm:"type:bigint;column:access_token_created_at"`
 	Quota                int                        `json:"quota" gorm:"type:int;default:0"`
+	GiftQuota            int                        `json:"gift_quota" gorm:"type:bigint;not null;default:0"`       // 可用总余额中尚未消费的赠金
+	GiftQuotaVersion     int                        `json:"-" gorm:"not null;default:0"`                            // 0尚未划分历史赠金，1已启用分类记账
 	UsedQuota            int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount         int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
 	Group                string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
@@ -123,9 +125,10 @@ type affiliateInviteCount struct {
 func reconcileAffiliateData(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		// 超出钱包上限的历史奖励继续保留待转余额，避免升级时溢出或丢失奖励。
-		if err := tx.Model(&User{}).Where("aff_quota > ? AND aff_quota <= ? AND quota <= ? - aff_quota", 0, common.MaxWalletQuota, common.MaxWalletQuota).Updates(map[string]any{
-			"quota":     gorm.Expr("quota + aff_quota"),
-			"aff_quota": 0,
+		if err := tx.Model(&User{}).Where("aff_quota > ? AND aff_quota <= ? AND quota <= ? - aff_quota AND gift_quota <= ? - aff_quota", 0, common.MaxWalletQuota, common.MaxWalletQuota, common.MaxWalletQuota).Updates(map[string]any{
+			"quota":      gorm.Expr("quota + aff_quota"),
+			"gift_quota": gorm.Expr("gift_quota + aff_quota"),
+			"aff_quota":  0,
 		}).Error; err != nil {
 			return err
 		}
@@ -577,7 +580,7 @@ func GetSelfUserById(id int) (*User, error) {
 	err := DB.Model(&User{}).Select([]string{
 		"id", "username", "display_name", "role", "status", "email",
 		"github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id",
-		"group", "quota", "used_quota", "request_count", "aff_code", "aff_count",
+		"group", "quota", "gift_quota", "used_quota", "request_count", "aff_code", "aff_count",
 		"aff_quota", "aff_history", "inviter_id", "linux_do_id", "setting",
 		"stripe_customer", "auth_version",
 		"CASE WHEN password <> '' THEN 1 ELSE 0 END AS has_password",
@@ -618,7 +621,7 @@ func inviteUser(inviterId int, rewardQuota int) error {
 		return DB.Model(&User{}).Where("id = ?", inviterId).
 			UpdateColumn("aff_count", gorm.Expr("aff_count + ?", 1)).Error
 	}
-	return creditTopUpQuota(DB, inviterId, rewardQuota, map[string]any{
+	return creditGiftQuota(DB, inviterId, rewardQuota, map[string]any{
 		"aff_count":   gorm.Expr("aff_count + ?", 1),
 		"aff_history": gorm.Expr("aff_history + ?", rewardQuota),
 	})
@@ -633,8 +636,11 @@ func finalizeInvitationRewards(userId int, inviterId int) {
 	rewardQuota := 0
 	if operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(userId, common.QuotaForInvitee, true)
-			RecordLog(userId, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+			if err := CreditGiftQuota(userId, common.QuotaForInvitee); err != nil {
+				common.SysError(fmt.Sprintf("被邀请奖励入账失败 user_id=%d error=%v", userId, err))
+			} else {
+				RecordLog(userId, LogTypeSystem, fmt.Sprintf("使用邀请码赠送 %s", logger.LogQuota(common.QuotaForInvitee)))
+			}
 		}
 		if common.QuotaForInviter > 0 {
 			rewardQuota = common.QuotaForInviter
@@ -675,10 +681,14 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	if user.AffQuota < quota {
 		return errors.New("邀请额度不足！")
 	}
+	if quota > common.MaxWalletQuota || user.Quota > common.MaxWalletQuota-quota || user.GiftQuota > common.MaxWalletQuota-quota {
+		return ErrWalletQuotaLimitExceeded
+	}
 
 	// 更新用户额度
 	user.AffQuota -= quota
 	user.Quota += quota
+	user.GiftQuota += quota
 
 	// 保存用户状态
 	if err := tx.Save(user).Error; err != nil {
@@ -686,7 +696,11 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	}
 
 	// 提交事务
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	syncCreditUserQuotaCache(user.Id, quota, "affiliate transfer")
+	return nil
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
@@ -747,6 +761,8 @@ func (user *User) Insert(inviterId int) error {
 				return err
 			}
 			user.Quota = common.QuotaForNewUser
+			user.GiftQuota = max(common.QuotaForNewUser, 0)
+			user.GiftQuotaVersion = 1
 			user.AffCode = common.GetRandomString(4)
 
 			// 初始化用户设置，包括默认的边栏配置
@@ -801,6 +817,8 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 		user.Quota = common.QuotaForNewUser
+		user.GiftQuota = max(common.QuotaForNewUser, 0)
+		user.GiftQuotaVersion = 1
 		user.AffCode = common.GetRandomString(4)
 
 		// 初始化用户设置
@@ -884,6 +902,8 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.Model(&current).Omit(
 		"access_token",
 		"quota",
+		"gift_quota",
+		"gift_quota_version",
 		"used_quota",
 		"request_count",
 		"aff_count",
@@ -1376,75 +1396,14 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	if err := common.ValidateWalletQuota(quota); err != nil {
-		return err
-	}
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		gopool.Go(func() {
-			if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-				common.SysLog("failed to increase user quota: " + err.Error())
-			}
-		})
-		return nil
-	}
-	if err := increaseUserQuota(id, quota); err != nil {
-		return err
-	}
-	gopool.Go(func() {
-		if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-	})
-	return nil
+// IncreaseUserQuota 增加普通余额，赠金和退款使用各自的分类入口。
+func IncreaseUserQuota(id int, quota int, db bool) error {
+	return RefundWalletQuota(id, quota, 0)
 }
 
-func increaseUserQuota(id int, quota int) (err error) {
-	result := DB.Model(&User{}).
-		Where("id = ? AND quota <= ?", id, common.MaxWalletQuota-quota).
-		Update("quota", gorm.Expr("quota + ?", quota))
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 1 {
-		return nil
-	}
-	var count int64
-	if err := DB.Model(&User{}).Where("id = ?", id).Count(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return ErrWalletQuotaLimitExceeded
-}
-
-func DecreaseUserQuota(id int, quota int, db bool) (err error) {
-	if quota < 0 {
-		return errors.New("quota 不能为负数！")
-	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
-		return nil
-	}
-	return decreaseUserQuota(id, quota)
-}
-
-func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
-		return err
-	}
+// DecreaseUserQuota 优先消费赠金，并同步提交两类余额。
+func DecreaseUserQuota(id int, quota int, db bool) error {
+	_, err := ConsumeWalletQuota(id, quota, false)
 	return err
 }
 

@@ -7143,6 +7143,14 @@
     "No untried eligible channel remains": "No untried eligible channel remains",
     "This channel is not selected for failover": "This channel is not selected for failover",
     "Submission was accepted or its outcome is unknown": "Submission was accepted or its outcome is unknown",
-    "Response already started or execution was cancelled": "Response already started or execution was cancelled"
+    "Response already started or execution was cancelled": "Response already started or execution was cancelled",
+    "Gift Balance": "ボーナス残高",
+    "Regular Balance": "通常残高",
+    "Balance Type": "残高の種類",
+    "Regular balance: {{amount}}": "通常残高：{{amount}}",
+    "Included in available balance": "利用可能残高に含まれます",
+    "Insufficient gift balance": "ボーナス残高が不足しています",
+    "Gift balance change": "ボーナス残高の変更",
+    "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "招待したユーザーがチャージすると、報酬がボーナス残高に自動的に加算されます。"
   }
 }

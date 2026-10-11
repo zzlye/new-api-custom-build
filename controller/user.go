@@ -517,6 +517,7 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"telegram_id":       user.TelegramId,
 		"group":             user.Group,
 		"quota":             user.Quota,
+		"gift_quota":        user.GiftQuota,
 		"used_quota":        user.UsedQuota,
 		"request_count":     user.RequestCount,
 		"aff_code":          user.AffCode,
@@ -1053,10 +1054,11 @@ func updateAdminPermissionsForUserInTx(c *gin.Context, tx *gorm.DB, userID int, 
 }
 
 type ManageRequest struct {
-	Id     int    `json:"id"`
-	Action string `json:"action"`
-	Value  int    `json:"value"`
-	Mode   string `json:"mode"`
+	Id        int    `json:"id"`
+	Action    string `json:"action"`
+	Value     int    `json:"value"`
+	Mode      string `json:"mode"`
+	QuotaType string `json:"quota_type"` // 指定调整普通余额、赠金或兼容的总余额
 }
 
 // ManageUser Only admin user can do this
