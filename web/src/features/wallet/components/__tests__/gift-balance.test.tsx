@@ -38,7 +38,7 @@ beforeEach(() =>
 )
 afterEach(cleanup)
 
-it('钱包把赠金单列并说明包含在总余额中', () => {
+it('钱包把赠金单列并显示推广计划文案', () => {
   render(
     <I18nextProvider i18n={i18n}>
       <WalletStatsCard
@@ -61,7 +61,7 @@ it('钱包把赠金单列并说明包含在总余额中', () => {
   expect(screen.getByText('$4')).toBeInTheDocument()
   expect(screen.getByText('$10')).toBeInTheDocument()
   expect(screen.getByText('普通余额：$6')).toBeInTheDocument()
-  expect(screen.getByText('已计入可用总余额')).toBeInTheDocument()
+  expect(screen.getByText('推广计划')).toBeInTheDocument()
 })
 
 it('钱包未加载用户时显示零赠金并保持手机两列布局', () => {

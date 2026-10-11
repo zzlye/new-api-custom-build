@@ -101,5 +101,8 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('About'), href: '/about' })
   }
 
+  // 共用导航统一追加品牌入口，桌面导航和移动菜单使用同一外链。
+  links.push({ title: t('Ximilu'), href: 'https://西米露.com', external: true })
+
   return links
 }

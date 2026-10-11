@@ -67,7 +67,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
     {
       label: t('Gift Balance'),
       value: formatQuota(props.user?.gift_quota ?? 0),
-      description: t('Included in available balance'),
+      description: t('Promotion Program'),
       icon: Gift,
       tone: 'chart-3',
     },

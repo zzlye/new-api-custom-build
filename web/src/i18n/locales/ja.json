@@ -7149,6 +7149,8 @@
     "Balance Type": "残高の種類",
     "Regular balance: {{amount}}": "通常残高：{{amount}}",
     "Included in available balance": "利用可能残高に含まれます",
+    "Promotion Program": "プロモーションプログラム",
+    "Ximilu": "西米露",
     "Insufficient gift balance": "ボーナス残高が不足しています",
     "Gift balance change": "ボーナス残高の変更",
     "Earn rewards when your referrals add funds. Rewards are automatically credited as gift balance.": "招待したユーザーがチャージすると、報酬がボーナス残高に自動的に加算されます。"
