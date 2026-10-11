@@ -7,7 +7,7 @@ export const meta = {
     en: "OpenAI Sora video generation (text-to-video, image-to-video, and remix)",
     zh: "OpenAI Sora 视频生成（文生视频、图生视频、remix）",
   },
-  version: "1.1.0",
+  version: "1.1.1",
   channelTypes: [55, 1], // OpenAI-type channels natively serve sora with the same wire format
   author: { name: "QuantumNous" },
   models: ["sora-2", "sora-2-pro"],
@@ -185,6 +185,15 @@ export function listArtifacts(task) {
 
 export function buildContentRequest(ctx) {
   if (ctx.artifactKey !== "video") throw new Error("artifact_not_found");
+  // 池畔 Seedance 已完成响应提供源站签名链接，直接下载可减少内容接口的二次中转。
+  // 按上游地址与模型限定范围；只接受已核对的 HTTPS 源站，签名参数保持原样。
+  const data = ctx.data || {};
+  const directUrl = trimmed(data.metadata && data.metadata.url);
+  if (/^https:\/\/ai666\.live\/?$/i.test(trimmed(ctx.baseUrl)) && data.model === "seedance-2.5" &&
+      /^https:\/\/ark-acg-cn-beijing\.tos-cn-beijing\.volces\.com\/[^\s#]+$/i.test(directUrl)) {
+    // 视频源站使用链接自身的签名鉴权，禁止向源站发送渠道 API Key。
+    return { url: directUrl, method: ctx.clientRequest.method, credentialless: true };
+  }
   return {
     url: ctx.baseUrl + "/v1/videos/" + encodeURIComponent(ctx.upstreamTaskId) + "/content",
     method: ctx.clientRequest.method,
