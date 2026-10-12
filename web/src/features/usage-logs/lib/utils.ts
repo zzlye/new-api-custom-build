@@ -278,6 +278,10 @@ export async function fetchLogsByCategory(
       ? {
           task_id: searchParams.filter as string | undefined,
           model_name: String(searchParams.model ?? '').trim() || undefined,
+          // 本人范围不发送用户名条件，避免地址残留筛选影响普通用户查询。
+          ...(isAdmin && String(searchParams.username ?? '').trim()
+            ? { username: String(searchParams.username).trim() }
+            : {}),
         }
       : {}),
   }

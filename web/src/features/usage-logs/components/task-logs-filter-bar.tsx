@@ -98,6 +98,9 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
             ...baseFilters,
             ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
             ...(searchParams.model ? { model: searchParams.model } : {}),
+            ...(searchParams.username
+              ? { username: searchParams.username }
+              : {}),
           }
 
     setFilters(next)
@@ -108,6 +111,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.channel,
     searchParams.filter,
     searchParams.model,
+    searchParams.username,
   ])
 
   const handleChange = useCallback(
@@ -118,7 +122,14 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   )
 
   const handleApply = useCallback(() => {
-    const filterParams = buildSearchParams(filters, props.logCategory)
+    // 全部范围才能按用户名查询，切到本人范围后不提交之前的用户名。
+    const filterParams = buildSearchParams(
+      {
+        ...filters,
+        username: isAdmin ? (filters as TaskLogFilters).username : undefined,
+      },
+      props.logCategory
+    )
     navigate({
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
@@ -128,7 +139,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       },
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
-  }, [filters, navigate, props.logCategory, queryClient])
+  }, [filters, isAdmin, navigate, props.logCategory, queryClient])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -168,8 +179,12 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       : t('Filter by task ID')
   const modelValue =
     props.logCategory === 'task' ? (filters as TaskLogFilters).model || '' : ''
+  const usernameValue =
+    props.logCategory === 'task' && isAdmin
+      ? (filters as TaskLogFilters).username || ''
+      : ''
   const hasAdditionalFilters =
-    !!filterValue || !!filters.channel || !!modelValue
+    !!filterValue || !!filters.channel || !!modelValue || !!usernameValue
   const dateRangeFilter = (
     <LogsFilterField wide>
       <CompactDateTimeRangePicker
@@ -222,6 +237,25 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       </LogsFilterField>
     ) : null
 
+  // 用户名筛选复用日志输入控件，桌面和移动端使用相同的查询及重置逻辑。
+  const usernameFilter =
+    props.logCategory === 'task' && isAdmin ? (
+      <LogsFilterField>
+        <LogsFilterInput
+          aria-label={t('Username')}
+          placeholder={t('Filter by username')}
+          value={usernameValue}
+          onChange={(event) =>
+            setFilters((previous) => ({
+              ...previous,
+              username: event.target.value,
+            }))
+          }
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
+    ) : null
+
   return (
     <LogsFilterToolbar
       table={props.table}
@@ -230,6 +264,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
           {dateRangeFilter}
           {taskIdFilter}
           {modelFilter}
+          {usernameFilter}
           {channelFilter}
         </>
       }
@@ -238,11 +273,14 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         <>
           {taskIdFilter}
           {modelFilter}
+          {usernameFilter}
           {channelFilter}
         </>
       }
       mobileFilterCount={
-        [filterValue, modelValue, filters.channel].filter(Boolean).length
+        [filterValue, modelValue, usernameValue, filters.channel].filter(
+          Boolean
+        ).length
       }
       hasActiveFilters={hasAdditionalFilters}
       onSearch={handleApply}

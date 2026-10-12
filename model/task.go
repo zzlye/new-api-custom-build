@@ -241,6 +241,7 @@ type SyncTaskQueryParams struct {
 	ChannelID      string
 	TaskID         string
 	UserID         string
+	Username       string
 	Action         string
 	Status         string
 	StartTimestamp int64
@@ -339,6 +340,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 	// 初始化查询构建器
 	query := filterTaskModel(DB.Where("async_parent_id = ? OR async_parent_id IS NULL", ""), queryParams.ModelName)
+	query = filterTaskUsername(query, queryParams.Username)
 
 	// 添加过滤条件
 	if queryParams.ChannelID != "" {
@@ -600,6 +602,7 @@ type TaskQuotaUsage struct {
 func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	var total int64
 	query := filterTaskModel(DB.Model(&Task{}).Where("async_parent_id = ? OR async_parent_id IS NULL", ""), queryParams.ModelName)
+	query = filterTaskUsername(query, queryParams.Username)
 	if queryParams.ChannelID != "" {
 		query = query.Where("channel_id = ?", queryParams.ChannelID)
 	}

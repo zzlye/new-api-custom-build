@@ -76,6 +76,9 @@ export function buildSearchParams(
         ...baseParams,
         ...(taskFilters.taskId && { filter: taskFilters.taskId }),
         ...(taskFilters.model?.trim() && { model: taskFilters.model.trim() }),
+        ...(taskFilters.username?.trim() && {
+          username: taskFilters.username.trim(),
+        }),
       }
     }
     default:

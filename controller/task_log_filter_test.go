@@ -67,3 +67,66 @@ func TestTaskLogsFilterByModel(t *testing.T) {
 		})
 	}
 }
+
+// 用户名筛选在分页前匹配账号，计数与列表一致，本人接口始终限制在当前用户。
+func TestTaskLogsFilterByUsername(t *testing.T) {
+	prepareAsyncMediaController(t)
+	for _, user := range []model.User{
+		{Id: 31, Username: "alice", AffCode: "username-filter-31"},
+		{Id: 32, Username: "alice-team", AffCode: "username-filter-32"},
+		{Id: 33, Username: "小明", AffCode: "username-filter-33"},
+		{Id: 34, Username: "literal_!%", AffCode: "username-filter-34"},
+	} {
+		require.NoError(t, model.DB.Create(&user).Error)
+		parent := &model.AsyncRelayTask{UserID: user.Id, ModelName: "gpt-image-2", CreatedAt: 100, NodeID: common.NodeName}
+		require.NoError(t, parent.InsertWithLog("default", "IMAGE"))
+	}
+	native := &model.Task{UserId: 31, TaskID: "username-native", ChannelId: 6, SubmitTime: 100,
+		Properties: model.Properties{OriginModelName: "gpt-image-2"}}
+	require.NoError(t, model.DB.Create(native).Error)
+	require.NoError(t, model.DB.Create(&model.Task{UserId: 31, TaskID: "username-child", AsyncParentID: native.TaskID}).Error)
+	for _, tc := range []struct {
+		name, query string
+		self        bool
+		total       int
+		users       []int
+	}{
+		{"模糊匹配及分页", "username=alice&p=2&page_size=1", false, 3, []int{32}},
+		{"大小写与前后空格", "username=" + url.QueryEscape(" ALICE "), false, 3, []int{31, 32, 31}},
+		{"中文名字", "username=" + url.QueryEscape("小"), false, 1, []int{33}},
+		{"字面通配符", "username=" + url.QueryEscape("_!%"), false, 1, []int{34}},
+		{"不存在的用户", "username=missing-user", false, 0, nil},
+		{"输入不成为SQL", "username=" + url.QueryEscape("' OR 1=1 --"), false, 0, nil},
+		{"组合模型渠道", "username=alice&model_name=gpt-image-2&channel_id=6", false, 1, []int{31}},
+		{"组合任务编号", "username=alice&task_id=username-native", false, 1, []int{31}},
+		{"组合时间", "username=alice&start_timestamp=101", false, 0, nil},
+		{"空白恢复列表", "username=%20%20", false, 5, []int{31, 34, 33, 32, 31}},
+		{"本人接口忽略他人用户名", "username=alice-team", true, 2, []int{31, 31}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := GetAllTask
+			role := common.RoleRootUser
+			if tc.self {
+				handler, role = GetUserTask, common.RoleCommonUser
+			}
+			response := asyncControllerRequest(handler, http.MethodGet, "/api/task?"+tc.query, 31, role, nil, "")
+			require.Equal(t, http.StatusOK, response.Code)
+			var payload struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Items []dto.TaskDto `json:"items"`
+					Total int           `json:"total"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+			require.True(t, payload.Success)
+			assert.Equal(t, tc.total, payload.Data.Total)
+			var users []int
+			for _, item := range payload.Data.Items {
+				assert.NotEqual(t, "username-child", item.TaskID)
+				users = append(users, item.UserId)
+			}
+			assert.Equal(t, tc.users, users)
+		})
+	}
+}

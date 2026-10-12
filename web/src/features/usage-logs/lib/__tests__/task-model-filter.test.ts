@@ -69,3 +69,41 @@ test('本人及全部任务查询均携带模型条件并保留分页和任务�
     api.get = originalGet
   }
 })
+
+test('任务用户名筛选去除空格，仅全部范围请求携带用户名', async () => {
+  assert.deepEqual(buildSearchParams({ username: ' alice ' }, 'task'), {
+    username: 'alice',
+  })
+  assert.deepEqual(buildSearchParams({ username: '  ' }, 'task'), {})
+  const originalGet = api.get
+  const requests: string[] = []
+  // 只替换请求边界，验证用户名、模型和分页的实际接口参数。
+  const boundary = api as unknown as { get: (url: string) => Promise<unknown> }
+  boundary.get = async (url) => {
+    requests.push(url)
+    return { data: { success: true, data: { items: [], total: 0 } } }
+  }
+  try {
+    for (const isAdmin of [false, true]) {
+      await fetchLogsByCategory({
+        logCategory: 'task',
+        isAdmin,
+        page: 2,
+        pageSize: 20,
+        searchParams: { username: ' alice ', model: 'gpt-image-2' },
+        columnFilters: [],
+      })
+    }
+    for (const [index, request] of requests.entries()) {
+      const url = new URL(request, 'http://localhost')
+      assert.equal(
+        url.searchParams.get('username'),
+        index === 0 ? null : 'alice'
+      )
+      assert.equal(url.searchParams.get('model_name'), 'gpt-image-2')
+      assert.equal(url.searchParams.get('p'), '2')
+    }
+  } finally {
+    api.get = originalGet
+  }
+})

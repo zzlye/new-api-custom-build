@@ -210,20 +210,27 @@ async function mount(search = '') {
   return router
 }
 
-test('模型筛选恢复地址状态，输入不立即请求，搜索回到第一页且重置清空', async () => {
-  const router = await mount('?model=gpt-image-2&page=2')
+test('模型和用户名恢复地址状态，输入不立即请求，搜索回到第一页且重置清空', async () => {
+  const router = await mount('?model=gpt-image-2&username=alice&page=2')
   const model = document.querySelector<HTMLInputElement>(
     'input[aria-label="Model"]'
   )
   assert.ok(model)
   assert.equal(model.value, 'gpt-image-2')
+  const username = document.querySelector<HTMLInputElement>(
+    'input[aria-label="Username"]'
+  )
+  assert.ok(username)
+  assert.equal(username.value, 'alice')
   const before = calls.length
   await fill(model, ' gpt-image-2-4k ')
+  await fill(username, ' alice-team ')
   assert.equal(calls.length, before)
   await act(async () => button('Search').click())
   await flush()
   assert.equal(router.state.location.search.model, 'gpt-image-2-4k')
   assert.equal(router.state.location.search.page, 1)
+  assert.equal(router.state.location.search.username, 'alice-team')
   assert.ok(
     calls.some(
       (call) =>
@@ -231,10 +238,19 @@ test('模型筛选恢复地址状态，输入不立即请求，搜索回到第�
         'gpt-image-2-4k'
     )
   )
+  assert.ok(
+    calls.some(
+      (call) =>
+        new URL(call.url, 'http://localhost').searchParams.get('username') ===
+        'alice-team'
+    )
+  )
   await act(async () => button('Reset').click())
   await flush()
   assert.equal(router.state.location.search.model, undefined)
   assert.equal(model.value, '')
+  assert.equal(router.state.location.search.username, undefined)
+  assert.equal(username.value, '')
 })
 
 test('任务列表不定时或在窗口重获焦点及重连后请求，手动搜索仍生效', async () => {
@@ -278,7 +294,7 @@ test('任务列表不定时或在窗口重获焦点及重连后请求，手动�
   }
 })
 
-test('窄屏筛选抽屉提供模型输入并提交相同的模型条件', async () => {
+test('窄屏筛选抽屉提供模型及用户名输入并提交相同的筛选条件', async () => {
   dom.happyDOM.setWindowSize({ width: 390, height: 844 })
   const router = await mount()
   const trigger = button('Filter')
@@ -289,6 +305,11 @@ test('窄屏筛选抽屉提供模型输入并提交相同的模型条件', async
   )
   assert.ok(field)
   await fill(field, 'gpt-image-2')
+  const username = document.querySelector<HTMLInputElement>(
+    'input[aria-label="Username"]'
+  )
+  assert.ok(username)
+  await fill(username, '小明')
   const dialog = document.querySelector('[role="dialog"]')
   assert.ok(dialog)
   const search = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find(
@@ -298,4 +319,23 @@ test('窄屏筛选抽屉提供模型输入并提交相同的模型条件', async
   await act(async () => search.click())
   await flush()
   assert.equal(router.state.location.search.model, 'gpt-image-2')
+  assert.equal(router.state.location.search.username, '小明')
+})
+
+test('普通用户不显示用户名筛选，地址残留用户名不发送到本人接口', async () => {
+  useAuthStore.setState((state) => ({
+    auth: {
+      ...state.auth,
+      user: { id: 31, username: 'ui-fixture', role: 1 },
+    },
+  }))
+  await mount('?username=someone-else')
+  assert.equal(document.querySelector('input[aria-label="Username"]'), null)
+  const requests = calls.filter((call) => call.url.startsWith('/api/task'))
+  assert.ok(requests.length > 0)
+  for (const request of requests) {
+    const url = new URL(request.url, 'http://localhost')
+    assert.equal(url.pathname, '/api/task/self')
+    assert.equal(url.searchParams.get('username'), null)
+  }
 })

@@ -71,6 +71,7 @@ export interface DrawingLogFilters extends CommonFilters {
 export interface TaskLogFilters extends CommonFilters {
   taskId?: string
   model?: string
+  username?: string
 }
 
 /**
@@ -510,6 +511,7 @@ export interface GetMidjourneyLogsParams {
 
 export interface GetTaskLogsParams {
   model_name?: string
+  username?: string
   p?: number
   page_size?: number
   channel_id?: string
