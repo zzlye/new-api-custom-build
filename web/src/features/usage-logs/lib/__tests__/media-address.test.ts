@@ -19,7 +19,61 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { taskMediaAddress } from '../media-address'
+import { taskAudioDownloadName, taskMediaAddress } from '../media-address'
+
+describe('任务音频下载文件名', () => {
+  test('音频没有原始文件名时按媒体格式补齐常见音频后缀', () => {
+    for (const [type, extension] of [
+      ['audio/mpeg', 'mp3'],
+      ['audio/wav', 'wav'],
+      ['audio/flac', 'flac'],
+      ['audio/ogg', 'ogg'],
+      ['audio/mp4', 'm4a'],
+      ['audio/aac', 'aac'],
+      ['audio/webm', 'webm'],
+    ]) {
+      assert.equal(
+        taskAudioDownloadName(undefined, type, '', 1),
+        `audio-2.${extension}`
+      )
+    }
+  })
+  test('原音频名称被保留且错误后缀以实际响应类型修正', () => {
+    assert.equal(
+      taskAudioDownloadName('配音.mp3', 'audio/wav', 'audio/mpeg', 0),
+      '配音.wav'
+    )
+    assert.equal(
+      taskAudioDownloadName('音乐.flac', '', 'audio/flac', 0),
+      '音乐.flac'
+    )
+    assert.equal(
+      taskAudioDownloadName(
+        '配音',
+        'application/octet-stream',
+        'Audio/X-WAV; charset=binary',
+        0
+      ),
+      '配音.wav'
+    )
+    assert.equal(taskAudioDownloadName('音乐.mp3', '', '', 0), '音乐.mp3')
+  })
+  test('下载文件名移除路径和非法字符，空名字有稳定后缀', () => {
+    assert.equal(
+      taskAudioDownloadName('目录/配音:1.wav', 'audio/wav', '', 0),
+      '目录_配音_1.wav'
+    )
+    assert.equal(
+      taskAudioDownloadName('CON.mp3', 'audio/mpeg', '', 0),
+      '_CON.mp3'
+    )
+    assert.equal(
+      taskAudioDownloadName('...', 'audio/flac', '', 0),
+      'audio-1.flac'
+    )
+    assert.equal(taskAudioDownloadName(undefined, '', '', 0), 'audio-1.bin')
+  })
+})
 
 describe('任务媒体地址', () => {
   const origin = 'https://localhost:8443'

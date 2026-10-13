@@ -317,6 +317,87 @@ async function openTaskDetails() {
 }
 
 describe('任务生成结果', () => {
+  test('无后缀参考音频提供带正确文件名的下载入口并复用播放内容', async () => {
+    const bytes = new Uint8Array([
+      82, 73, 70, 70, 40, 0, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32, 16, 0, 0,
+      0, 1, 0, 1, 0, 64, 31, 0, 0, 128, 62, 0, 0, 2, 0, 16, 0, 100, 97, 116, 97,
+      4, 0, 0, 0, 0, 0, 0, 0,
+    ])
+    const audio = new Blob([bytes], { type: 'audio/wav' })
+    let loadedBlob: Blob | undefined
+    fixtureApi.get = async (url) => {
+      getCalls.push(url)
+      return { data: audio }
+    }
+    URL.createObjectURL = (blob) => {
+      loadedBlob = blob as Blob
+      return 'blob:reference-audio'
+    }
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <TaskMediaPreview
+            media={{
+              url: '/api/task/async_fixture/reference/0',
+              kind: 'audio',
+              content_type: 'application/octet-stream',
+              role: 'reference',
+              name: '配音',
+            }}
+            index={0}
+          />
+        </I18nextProvider>
+      )
+    )
+    const download = document.querySelector<HTMLAnchorElement>('a[download]')
+    assert.ok(download, '参考音频缺少带文件名的下载入口')
+    assert.equal(download.download, '配音.wav')
+    assert.equal(download.href, 'blob:reference-audio')
+    assert.equal(document.querySelector('audio')?.src, download.href)
+    assert.ok(
+      document
+        .querySelector('audio')
+        ?.getAttribute('controlslist')
+        ?.includes('nodownload')
+    )
+    // 下载与播放使用同一份字节，文件名修复不会触发第二次读取。
+    assert.ok(loadedBlob)
+    assert.deepEqual(new Uint8Array(await loadedBlob.arrayBuffer()), bytes)
+    // 测试环境不执行真正的页面导航，保持后续用例的站点地址不变。
+    download.addEventListener('click', (event) => event.preventDefault())
+    await act(async () => download.click())
+    assert.deepEqual(getCalls, ['/api/task/async_fixture/reference/0'])
+  })
+  test('音频读取失败或到期时不提供下载入口', async () => {
+    const media = {
+      url: '/api/task/async_fixture/reference/0',
+      kind: 'audio' as const,
+      content_type: 'audio/flac',
+      role: 'reference',
+      name: '音乐.flac',
+    }
+    mediaLoadFails = true
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <TaskMediaPreview media={media} index={0} />
+        </I18nextProvider>
+      )
+    )
+    assert.ok(document.querySelector('[role="alert"]'))
+    assert.equal(document.querySelector('a[download]'), null)
+    mediaLoadFails = false
+    await act(async () =>
+      root.render(
+        <I18nextProvider i18n={i18n}>
+          <TaskMediaPreview media={media} index={0} expiresAt={1} />
+        </I18nextProvider>
+      )
+    )
+    assert.equal(document.querySelector('a[download]'), null)
+    assert.equal(document.querySelector('audio'), null)
+    assert.equal(getCalls.length, 1)
+  })
   test('运行中的详情不定时或随焦点重连刷新，仅手动刷新读取新状态', async () => {
     taskDetails.status = 'pending'
     const originalInterval = globalThis.setInterval
@@ -562,12 +643,17 @@ describe('任务生成结果', () => {
     assert.ok(references.textContent?.includes('Reference video 2'))
     assert.ok(references.textContent?.includes('Reference audio 3'))
     assert.ok(references.textContent?.includes('音乐.flac'))
+    assert.equal(
+      references.querySelector<HTMLAnchorElement>('a[download]')?.download,
+      '音乐.flac'
+    )
     assert.ok(getCalls.includes('/api/task/async_fixture/reference/2'))
     await act(async () => {
       taskDetails = { ...taskDetails, media_expired: true, expires_at: 1 }
       await client.invalidateQueries()
     })
     assert.equal(document.querySelectorAll('img, video, audio').length, 0)
+    assert.equal(document.querySelector('a[download]'), null)
     assert.ok(document.body.textContent?.includes('保持人物，背景改成晴天'))
     assert.ok(
       document.body.textContent?.includes('Reference media have expired')

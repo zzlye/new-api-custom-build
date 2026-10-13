@@ -18,6 +18,59 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export type TaskMediaAddressKind = 'preview' | 'api' | 'source'
 
+// 音频下载以实际响应类型确定后缀，通用二进制响应则沿用保存的媒体类型。
+const audioExtensions: Record<string, string> = {
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/wav': 'wav',
+  'audio/wave': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/vnd.wave': 'wav',
+  'audio/flac': 'flac',
+  'audio/x-flac': 'flac',
+  'audio/ogg': 'ogg',
+  'application/ogg': 'ogg',
+  'audio/opus': 'opus',
+  'audio/mp4': 'm4a',
+  'audio/x-m4a': 'm4a',
+  'audio/aac': 'aac',
+  'audio/x-aac': 'aac',
+  'audio/aiff': 'aiff',
+  'audio/x-aiff': 'aiff',
+  'audio/webm': 'webm',
+  'audio/basic': 'au',
+}
+
+export function taskAudioDownloadName(
+  name: string | undefined,
+  responseType: string,
+  storedType: string,
+  index: number
+): string {
+  const actualType = responseType.split(';')[0].trim().toLowerCase()
+  const fallbackType = storedType.split(';')[0].trim().toLowerCase()
+  let extension = audioExtensions[actualType] || audioExtensions[fallbackType]
+  // 原始名字只用于下载命名，移除路径、控制字符及系统不接受的文件名字符。
+  let filename = (name || '')
+    .replaceAll(/[<>:"/\\|?*\p{Cc}]/gu, '_')
+    .trim()
+    .replace(/[. ]+$/, '')
+  const existingExtension = /\.([a-z0-9]{1,10})$/i.exec(filename)
+  if (!extension && existingExtension) {
+    const suffix = existingExtension[1].toLowerCase()
+    if (Object.values(audioExtensions).includes(suffix)) extension = suffix
+  }
+  if (existingExtension) {
+    filename = filename.slice(0, -existingExtension[0].length)
+  }
+  filename = filename.replace(/[. ]+$/, '').slice(0, 180)
+  if (!filename) filename = `audio-${index + 1}`
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(filename)) {
+    filename = `_${filename}`
+  }
+  return `${filename}.${extension || 'bin'}`
+}
+
 // 本地链接只指向本站的任务内容；来源链接仅接受普通网络协议，避免复制临时地址或泄露认证信息。
 export function taskMediaAddress(
   value: string | undefined,

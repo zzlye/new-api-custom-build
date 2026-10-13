@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 
+import { taskAudioDownloadName } from '../lib/media-address'
 import type { TaskMedia } from '../types'
 
 type TaskMediaPreviewProps = {
@@ -33,10 +35,12 @@ type TaskMediaPreviewProps = {
 export function TaskMediaPreview(props: TaskMediaPreviewProps) {
   const { t } = useTranslation()
   const [url, setUrl] = useState('')
+  const [contentType, setContentType] = useState('')
   const [error, setError] = useState('')
   useEffect(() => {
     // 保存期限或媒体地址变化时清空旧状态，让仍可读取的结果重新展示。
     setUrl('')
+    setContentType('')
     setError('')
     const controller = new AbortController()
     let objectUrl = ''
@@ -70,6 +74,7 @@ export function TaskMediaPreview(props: TaskMediaPreviewProps) {
       .then((response) => {
         if (!active || controller.signal.aborted) return
         objectUrl = URL.createObjectURL(response.data)
+        setContentType(response.data.type)
         setUrl(objectUrl)
       })
       .catch(() => {
@@ -101,13 +106,37 @@ export function TaskMediaPreview(props: TaskMediaPreviewProps) {
   // 音频参考使用播放控件，沿用媒体鉴权、到期释放和单次读取逻辑。
   if (props.media.kind === 'audio') {
     return (
-      <audio
-        src={url}
-        controls
-        preload='metadata'
-        aria-label={t(props.media.role ? 'Reference audio' : 'Generated audio')}
-        className='w-full'
-      />
+      <div className='grid justify-items-start gap-2'>
+        <audio
+          src={url}
+          controls
+          controlsList='nodownload'
+          preload='metadata'
+          aria-label={t(
+            props.media.role ? 'Reference audio' : 'Generated audio'
+          )}
+          className='w-full'
+        />
+        {/* 复用已加载的音频字节，显式文件名避免播放器把临时地址保存为无后缀文件。 */}
+        <Button
+          variant='outline'
+          size='sm'
+          nativeButton={false}
+          render={
+            <a
+              href={url}
+              download={taskAudioDownloadName(
+                props.media.name,
+                contentType,
+                props.media.content_type,
+                props.index
+              )}
+            />
+          }
+        >
+          {t('Download')}
+        </Button>
+      </div>
     )
   }
   if (props.media.kind === 'video') {
