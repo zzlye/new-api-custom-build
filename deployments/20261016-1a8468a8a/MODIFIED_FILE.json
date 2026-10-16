@@ -1,0 +1,74 @@
+{
+  "application_commit": "1a8468a8a31ba99cd9ca5e141112474da75f4820",
+  "server": "38.244.15.80",
+  "container_name": "new-api",
+  "container_id": "1a81f30ec52a3e8db69f8fd54ebef4cb2efbab29a182239b84c434e1ff63e948",
+  "image": "new-api-local:1a8468a8a",
+  "image_id": "sha256:6b3204cf5e5c2490c7ea209f4d4dff06d1eb7ef5fbcac270ae993fca1979c095",
+  "binary_sha256": "db77223b97a9ffdbe6bf6397242b78a5dfb03a02a74ef6f2ad28efdcf21a4143",
+  "version_before": "",
+  "version_after": "",
+  "database_version": "PostgreSQL 15.18 (Debian 15.18-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+  "database_backup_bytes": 144005845,
+  "migration_copy_passed_twice": true,
+  "old_tasks_at_switch": 6,
+  "old_tasks_now": 0,
+  "old_exit_code": 0,
+  "old_container_removed": true,
+  "other_containers_not_restarted": true,
+  "workshop_internal_api_ok": true,
+  "desktop_update_route_preserved": true,
+  "options_unchanged": false,
+  "checks": {
+    "settings_default": true,
+    "order_logs": true,
+    "routes": 8,
+    "frontend_assets": 7
+  },
+  "monitor": {
+    "https://api.zzlye.xyz/api/status": {
+      "samples": 192,
+      "failed": 0,
+      "max_ms": 1277
+    },
+    "https://api.zzlye.site/api/status": {
+      "samples": 192,
+      "failed": 0,
+      "max_ms": 5393
+    },
+    "http://127.0.0.1:3000/api/status": {
+      "samples": 192,
+      "failed": 0,
+      "max_ms": 84
+    },
+    "https://zzlye.xyz/": {
+      "samples": 192,
+      "failed": 0,
+      "max_ms": 1578
+    }
+  },
+  "new_task_statuses": [
+    {
+      "status": "failed",
+      "count": 3
+    },
+    {
+      "status": "processing",
+      "count": 2
+    },
+    {
+      "status": "succeeded",
+      "count": 21
+    }
+  ],
+  "switched_at": 1792148862,
+  "finished_at": 1792149120,
+  "rollback": "/opt/new-api/backups/update-20261016-1a8468a8a/ROLLBACK.sh",
+  "rollback_copy_verified": true,
+  "backup_directory": "/opt/new-api/backups/update-20261016-1a8468a8a",
+  "concurrent_option_change_keys": [
+    "AsyncMediaRetryPolicy"
+  ],
+  "concurrent_option_changes_preserved": true,
+  "deployment_interrupted_tasks": 0
+}

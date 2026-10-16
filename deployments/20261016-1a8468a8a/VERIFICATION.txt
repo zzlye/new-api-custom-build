@@ -1,0 +1,39 @@
+已完成双实例切换：先备份并在完整数据库副本上连续迁移两次，再验证候选实例，热切入口，等待旧任务和连接归零后正常停止旧实例。
+数据库副本财务字段保持不变；未恢复覆盖线上数据库。
+版本保持原值；新容器统一名为 new-api；数据库、Redis、Caddy、工坊及其他应用未重启。
+新增收款码功能保持关闭，默认个人每日限额为 10；真实付款尚未联调。
+回退：执行本目录 ROLLBACK.sh；先启动旧版验证后再切入口，不覆盖交易数据，保留新版排空。
+副本回退校验：ROLLBACK.sh --verify-copy；已通过。
+本次使用本地构建的 Linux 程序生成服务器运行镜像，没有推送仓库或发布远端镜像。
+详情见 MODIFIED_FILE.json、entry-monitor-summary.json、migration-1.log、migration-2.log。
+核对发现部署期间 AsyncMediaRetryPolicy 配置发生变化；本次部署脚本未写入此选项，保留当前值，没有用备份覆盖。
+入口采样四个地址各 192 次，合计 768 次，失败 0 次；未发现执行进程中断任务。
+
+验收时间（北京时间）
+切换：2026-10-16T19:07:42+08:00
+排空结束：2026-10-16T19:12:00+08:00
+
+构建与验证命令
+应用构建提交：1a8468a8a31ba99cd9ca5e141112474da75f4820，工作区干净时构建。
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOWORK=off GOEXPERIMENT=greenteagc go build -trimpath -ldflags "-s -w -X github.com/QuantumNous/new-api/common.Version=" -o new-api .
+结果：退出码 0；Go 1.26.7；程序摘要见 MODIFIED_FILE.json。VERSION 文件和线上版本字段均保留原值。
+生产数据库：PostgreSQL 15.18。先通过 pg_dump -Fc 创建一致性备份，再 pg_restore 至独立副本；migrate-only 仅执行 model.InitDB 和 model.InitLogDB，不启动后台任务或向上游提交请求。
+副本迁移运行两次：均输出 MIGRATION_ONLY_PASS；用户余额、赠金、邀请额度及原充值记录字段摘要保持一致；两次迁移后结构一致。副本测试库已删除，生产库未被备份覆盖。
+候选验收：收款码配置为关闭、个人每日限额 10、私钥不回显、历史订单列表可读取、Sora 插件源码摘要未变化。
+入口验收：8 个未认证接口均返回 401；7 个实际前端资源摘要与本次构建一致；工坊内部入口可正常访问。
+热切命令：docker exec new-api-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile。
+切换时旧节点有 6 个在途任务；任务和 HTTP 连接归零后执行 docker stop -t 180，正常退出码 0。新版容器仅重命名，没有重启；旧容器已移除，原镜像与备份仍保留。
+回退校验：/opt/new-api/backups/update-20261016-1a8468a8a/ROLLBACK.sh --verify-copy；结果 ROLLBACK_COPY_PASS PRODUCTION_UNCHANGED。仅验证副本恢复，未对线上执行真实回退。
+
+构建说明
+首次派生 Docker 构建因基础镜像层远端授权解析失败而停止，未修改线上入口。随后仅在全新、停止状态的临时容器中复制已校验程序和许可证，通过 docker commit 生成本地运行镜像；没有对生产容器执行提交或暂停。临时容器已删除。
+
+并行变更保留
+发现工坊桌面下载入口被并行更新后，首次切换因配置摘要保护主动中止。确认该变更不涉及 NewAPI 后重新记录基线，只替换两个 NewAPI 上游端口；工坊新下载路由完整保留。
+AsyncMediaRetryPolicy 同期发生变化，只记录其键名与摘要，没有回写或覆盖当前配置。
+
+限制与记录
+自动收款需要配置有账务查询权限的支付宝应用，并完成真实付款联调；本次没有真实付款测试。
+入口监测通过不等于所有上游生成都成功；同期记录有上游错误码任务，未发现“执行进程中断”任务。
+本地完整过程日志：D:/tmp/newapi-deploy-20261016-1a8468a8a/。
+服务器备份及回退脚本：/opt/new-api/backups/update-20261016-1a8468a8a/。
