@@ -1,0 +1,32 @@
+本次修复：付款方式自主添加和删除、付款倒计时及到期隐藏、支付宝未上线诊断、添加方式下拉定位。
+应用提交：9a90b1be1e526ff18fe3c6614e13d7b608c3bf1d；最终应用提交：30d44b5e6b5859bc37443ff5ec11c689abeb99ad。
+版本号保持不变。
+
+验证命令与结果
+前端：bun run test:official src/features/wallet/components/dialogs/__tests__/receipt-payment.test.tsx src/features/system-settings/integrations/__tests__/payment-methods.test.tsx，7项通过。
+共用下拉组件：bun run test:official src/components/ui/__tests__/combobox.test.tsx，12项通过。
+后端：GOWORK=off go test ./controller ./pkg/alipayaccountlog -run 'Test(AlipayReceipt|Receipt|QueryFailure)' -count=1，通过。数据库矩阵运行SQLite；未配置MySQL、PostgreSQL测试DSN的项按既有测试跳过。
+bun run typecheck、所改文件oxlint、bun run build、Linux Go构建及git diff --check通过。
+前端失败回归先确认旧实现自动补收款码、到期保留二维码；修复后通过。
+真实Chromium确认模板添加、改名、排序、保存重载、删除后不再出现；普通及强制暗色模式二维码共10次识别通过；跨到期时间立即隐藏。
+真实Chromium确认桌面和手机的添加方式选项对齐输入框且位于弹窗可见范围；旧实现因坐标重复偏移导致断言失败，修复后通过。
+复用现有付款方式编辑器、模板、Dialog、StaticRowActions、Button和ComboboxInput；不新增重复组件。通用useCountdown到零重置，不适用于订单绝对到期，付款弹窗独立按截止时间更新并监听页面恢复。
+截图和复现脚本：D:/tmp/receipt-countdown-qa/、D:/tmp/receipt-countdown-qa.mjs、D:/tmp/receipt-add-method-qa.mjs。
+
+账务调查与限制
+实际支付宝查询返回HTTP400，错误code=not-online-app，message=应用未上线。APPID、UID与此前配置一致；两组公钥指纹与配置文件一致，但这不等于已证明收款账号归属及账务查询权限可用。
+成功账单仍须验签；错误正文仅限量读取并对白名单错误码显示固定说明，不暴露原始正文、私钥或请求签名。
+应用未上线时不能完成自动查账；本次没有真实支付，也没有手动改余额或把订单设为已付。
+二维码到期隐藏只影响本站页面，已截图保存的静态个人收款码仍可转账；超过订单付款窗口的收入不会自动匹配该订单。
+订单重复入账保护、按付款时间和金额匹配、root设置权限、每日个人创建限额等既有逻辑保留。
+
+部署结果见同目录MODIFIED_FILE.json。保留数据库备份、旧镜像和仅回退入口的脚本；未推送GitHub或触发GitHub Actions。
+
+部署验收
+数据库一致性备份146871733字节；运行镜像new-api-local:30d44b5e6，程序摘要15792a52b3f082e3aa914f85d5109227be394fff6b28fc5fd84b8edbde748c1e。
+正式入口切到127.0.0.1:3002；23个旧任务全部自然结束，旧实例退出码0并移除，无任务归属手动交接。
+新容器重命名new-api而未重启，其他5个容器未重启，工坊内网接口及桌面更新路由正常。
+4个入口共340次采样，失败0次；新增执行进程中断任务0条；10个线上前端资源摘要匹配最终构建。
+收款配置和PayMethods保持不变。更新期间公告设置console_setting.announcements发生外部变更，本次未写入或回退该设置。
+备份与回退脚本位于/opt/new-api/backups/update-20261016-9a90b1be1，回退副本验证通过；仅切入口，不恢复交易数据库。
+上线后实际后台已显示：支付宝账务查询失败：应用未上线（not-online-app，HTTP 400）。钱包接口仅返回已保存的Epay支付宝条目，没有自动补入收款码。
