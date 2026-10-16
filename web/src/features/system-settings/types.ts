@@ -100,6 +100,7 @@ export type SystemTask<
 
 export type LogCleanupTaskPayload = {
   include_task_logs?: boolean
+  include_order_logs?: boolean
   target_timestamp: number
   batch_size: number
 }
@@ -107,6 +108,7 @@ export type LogCleanupTaskPayload = {
 export type LogCleanupTaskState = {
   deleted_logs?: number
   deleted_tasks?: number
+  deleted_orders?: number
   skipped_tasks?: number
   task_cursor?: number
   total: number
@@ -118,6 +120,7 @@ export type LogCleanupTaskState = {
 export type LogCleanupTaskResult = {
   deleted_logs?: number
   deleted_tasks?: number
+  deleted_orders?: number
   skipped_tasks?: number
   deleted_count: number
 }

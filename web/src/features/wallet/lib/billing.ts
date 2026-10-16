@@ -34,6 +34,8 @@ interface StatusConfig {
  * Status badge configuration
  */
 export const STATUS_CONFIG: Record<TopupStatus, StatusConfig> = {
+  closed: { variant: 'danger', label: 'Order closed' },
+  failed: { variant: 'danger', label: 'Failed' },
   success: {
     variant: 'success',
     label: 'Success',
@@ -61,6 +63,7 @@ export function getStatusConfig(status: TopupStatus): StatusConfig {
 export const PAYMENT_METHOD_NAMES: Record<string, string> = {
   stripe: 'Stripe',
   alipay: 'Alipay',
+  alipay_receipt: 'Alipay receipt code',
   wxpay: 'WeChat Pay',
   waffo: 'Waffo',
 }

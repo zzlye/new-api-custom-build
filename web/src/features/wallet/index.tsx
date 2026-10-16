@@ -28,6 +28,7 @@ import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
+import { ReceiptPaymentDialog } from './components/dialogs/receipt-payment-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
@@ -94,6 +95,8 @@ export function Wallet(props: WalletProps) {
     processing,
     calculatePaymentAmount,
     processPayment,
+    receiptTradeNo,
+    setReceiptTradeNo,
   } = usePayment()
   const { affiliateLink, loading: affiliateLoading } = useAffiliate()
   const { redeeming, redeemCode } = useRedemption()
@@ -346,6 +349,11 @@ export function Wallet(props: WalletProps) {
         usdExchangeRate={effectiveUsdExchangeRate}
       />
 
+      <ReceiptPaymentDialog
+        tradeNo={receiptTradeNo}
+        onClose={() => setReceiptTradeNo(null)}
+        onPaid={fetchUser}
+      />
       <BillingHistoryDialog
         open={billingDialogOpen}
         onOpenChange={setBillingDialogOpen}

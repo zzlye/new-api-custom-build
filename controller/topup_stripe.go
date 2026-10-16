@@ -117,6 +117,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	}
 
 	topUp := &model.TopUp{
+		CreateIP:        c.ClientIP(),
 		UserId:          id,
 		Amount:          req.Amount,
 		Money:           chargedMoney,

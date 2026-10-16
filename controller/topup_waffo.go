@@ -222,6 +222,7 @@ func RequestWaffoPay(c *gin.Context) {
 
 	// 创建本地订单
 	topUp := &model.TopUp{
+		CreateIP:        c.ClientIP(),
 		UserId:          id,
 		Amount:          amount,
 		Money:           payMoney,

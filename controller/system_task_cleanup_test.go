@@ -21,13 +21,14 @@ func TestLogCleanupEndpointRequiresRootAndQueuesCombinedScope(t *testing.T) {
 	var count int64
 	require.NoError(t, model.DB.Model(&model.SystemTask{}).Count(&count).Error)
 	assert.Zero(t, count)
-	response := asyncControllerRequest(CreateLogCleanupSystemTask, http.MethodPost, "/api/system-task/log-cleanup?target_timestamp=200&include_task_logs=true", 1, common.RoleRootUser, nil, "")
+	response := asyncControllerRequest(CreateLogCleanupSystemTask, http.MethodPost, "/api/system-task/log-cleanup?target_timestamp=200&include_task_logs=true&include_order_logs=true", 1, common.RoleRootUser, nil, "")
 	assert.Equal(t, http.StatusOK, response.Code)
 	var task model.SystemTask
 	require.NoError(t, model.DB.First(&task).Error)
 	var payload service.LogCleanupPayload
 	require.NoError(t, task.DecodePayload(&payload))
 	assert.True(t, payload.IncludeTaskLogs)
+	assert.True(t, payload.IncludeOrderLogs)
 	assert.Equal(t, int64(200), payload.TargetTimestamp)
 	assert.Equal(t, model.SystemTaskStatusPending, task.Status, "接口提交后直接返回，由后台执行清理")
 }
@@ -42,4 +43,5 @@ func TestLogCleanupOldClientDoesNotExpandDeletionScope(t *testing.T) {
 	var payload service.LogCleanupPayload
 	require.NoError(t, task.DecodePayload(&payload))
 	assert.False(t, payload.IncludeTaskLogs, "旧页面只确认普通日志时，不扩大删除范围")
+	assert.False(t, payload.IncludeOrderLogs)
 }

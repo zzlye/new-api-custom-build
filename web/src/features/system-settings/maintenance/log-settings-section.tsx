@@ -458,7 +458,7 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
               </h4>
               <p className='text-muted-foreground text-sm'>
                 {t(
-                  'Remove usage logs and completed task logs before the selected time, together with their stored media. Running tasks are kept.'
+                  'Remove usage, completed task and closed payment order logs before the selected time. Active tasks, pending orders and payment deduplication records are kept.'
                 )}
               </p>
             </div>
@@ -505,16 +505,23 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
                 {logCleanupTask.state?.deleted_tasks !== undefined ||
                 logCleanupTask.result?.deleted_tasks !== undefined ? (
                   <p className='text-muted-foreground mt-2 text-xs'>
-                    {t('Removed {{logs}} usage logs and {{tasks}} task logs.', {
-                      logs:
-                        logCleanupTask.result?.deleted_logs ??
-                        logCleanupTask.state?.deleted_logs ??
-                        0,
-                      tasks:
-                        logCleanupTask.result?.deleted_tasks ??
-                        logCleanupTask.state?.deleted_tasks ??
-                        0,
-                    })}
+                    {t(
+                      'Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.',
+                      {
+                        orders:
+                          logCleanupTask.result?.deleted_orders ??
+                          logCleanupTask.state?.deleted_orders ??
+                          0,
+                        logs:
+                          logCleanupTask.result?.deleted_logs ??
+                          logCleanupTask.state?.deleted_logs ??
+                          0,
+                        tasks:
+                          logCleanupTask.result?.deleted_tasks ??
+                          logCleanupTask.state?.deleted_tasks ??
+                          0,
+                      }
+                    )}
                   </p>
                 ) : null}
                 {(logCleanupTask.result?.skipped_tasks ??
@@ -706,7 +713,7 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
             <AlertDialogTitle>{t('Confirm log cleanup')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                'This removes usage logs created before {{date}}, completed task logs finished before {{date}}, and their stored media. Running tasks are kept.',
+                'This removes usage logs, completed task logs and their media, and closed payment order logs before {{date}}. Pending orders and payment deduplication records are kept.',
                 { date: formattedPurgeDate }
               )}{' '}
               {t('This action cannot be undone.')}

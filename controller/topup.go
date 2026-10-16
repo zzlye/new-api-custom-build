@@ -25,8 +25,10 @@ import (
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
+	receiptConfig, receiptErr := model.GetAlipayReceiptConfig()
+	enableReceipt := receiptErr == nil && receiptConfig.Enabled && complianceConfirmed
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -96,7 +98,11 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	if enableReceipt {
+		payMethods = append(payMethods, map[string]string{"name": "支付宝收款码", "type": model.AlipayReceiptProvider, "color": "#1677FF", "min_topup": strconv.Itoa(operation_setting.MinTopUp)})
+	}
 	data := gin.H{
+		"enable_alipay_receipt_topup":      enableReceipt,
 		"enable_online_topup":              isEpayTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
@@ -330,6 +336,7 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
+		CreateIP:        c.ClientIP(),
 		UserId:          id,
 		Amount:          amount,
 		Money:           payMoney,

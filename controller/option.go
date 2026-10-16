@@ -88,7 +88,7 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if model.IsUserModelPricingOption(k) {
+		if k == model.AlipayReceiptOption || model.IsUserModelPricingOption(k) {
 			continue
 		}
 		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
@@ -193,6 +193,10 @@ func UpdateOption(c *gin.Context) {
 			"success": false,
 			"message": "无效的参数",
 		})
+		return
+	}
+	if option.Key == model.AlipayReceiptOption {
+		common.ApiError(c, errors.New("请在支付宝收款码设置中修改配置"))
 		return
 	}
 	// 视频规则统一经过专用接口校验，通用设置接口不允许绕过。

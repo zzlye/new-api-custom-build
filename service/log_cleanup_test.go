@@ -43,6 +43,33 @@ func runLogCleanupFixture(t *testing.T, task *model.SystemTask) *model.SystemTas
 	return result
 }
 
+func TestLogCleanupClearsOrderDetailsButKeepsFinancialDeduplication(t *testing.T) {
+	prepareLogCleanupDatabase(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.TopUp{}, &model.ReceiptOrder{}, &model.ReceiptPayment{}, &model.OrderEvent{}, &model.ReceiptGate{}))
+	top := model.TopUp{TradeNo: "cleanup-receipt", CreateTime: 100, Status: common.TopUpStatusSuccess, CreateIP: "192.0.2.1", LastError: "旧错误"}
+	require.NoError(t, model.DB.Create(&top).Error)
+	require.NoError(t, model.DB.Create(&model.TopUp{TradeNo: "keep-pending", CreateTime: 100, Status: common.TopUpStatusPending}).Error)
+	require.NoError(t, model.DB.Create(&model.ReceiptOrder{TopUpID: top.Id, QRCode: "https://qr.alipay.com/old", CreditQuota: 100}).Error)
+	require.NoError(t, model.DB.Create(&model.ReceiptPayment{ID: "keep-hash", TradeKey: "keep-trade-hash", TopUpID: top.Id}).Error)
+	require.NoError(t, model.DB.Create(&model.OrderEvent{TopUpID: top.Id, Message: "旧详情"}).Error)
+	task, err := StartLogCleanupTask(200, false, true)
+	require.NoError(t, err)
+	finished := runLogCleanupFixture(t, task)
+	assert.Equal(t, model.SystemTaskStatusSucceeded, finished.Status)
+	var result LogCleanupResult
+	require.NoError(t, common.UnmarshalJsonStr(finished.Result, &result))
+	assert.EqualValues(t, 1, result.DeletedOrders)
+	require.NoError(t, model.DB.First(&top, top.Id).Error)
+	assert.Empty(t, top.CreateIP)
+	assert.Empty(t, top.LastError)
+	assert.Positive(t, top.LogClearedAt)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.ReceiptPayment{}).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+	require.NoError(t, model.DB.Model(&model.OrderEvent{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
 func TestLogCleanupIncludesCompletedTasksAndTheirFiles(t *testing.T) {
 	prepareLogCleanupDatabase(t)
 	oldLog := &model.Log{CreatedAt: 100, Type: model.LogTypeConsume}

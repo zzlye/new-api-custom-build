@@ -189,6 +189,14 @@ func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	)
 }
 
+// 收款码接口单独限流，不随通用开关关闭；轮询额度与写操作额度分开计算。
+func AlipayReceiptRateLimit(write bool) func(c *gin.Context) {
+	if write {
+		return userRateLimitFactory(12, 60, "receipt-write")
+	}
+	return userRateLimitFactory(60, 60, "receipt-read")
+}
+
 func DownloadRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }

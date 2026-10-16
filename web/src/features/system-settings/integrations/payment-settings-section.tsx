@@ -59,6 +59,7 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
+import { AlipayReceiptSettings } from './alipay-receipt-settings'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
@@ -417,7 +418,9 @@ export function PaymentSettingsSection({
     })
   }, [defaultsSignature, form])
 
+  const [paymentTab, setPaymentTab] = React.useState('general')
   const onSubmit = async (values: PaymentFormValues) => {
+    if (paymentTab === 'alipay-receipt') return
     const sanitized = {
       PayAddress: removeTrailingSlash(values.PayAddress),
       EpayId: values.EpayId.trim(),
@@ -872,20 +875,29 @@ export function PaymentSettingsSection({
           )}
           data-no-autosubmit='true'
         >
-          <SettingsPageFormActions
-            onSave={form.handleSubmit(onSubmit)}
-            isSaving={updateOption.isPending || isSubmitting}
-            saveLabel='Save all settings'
-          />
-          <Tabs defaultValue='general' className='min-w-0'>
+          {paymentTab !== 'alipay-receipt' && (
+            <SettingsPageFormActions
+              onSave={form.handleSubmit(onSubmit)}
+              isSaving={updateOption.isPending || isSubmitting}
+              saveLabel='Save all settings'
+            />
+          )}
+          <Tabs
+            value={paymentTab}
+            onValueChange={setPaymentTab}
+            className='min-w-0'
+          >
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[44rem] grid-cols-6'>
+              <TabsList className='grid min-w-[52rem] grid-cols-7'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='stripe'>{t('Stripe')}</TabsTrigger>
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
+                <TabsTrigger value='alipay-receipt'>
+                  {t('Alipay receipt code')}
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -1627,6 +1639,12 @@ export function PaymentSettingsSection({
                 payMethods={waffoPayMethods}
                 onPayMethodsChange={setWaffoPayMethods}
               />
+            </TabsContent>
+            <TabsContent
+              value='alipay-receipt'
+              className={paymentTabContentClassName}
+            >
+              <AlipayReceiptSettings />
             </TabsContent>
           </Tabs>
         </SettingsForm>

@@ -203,7 +203,8 @@ test('联合清理需要确认并说明任务日志和媒体都会删除', async
   const dialog = document.querySelector('[role="alertdialog"]')
   assert.ok(dialog)
   assert.match(dialog.textContent ?? '', /task logs/)
-  assert.match(dialog.textContent ?? '', /stored media/)
+  assert.match(dialog.textContent ?? '', /media/)
+  assert.match(dialog.textContent ?? '', /payment order logs/)
   assert.equal(cleared.length, 0)
   await act(async () => button('Cancel', dialog)?.click())
   assert.equal(cleared.length, 0)
@@ -217,7 +218,15 @@ test('联合清理需要确认并说明任务日志和媒体都会删除', async
     (cleared[0].options as { params: { target_timestamp: number } }).params
       .target_timestamp > 0
   )
-  assert.match(container.textContent ?? '', /1 usage logs and 1 task logs/)
+  assert.equal(
+    (cleared[0].options as { params: { include_order_logs: boolean } }).params
+      .include_order_logs,
+    true
+  )
+  assert.match(
+    container.textContent ?? '',
+    /1 usage logs, 1 task logs and 0 order logs/
+  )
 })
 
 test('普通管理员保留查看权限但没有保存时长和联合删除入口', async () => {

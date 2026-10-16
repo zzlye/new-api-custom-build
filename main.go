@@ -159,6 +159,7 @@ func main() {
 	controller.RegisterScheduledSystemTasks()
 	controller.StartAsyncRelayWorkers()
 	service.StartSystemTaskRunner()
+	service.StartAlipayReceiptWorker()
 
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		common.BatchUpdateEnabled = true

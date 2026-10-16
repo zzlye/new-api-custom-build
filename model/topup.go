@@ -75,14 +75,23 @@ func creditTopUpWithCommission(tx *gorm.DB, commission **TopUpInviteCommissionRe
 }
 
 type TopUp struct {
+	// 订单展示信息可清理，原始财务记录不删除。
+	CreditQuota     int     `json:"credit_quota"`
+	CreateIP        string  `json:"create_ip" gorm:"size:64"`
+	PaidTime        int64   `json:"paid_time"`
+	ClosedTime      int64   `json:"closed_time"`
+	ActualMoney     float64 `json:"actual_money"`
+	ProviderTradeNo string  `json:"provider_trade_no" gorm:"size:128"`
+	LastError       string  `json:"last_error" gorm:"type:text"`
+	LogClearedAt    int64   `json:"-" gorm:"index"`
 	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
+	UserId          int     `json:"user_id" gorm:"index;index:idx_topup_personal_day,priority:1"`
 	Amount          int64   `json:"amount"`
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
+	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:'';index:idx_topup_personal_day,priority:2"`
+	CreateTime      int64   `json:"create_time" gorm:"index:idx_topup_personal_day,priority:3"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
 }
@@ -541,6 +550,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return errors.New("充值订单不存在")
 		}
 
+		if topUp.PaymentProvider == AlipayReceiptProvider {
+			return errors.New("收款码订单请使用订单日志中的补回调核验入账")
+		}
 		// 幂等处理：已成功直接返回
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil

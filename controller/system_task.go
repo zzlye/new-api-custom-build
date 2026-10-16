@@ -32,7 +32,12 @@ func CreateLogCleanupSystemTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "日志清理范围参数有误"})
 		return
 	}
-	task, err := service.StartLogCleanupTask(targetTimestamp, includeTasks)
+	includeOrders, err := strconv.ParseBool(c.DefaultQuery("include_order_logs", "false"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订单日志清理范围参数有误"})
+		return
+	}
+	task, err := service.StartLogCleanupTask(targetTimestamp, includeTasks, includeOrders)
 	if err != nil {
 		common.ApiError(c, err)
 		return

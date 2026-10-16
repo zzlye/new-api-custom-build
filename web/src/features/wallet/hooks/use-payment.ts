@@ -37,6 +37,7 @@ import {
   isWaffoPancakePayment,
   submitPaymentForm,
 } from '../lib'
+import { createReceiptOrder } from '../receipt-api'
 import type { AmountRequest, AmountResponse } from '../types'
 
 // ============================================================================
@@ -82,6 +83,7 @@ export async function requestPaymentAmount(
 }
 
 export function usePayment() {
+  const [receiptTradeNo, setReceiptTradeNo] = useState<string | null>(null)
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -113,6 +115,11 @@ export function usePayment() {
       try {
         setProcessing(true)
 
+        if (paymentType === 'alipay_receipt') {
+          const order = await createReceiptOrder(Math.floor(topupAmount))
+          setReceiptTradeNo(order.trade_no)
+          return true
+        }
         const isStripe = isStripePayment(paymentType)
         const amount = Math.floor(topupAmount)
 
@@ -166,5 +173,7 @@ export function usePayment() {
     calculatePaymentAmount,
     processPayment,
     setAmount,
+    receiptTradeNo,
+    setReceiptTradeNo,
   }
 }

@@ -121,6 +121,7 @@ export interface WaffoPayMethod {
  */
 export interface TopupInfo {
   /** Whether online topup is enabled */
+  enable_alipay_receipt_topup?: boolean
   enable_online_topup: boolean
   /** Whether Stripe topup is enabled */
   enable_stripe_topup: boolean
@@ -249,12 +250,18 @@ export interface UserWalletData {
 /**
  * Topup record status
  */
-export type TopupStatus = 'success' | 'pending' | 'expired'
+export type TopupStatus =
+  | 'success'
+  | 'pending'
+  | 'expired'
+  | 'closed'
+  | 'failed'
 
 /**
  * Topup billing record
  */
 export interface TopupRecord {
+  credit_quota?: number
   /** Record ID */
   id: number
   /** User ID */

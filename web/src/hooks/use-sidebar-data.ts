@@ -153,6 +153,11 @@ export function useSidebarData(): SidebarData {
             icon: Ticket,
           },
           {
+            title: t('Order logs'),
+            url: '/order-logs',
+            icon: ClipboardList,
+          },
+          {
             title: t('Subscriptions'),
             url: '/subscriptions',
             icon: CreditCard,
