@@ -77,14 +77,15 @@ export function ComboboxInput({
   const inputRef = React.useRef<HTMLInputElement>(null)
   const listRef = React.useRef<HTMLUListElement>(null)
   const dropdownRef = React.useRef<HTMLDivElement>(null)
-  // The dropdown is portaled so scrolling ancestors cannot clip it. It goes
-  // into the enclosing dialog when there is one, which keeps a modal parent
-  // from treating option clicks as outside presses.
+  // 列表挂到弹窗本身，避开表单滚动区裁切，同时保持选项点击属于当前弹窗。
   const [dropdown, setDropdown] = React.useState<{
     container: HTMLElement
-    top: number
+    position: 'absolute' | 'fixed'
+    top?: number
+    bottom?: number
     left: number
     width: number
+    maxHeight: number
   } | null>(null)
   const pointerFocusRef = React.useRef(false)
   const selectedOption = React.useMemo(
@@ -128,7 +129,7 @@ export function ComboboxInput({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [open])
 
-  // Position the portaled dropdown under the input and follow scroll/resize.
+  // 弹窗的平移会改变定位包含块，必须转换为弹窗局部坐标，不能叠加视口坐标。
   React.useEffect(() => {
     if (!open) {
       setDropdown(null)
@@ -140,19 +141,38 @@ export function ComboboxInput({
       input.closest<HTMLElement>('[role="dialog"]') ?? document.body
     const measure = () => {
       const rect = input.getBoundingClientRect()
+      const inDialog = container !== document.body
+      const parent = inDialog ? container.getBoundingClientRect() : null
+      const height = inDialog ? container.clientHeight : window.innerHeight
+      const offsetTop =
+        (parent?.top ?? 0) + (inDialog ? container.clientTop : 0)
+      const above = rect.top - offsetTop - 4
+      const below = height - (rect.bottom - offsetTop) - 4
+      const upwards = below < 200 && above > below
+      const scrollTop = inDialog ? container.scrollTop : 0
       setDropdown({
         container,
-        top: rect.bottom + 4,
-        left: rect.left,
+        position: inDialog ? 'absolute' : 'fixed',
+        top: upwards ? undefined : rect.bottom - offsetTop + scrollTop + 4,
+        bottom: upwards
+          ? height - (rect.top - offsetTop + scrollTop) + 4
+          : undefined,
+        left:
+          rect.left -
+          (parent?.left ?? 0) +
+          (inDialog ? container.scrollLeft - container.clientLeft : 0),
         width: rect.width,
+        maxHeight: Math.max(0, Math.min(200, (upwards ? above : below) - 8)),
       })
     }
     measure()
     window.addEventListener('scroll', measure, true)
     window.addEventListener('resize', measure)
+    container.addEventListener('animationend', measure)
     return () => {
       window.removeEventListener('scroll', measure, true)
       window.removeEventListener('resize', measure)
+      container.removeEventListener('animationend', measure)
     }
   }, [open])
 
@@ -290,8 +310,9 @@ export function ComboboxInput({
           <div
             ref={dropdownRef}
             style={{
-              position: 'fixed',
+              position: dropdown.position,
               top: dropdown.top,
+              bottom: dropdown.bottom,
               left: dropdown.left,
               width: dropdown.width,
             }}
@@ -305,6 +326,7 @@ export function ComboboxInput({
                 ref={listRef}
                 id={listId}
                 role='listbox'
+                style={{ maxHeight: dropdown.maxHeight }}
                 className='max-h-[200px] overflow-y-auto p-1'
               >
                 {filteredOptions.map((option, index) => (

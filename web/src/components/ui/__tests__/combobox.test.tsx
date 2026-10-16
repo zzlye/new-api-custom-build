@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -31,6 +31,49 @@ const options = [
   { value: 'gemini', label: 'Google' },
   { value: 'disabled', label: 'Unavailable provider', disabled: true },
 ]
+
+it('自定义输入在偏移且可滚动的弹窗中对齐输入框，选项不被裁切', () => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+    function (this: HTMLElement) {
+      if (this.getAttribute('role') === 'dialog') {
+        return new DOMRect(400, 150, 500, 500)
+      }
+      if (this.getAttribute('role') === 'combobox') {
+        return new DOMRect(420, 550, 450, 32)
+      }
+      return new DOMRect()
+    }
+  )
+  const change = vi.fn()
+  render(
+    <Dialog open title='支付方式'>
+      <Combobox
+        options={options}
+        allowCustomValue
+        onValueChange={change}
+        aria-label='Provider'
+      />
+    </Dialog>
+  )
+  const dialog = screen.getByRole('dialog')
+  Object.defineProperty(dialog, 'clientHeight', {
+    configurable: true,
+    value: 500,
+  })
+  dialog.scrollTop = 25
+  fireEvent.focus(screen.getByRole('combobox', { name: 'Provider' }))
+  fireEvent.scroll(window)
+  const list = screen.getByRole('listbox')
+  // 视口坐标转换到弹窗滚动坐标；下方空间不足时将列表放到输入框上方。
+  expect(list.parentElement).toHaveStyle({
+    position: 'absolute',
+    left: '20px',
+    bottom: '79px',
+  })
+  fireEvent.mouseDown(screen.getByRole('option', { name: 'Google' }))
+  expect(change).toHaveBeenCalledWith('gemini')
+  expect(screen.getByRole('dialog')).toBeVisible()
+})
 
 function Fixture() {
   const [value, setValue] = useState('openai')
