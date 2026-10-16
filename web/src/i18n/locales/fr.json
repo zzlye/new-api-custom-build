@@ -7169,7 +7169,7 @@
     "Payment received, crediting balance": "Payment received, crediting balance",
     "Payment window ended. Do not pay this order.": "Payment window ended. Do not pay this order.",
     "Order expired": "Order expired",
-    "Pay the exact amount shown, including cents.": "Pay the exact amount shown, including cents.",
+    "Enter the exact amount shown, including cents.": "Saisissez exactement le montant affiché, centimes compris.",
     "Confirm amount and show code": "Confirm amount and show code",
     "Close order": "Close order",
     "Failed to load order": "Failed to load order",
@@ -7195,6 +7195,8 @@
     "Pending payment": "Pending payment",
     "Remove usage, completed task and closed payment order logs before the selected time. Active tasks, pending orders and payment deduplication records are kept.": "Remove usage, completed task and closed payment order logs before the selected time. Active tasks, pending orders and payment deduplication records are kept.",
     "This removes usage logs, completed task logs and their media, and closed payment order logs before {{date}}. Pending orders and payment deduplication records are kept.": "This removes usage logs, completed task logs and their media, and closed payment order logs before {{date}}. Pending orders and payment deduplication records are kept.",
-    "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs."
+    "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.",
+    "Move up": "Monter",
+    "Move down": "Descendre"
   }
 }

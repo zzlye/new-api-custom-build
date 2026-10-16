@@ -2,13 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import en from '@/i18n/locales/en.json'
 import zhCN from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 
 import { AlipayReceiptSettings } from '../alipay-receipt-settings'
+
+// jsdom 不渲染画布，扫码效果由浏览器验收。
+beforeEach(() => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+})
 
 afterEach(() => {
   vi.restoreAllMocks()

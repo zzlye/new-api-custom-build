@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
@@ -18,6 +18,10 @@ const order = {
     qr_code: '',
   },
 }
+// jsdom 不提供画布，像素与扫码结果由真实浏览器回归验证。
+beforeEach(() => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+})
 afterEach(() => vi.restoreAllMocks())
 
 test('确认入账后通知钱包刷新余额', async () => {
@@ -69,15 +73,15 @@ test('确认最终金额才显示二维码，关闭弹窗不关闭后台订单',
     </QueryClientProvider>
   )
   expect(await screen.findByText('¥10.01')).toBeVisible()
-  expect(document.querySelector('svg[role="img"]')).toBeNull()
+  expect(document.querySelector('canvas[role="img"]')).toBeNull()
   fireEvent.click(
     screen.getByRole('button', { name: 'Confirm amount and show code' })
   )
-  await waitFor(() =>
-    expect(document.querySelector('svg title')?.textContent).toBe(
-      'Alipay receipt code'
-    )
-  )
+  const qr = await screen.findByRole('img', { name: 'Alipay receipt code' })
+  expect(qr.parentElement).toHaveClass('payment-qr-code')
+  expect(
+    screen.getByText('Enter the exact amount shown, including cents.')
+  ).toBeVisible()
   expect(post).toHaveBeenCalledWith(
     '/api/user/alipay-receipt/order/AR-fixture/confirm'
   )

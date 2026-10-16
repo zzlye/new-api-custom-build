@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { QRCodeSVG } from 'qrcode.react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -99,15 +99,21 @@ export function ReceiptPaymentDialog(props: {
             {order.status === 'expired' ? <p>{t('Order expired')}</p> : null}
             {payable ? (
               <>
-                <p>{t('Pay the exact amount shown, including cents.')}</p>
+                <p>{t('Enter the exact amount shown, including cents.')}</p>
                 <p className='text-muted-foreground text-sm'>
                   {t('Expires at')}: {formatTimestamp(order.receipt.expires_at)}
                 </p>
                 {order.receipt.qr_code ? (
-                  <div className='mx-auto w-fit rounded-lg bg-white p-4'>
-                    <QRCodeSVG
+                  <div className='payment-qr-code mx-auto w-fit rounded-lg p-4'>
+                    {/* 使用画布保留二维码原始像素，避免强制暗色模式重绘 SVG 黑白色块。 */}
+                    <QRCodeCanvas
+                      bgColor='#ffffff'
+                      fgColor='#000000'
                       value={order.receipt.qr_code}
                       size={208}
+                      marginSize={4}
+                      role='img'
+                      aria-label={t('Alipay receipt code')}
                       title={t('Alipay receipt code')}
                     />
                   </div>

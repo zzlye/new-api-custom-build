@@ -16,7 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Lightbulb, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import {
+  ArrowUp,
+  ArrowDown,
+  Lightbulb,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -37,6 +45,7 @@ import {
   PaymentMethodDialog,
   type PaymentMethodData,
 } from './payment-method-dialog'
+import { withReceiptPaymentMethod } from './payment-methods'
 
 type PaymentMethodsVisualEditorProps = {
   value: string
@@ -45,6 +54,7 @@ type PaymentMethodsVisualEditorProps = {
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   alipay: 'SiAlipay',
+  alipay_receipt: 'SiAlipay',
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
@@ -64,6 +74,14 @@ export function PaymentMethodsVisualEditor({
 }: PaymentMethodsVisualEditorProps) {
   const { t } = useTranslation()
   const paymentTemplates = [
+    {
+      name: t('Alipay receipt code'),
+      template: {
+        name: '支付宝收款码',
+        type: 'alipay_receipt',
+        icon: 'SiAlipay',
+      },
+    },
     {
       name: t('Epay Alipay'),
       template: {
@@ -112,12 +130,15 @@ export function PaymentMethodsVisualEditor({
   const [editData, setEditData] = useState<PaymentMethodData | null>(null)
 
   const paymentMethods = useMemo(() => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      validatorMessage: 'Payment methods must be a JSON array',
-      context: 'payment methods',
-    })
+    const parsed = safeJsonParseWithValidation<unknown[]>(
+      withReceiptPaymentMethod(value),
+      {
+        fallback: [],
+        validator: isArray,
+        validatorMessage: 'Payment methods must be a JSON array',
+        context: 'payment methods',
+      }
+    )
 
     return parsed.filter(
       (item): item is PaymentMethodData =>
@@ -145,11 +166,14 @@ export function PaymentMethodsVisualEditor({
   }, [paymentMethods, searchText])
 
   const handleSave = (data: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      silent: true,
-    })
+    const parsed = safeJsonParseWithValidation<unknown[]>(
+      withReceiptPaymentMethod(value),
+      {
+        fallback: [],
+        validator: isArray,
+        silent: true,
+      }
+    )
 
     const updatedArray = [...parsed]
 
@@ -175,12 +199,50 @@ export function PaymentMethodsVisualEditor({
     onChange(JSON.stringify(updatedArray, null, 2))
   }
 
+  // 排序基于完整列表，搜索过滤后也不会移动错条目。
+  const handleMove = (method: PaymentMethodData, offset: number) => {
+    const index = paymentMethods.indexOf(method)
+    const target = index + offset
+    if (index < 0 || target < 0 || target >= paymentMethods.length) return
+    const updated = [...paymentMethods]
+    ;[updated[index], updated[target]] = [updated[target], updated[index]]
+    onChange(JSON.stringify(updated, null, 2))
+  }
+
+  const moveButtons = (method: PaymentMethodData) => (
+    <>
+      <Button
+        type='button'
+        variant='ghost'
+        size='icon-sm'
+        aria-label={t('Move up')}
+        disabled={paymentMethods.indexOf(method) === 0}
+        onClick={() => handleMove(method, -1)}
+      >
+        <ArrowUp />
+      </Button>
+      <Button
+        type='button'
+        variant='ghost'
+        size='icon-sm'
+        aria-label={t('Move down')}
+        disabled={paymentMethods.indexOf(method) === paymentMethods.length - 1}
+        onClick={() => handleMove(method, 1)}
+      >
+        <ArrowDown />
+      </Button>
+    </>
+  )
+
   const handleDelete = (method: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      silent: true,
-    })
+    const parsed = safeJsonParseWithValidation<unknown[]>(
+      withReceiptPaymentMethod(value),
+      {
+        fallback: [],
+        validator: isArray,
+        silent: true,
+      }
+    )
 
     const updatedArray = parsed.filter(
       (item) =>
@@ -208,13 +270,16 @@ export function PaymentMethodsVisualEditor({
   }
 
   const handleInsertTemplate = (template: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      silent: true,
-    })
+    const parsed = safeJsonParseWithValidation<unknown[]>(
+      withReceiptPaymentMethod(value),
+      {
+        fallback: [],
+        validator: isArray,
+        silent: true,
+      }
+    )
 
-    // Check if template already exists
+    // 收款码按支付类型去重，改名后仍是同一个入口。
     const exists = parsed.some(
       (item) =>
         typeof item === 'object' &&
@@ -222,7 +287,7 @@ export function PaymentMethodsVisualEditor({
         'type' in item &&
         'name' in item &&
         item.type === template.type &&
-        item.name === template.name
+        (template.type === 'alipay_receipt' || item.name === template.name)
     )
 
     if (!exists) {
@@ -365,13 +430,17 @@ export function PaymentMethodsVisualEditor({
                 className: 'text-right',
                 cellClassName: 'text-right',
                 cell: (method) => (
-                  <StaticRowActions
-                    editLabel={t('Edit')}
-                    deleteLabel={t('Delete')}
-                    menuLabel={t('Open menu')}
-                    onEdit={() => handleEdit(method)}
-                    onDelete={() => handleDelete(method)}
-                  />
+                  <div className='flex justify-end gap-1'>
+                    {moveButtons(method)}
+                    <StaticRowActions
+                      editLabel={t('Edit')}
+                      deleteLabel={t('Delete')}
+                      menuLabel={t('Open menu')}
+                      onEdit={() => handleEdit(method)}
+                      deleteDisabled={method.type === 'alipay_receipt'}
+                      onDelete={() => handleDelete(method)}
+                    />
+                  </div>
                 ),
               },
             ]}
@@ -401,6 +470,7 @@ export function PaymentMethodsVisualEditor({
                       </code>
                     </div>
                     <div className='flex gap-1'>
+                      {moveButtons(method)}
                       <Button
                         type='button'
                         variant='ghost'
@@ -415,6 +485,7 @@ export function PaymentMethodsVisualEditor({
                       </Button>
                       <Button
                         type='button'
+                        disabled={method.type === 'alipay_receipt'}
                         variant='ghost'
                         size='sm'
                         onClick={(e) => {

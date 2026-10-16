@@ -1147,3 +1147,14 @@ For commercial licensing, please contact support@quantumnous.com
     display: none;
   }
 }
+
+/* 收款二维码保持黑白对比，禁止浏览器强制暗色重绘破坏扫码内容。 */
+.payment-qr-code {
+  color-scheme: only light;
+  forced-color-adjust: none;
+  background-color: #ffffff;
+  color: #000000;
+}
+.payment-qr-code canvas {
+  color-scheme: only light;
+}

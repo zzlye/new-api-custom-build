@@ -22,6 +22,33 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// 收款码使用管理员配置的名称、图标及顺序；旧配置继续提供默认入口。
+func receiptPaymentMethods(methods []map[string]string, enabled bool, minTopUp int) []map[string]string {
+	result := make([]map[string]string, 0, len(methods)+1)
+	found := false
+	for _, method := range methods {
+		if method["type"] != model.AlipayReceiptProvider {
+			result = append(result, method)
+			continue
+		}
+		if !enabled || found {
+			continue
+		}
+		entry := map[string]string{"name": "支付宝收款码", "icon": "SiAlipay", "color": "#1677FF", "min_topup": strconv.Itoa(minTopUp)}
+		for key, value := range method {
+			if value != "" {
+				entry[key] = value
+			}
+		}
+		result = append(result, entry)
+		found = true
+	}
+	if enabled && !found {
+		result = append(result, map[string]string{"name": "支付宝收款码", "type": model.AlipayReceiptProvider, "icon": "SiAlipay", "color": "#1677FF", "min_topup": strconv.Itoa(minTopUp)})
+	}
+	return result
+}
+
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
@@ -98,9 +125,8 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
-	if enableReceipt {
-		payMethods = append(payMethods, map[string]string{"name": "支付宝收款码", "type": model.AlipayReceiptProvider, "color": "#1677FF", "min_topup": strconv.Itoa(operation_setting.MinTopUp)})
-	}
+	payMethods = receiptPaymentMethods(payMethods, enableReceipt, operation_setting.MinTopUp)
+
 	data := gin.H{
 		"enable_alipay_receipt_topup":      enableReceipt,
 		"enable_online_topup":              isEpayTopUpEnabled(),

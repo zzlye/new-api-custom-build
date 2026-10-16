@@ -7185,7 +7185,7 @@
     "Payment received, crediting balance": "已收款，正在入账",
     "Payment window ended. Do not pay this order.": "付款已超时，请勿继续支付",
     "Order expired": "已过期",
-    "Pay the exact amount shown, including cents.": "请按显示金额付款，包含小数部分",
+    "Enter the exact amount shown, including cents.": "要严格按照金额输入，包含小数部分",
     "Confirm amount and show code": "确认金额并显示收款码",
     "Close order": "关闭订单",
     "Failed to load order": "订单读取失败",
@@ -7223,6 +7223,8 @@
     "No QR code found. Choose a clearer image.": "未识别到二维码，请选择清晰的收款码图片",
     "Please choose an Alipay receipt code image": "请选择支付宝收款码图片",
     "Unable to read this image": "无法读取这张图片，请重新选择",
-    "Please use an Alipay receipt code URL": "请填写支付宝收款码中的 https://qr.alipay.com 地址"
+    "Please use an Alipay receipt code URL": "请填写支付宝收款码中的 https://qr.alipay.com 地址",
+    "Move up": "上移",
+    "Move down": "下移"
   }
 }

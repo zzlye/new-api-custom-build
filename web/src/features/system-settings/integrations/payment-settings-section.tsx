@@ -63,6 +63,7 @@ import { AlipayReceiptSettings } from './alipay-receipt-settings'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import { withReceiptPaymentMethod } from './payment-methods'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -354,7 +355,9 @@ export function PaymentSettingsSection({
     mode: 'onChange', // Enable real-time validation
     defaultValues: {
       ...initialFormValues,
-      PayMethods: formatJsonForEditor(initialFormValues.PayMethods),
+      PayMethods: formatJsonForEditor(
+        withReceiptPaymentMethod(initialFormValues.PayMethods)
+      ),
       AmountOptions: formatJsonForEditor(initialFormValues.AmountOptions),
       AmountDiscount: formatJsonForEditor(initialFormValues.AmountDiscount),
       CreemProducts: formatJsonForEditor(initialFormValues.CreemProducts),
@@ -411,7 +414,9 @@ export function PaymentSettingsSection({
     initialRef.current = parsedDefaults
     form.reset({
       ...parsedDefaults,
-      PayMethods: formatJsonForEditor(parsedDefaults.PayMethods),
+      PayMethods: formatJsonForEditor(
+        withReceiptPaymentMethod(parsedDefaults.PayMethods)
+      ),
       AmountOptions: formatJsonForEditor(parsedDefaults.AmountOptions),
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
       CreemProducts: formatJsonForEditor(parsedDefaults.CreemProducts),
@@ -1014,11 +1019,7 @@ export function PaymentSettingsSection({
                           />
                         )}
                       </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
-                        )}
-                      </FormDescription>
+
                       <FormMessage />
                     </FormItem>
                   )}

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { QRCodeSVG } from 'qrcode.react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -187,11 +187,14 @@ export function AlipayReceiptSettings() {
           </Label>
           <div className='flex flex-wrap items-start gap-4'>
             {validQRCode ? (
-              <div className='rounded-md bg-white p-3'>
-                <QRCodeSVG
+              <div className='payment-qr-code rounded-md p-3'>
+                {/* 使用画布保留二维码原始像素，避免强制暗色模式重绘 SVG 黑白色块。 */}
+                <QRCodeCanvas
+                  bgColor='#ffffff'
+                  fgColor='#000000'
                   value={qrCode.trim()}
                   size={160}
-                  marginSize={2}
+                  marginSize={4}
                   role='img'
                   aria-label={t('Receipt code preview')}
                 />

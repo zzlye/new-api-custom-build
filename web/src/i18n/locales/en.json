@@ -7185,7 +7185,7 @@
     "Payment received, crediting balance": "Payment received, crediting balance",
     "Payment window ended. Do not pay this order.": "Payment window ended. Do not pay this order.",
     "Order expired": "Order expired",
-    "Pay the exact amount shown, including cents.": "Pay the exact amount shown, including cents.",
+    "Enter the exact amount shown, including cents.": "Enter the exact amount shown, including cents.",
     "Confirm amount and show code": "Confirm amount and show code",
     "Close order": "Close order",
     "Failed to load order": "Failed to load order",
@@ -7223,6 +7223,8 @@
     "No QR code found. Choose a clearer image.": "No QR code found. Choose a clearer image.",
     "Please choose an Alipay receipt code image": "Please choose an Alipay receipt code image",
     "Unable to read this image": "Unable to read this image",
-    "Please use an Alipay receipt code URL": "Please use an Alipay receipt code URL"
+    "Please use an Alipay receipt code URL": "Please use an Alipay receipt code URL",
+    "Move up": "Move up",
+    "Move down": "Move down"
   }
 }

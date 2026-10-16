@@ -68,6 +68,7 @@ type PaymentMethodDialogProps = {
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   alipay: 'SiAlipay',
+  alipay_receipt: 'SiAlipay',
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
@@ -85,6 +86,12 @@ export function PaymentMethodDialog({
   const isEditMode = !!editData
   const paymentMethodDialogSchema = createPaymentMethodDialogSchema(t)
   const paymentTypeOptions = [
+    {
+      iconName: 'SiAlipay',
+      label: t('Alipay receipt code'),
+      name: t('Alipay receipt code'),
+      value: 'alipay_receipt',
+    },
     {
       iconName: 'SiAlipay',
       label: `${t('Alipay')} (Epay: alipay)`,
@@ -145,6 +152,7 @@ export function PaymentMethodDialog({
 
   const handleSubmit = (values: PaymentMethodDialogFormValues) => {
     const data: PaymentMethodData = {
+      ...(editData?.color ? { color: editData.color } : {}),
       name: values.name,
       type: values.type,
     }
@@ -215,6 +223,7 @@ export function PaymentMethodDialog({
                 <FormControl>
                   <Combobox
                     options={paymentTypeOptions}
+                    disabled={editData?.type === 'alipay_receipt'}
                     value={field.value}
                     onValueChange={(value) => {
                       if (value === null) return
@@ -247,11 +256,7 @@ export function PaymentMethodDialog({
                     allowCustomValue
                   />
                 </FormControl>
-                <FormDescription className='leading-relaxed'>
-                  {t(
-                    'Used to decide the payment flow. Built-in keys include stripe for Stripe and waffo_pancake for Waffo Pancake; other values are sent to Epay as the type parameter.'
-                  )}
-                </FormDescription>
+
                 <FormMessage />
               </FormItem>
             )}

@@ -330,3 +330,21 @@ func receiptControllerRequest(handler gin.HandlerFunc, id, role int, body, trade
 	handler(c)
 	return w
 }
+
+// 展示配置不决定收款开关，也不能改写全局设置或重复显示同一入口。
+func TestReceiptPaymentMethods(t *testing.T) {
+	configured := []map[string]string{{"type": "alipay_receipt", "name": "西米露支付宝", "icon": "SiAlipay"}, {"type": "stripe", "name": "银行卡"}, {"type": "alipay_receipt", "name": "重复"}}
+	got := receiptPaymentMethods(configured, true, 1)
+	require.Len(t, got, 2)
+	assert.Equal(t, "西米露支付宝", got[0]["name"])
+	assert.Equal(t, "SiAlipay", got[0]["icon"])
+	assert.Equal(t, "1", got[0]["min_topup"])
+	assert.Equal(t, "stripe", got[1]["type"])
+	assert.NotContains(t, configured[0], "min_topup")
+	assert.Equal(t, []map[string]string{configured[1]}, receiptPaymentMethods(configured, false, 1))
+	fallback := receiptPaymentMethods(nil, true, 5)
+	require.Len(t, fallback, 1)
+	assert.Equal(t, model.AlipayReceiptProvider, fallback[0]["type"])
+	assert.Equal(t, "5", fallback[0]["min_topup"])
+	assert.Empty(t, receiptPaymentMethods(nil, false, 5))
+}
