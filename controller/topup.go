@@ -22,7 +22,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// 收款码使用管理员配置的名称、图标及顺序；旧配置继续提供默认入口。
+// 收款码仅显示管理员主动配置的条目，并保留其名称、图标及顺序。
 func receiptPaymentMethods(methods []map[string]string, enabled bool, minTopUp int) []map[string]string {
 	result := make([]map[string]string, 0, len(methods)+1)
 	found := false
@@ -43,9 +43,7 @@ func receiptPaymentMethods(methods []map[string]string, enabled bool, minTopUp i
 		result = append(result, entry)
 		found = true
 	}
-	if enabled && !found {
-		result = append(result, map[string]string{"name": "支付宝收款码", "type": model.AlipayReceiptProvider, "icon": "SiAlipay", "color": "#1677FF", "min_topup": strconv.Itoa(minTopUp)})
-	}
+
 	return result
 }
 

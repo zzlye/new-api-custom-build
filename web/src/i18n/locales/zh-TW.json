@@ -7214,6 +7214,7 @@
     "Unable to read this image": "無法讀取這張圖片，請重新選擇",
     "Please use an Alipay receipt code URL": "請填寫支付寶收款碼中的 https://qr.alipay.com 位址",
     "Move up": "上移",
-    "Move down": "下移"
+    "Move down": "下移",
+    "Time left to pay": "付款倒數計時"
   }
 }

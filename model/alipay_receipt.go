@@ -251,7 +251,7 @@ func GetReceiptOrder(tradeNo string, userID int) (*ReceiptOrderView, error) {
 		return nil, err
 	}
 	// 只有确认金额后且仍在付款窗口内才返回收款码。
-	if view.Receipt.ConfirmedAt == 0 || view.Receipt.ConfirmedAt > time.Now().Unix() || view.Receipt.ExpiresAt <= time.Now().Unix() || view.Status != common.TopUpStatusPending {
+	if view.Receipt.ConfirmedAt == 0 || view.Receipt.ConfirmedAt > time.Now().Unix() || view.Receipt.ExpiresAt <= time.Now().Unix() || view.Status != common.TopUpStatusPending || view.PaidTime > 0 {
 		view.Receipt.QRCode = ""
 	}
 	return &view, nil

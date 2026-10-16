@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -22,7 +22,10 @@ const order = {
 beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 test('确认入账后通知钱包刷新余额', async () => {
   vi.spyOn(api, 'get').mockResolvedValue({
@@ -124,3 +127,51 @@ test('超时订单不展示二维码或确认付款按钮', async () => {
   expect(document.querySelector('svg title')).toBeNull()
   client.clear()
 })
+
+test.each(['timer', 'focus'])(
+  '查单请求未返回时仍按绝对到期时间隐藏二维码：%s',
+  async (trigger) => {
+    vi.useFakeTimers()
+    const now = Date.now()
+    vi.setSystemTime(now)
+    vi.spyOn(api, 'get').mockImplementation(() => new Promise(() => {}))
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    client.setQueryData(['receipt-order', 'AR-fixture'], {
+      ...order,
+      receipt: {
+        ...order.receipt,
+        expires_at: Math.floor(now / 1000) + 3,
+        qr_code: 'https://qr.alipay.com/fixture',
+      },
+    })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ReceiptPaymentDialog tradeNo='AR-fixture' onClose={() => {}} />
+      </QueryClientProvider>
+    )
+    expect(
+      screen.getByRole('img', { name: 'Alipay receipt code' })
+    ).toBeVisible()
+    if (trigger === 'timer') {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+    } else {
+      vi.setSystemTime(now + 60000)
+      fireEvent.focus(window)
+    }
+    expect(
+      screen.queryByRole('img', { name: 'Alipay receipt code' })
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Confirm amount and show code' })
+    ).toBeNull()
+    expect(
+      screen.getByText('Payment window ended. Do not pay this order.')
+    ).toBeVisible()
+    view.unmount()
+    client.clear()
+  }
+)

@@ -162,6 +162,9 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					id, err := model.AcceptReceipt(cfg, payment)
 					require.NoError(t, err)
 					assert.Equal(t, first.Id, id)
+					received, err := model.GetReceiptOrder(first.TradeNo, 1)
+					require.NoError(t, err)
+					assert.Empty(t, received.Receipt.QRCode)
 					require.Error(t, model.ClosePaymentOrder(first.TradeNo, 1, 1))
 					// 已验证的原始流水可直接补回调，不再请求支付宝或要求人工改余额。
 					callback := receiptControllerRequest(RetryOrderCallback, 1, common.RoleRootUser, "", first.TradeNo)
@@ -342,9 +345,8 @@ func TestReceiptPaymentMethods(t *testing.T) {
 	assert.Equal(t, "stripe", got[1]["type"])
 	assert.NotContains(t, configured[0], "min_topup")
 	assert.Equal(t, []map[string]string{configured[1]}, receiptPaymentMethods(configured, false, 1))
-	fallback := receiptPaymentMethods(nil, true, 5)
-	require.Len(t, fallback, 1)
-	assert.Equal(t, model.AlipayReceiptProvider, fallback[0]["type"])
-	assert.Equal(t, "5", fallback[0]["min_topup"])
+	assert.Empty(t, receiptPaymentMethods(nil, true, 5))
+	epayOnly := []map[string]string{{"type": "alipay", "name": "支付宝"}}
+	assert.Equal(t, epayOnly, receiptPaymentMethods(epayOnly, true, 5))
 	assert.Empty(t, receiptPaymentMethods(nil, false, 5))
 }

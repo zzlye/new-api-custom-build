@@ -7197,6 +7197,7 @@
     "This removes usage logs, completed task logs and their media, and closed payment order logs before {{date}}. Pending orders and payment deduplication records are kept.": "This removes usage logs, completed task logs and their media, and closed payment order logs before {{date}}. Pending orders and payment deduplication records are kept.",
     "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.",
     "Move up": "Monter",
-    "Move down": "Descendre"
+    "Move down": "Descendre",
+    "Time left to pay": "Temps restant pour payer"
   }
 }

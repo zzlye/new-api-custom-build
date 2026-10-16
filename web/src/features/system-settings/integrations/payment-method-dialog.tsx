@@ -223,7 +223,6 @@ export function PaymentMethodDialog({
                 <FormControl>
                   <Combobox
                     options={paymentTypeOptions}
-                    disabled={editData?.type === 'alipay_receipt'}
                     value={field.value}
                     onValueChange={(value) => {
                       if (value === null) return

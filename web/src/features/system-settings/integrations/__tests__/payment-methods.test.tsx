@@ -20,8 +20,12 @@ function Editor() {
   )
 }
 
-test('旧配置自动显示收款码，改名及排序后保留独立支付类型且不重复添加', async () => {
+test('收款码仅在主动添加后出现，支持改名排序且重复模板不重复添加', async () => {
   render(<Editor />)
+  expect(screen.queryByRole('row', { name: /支付宝收款码/ })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Templates' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Alipay receipt code' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Templates' }))
   const row = screen.getByRole('row', { name: /支付宝收款码/ })
   fireEvent.click(within(row).getByRole('button', { name: 'Edit' }))
   const dialog = screen.getByRole('dialog', { name: 'Edit payment method' })
@@ -45,4 +49,18 @@ test('旧配置自动显示收款码，改名及排序后保留独立支付类�
   expect(
     JSON.parse(screen.getByLabelText('保存内容').textContent || '[]')
   ).toEqual(saved)
+})
+
+test('删除收款码后不自动补回列表及保存内容', async () => {
+  render(<Editor />)
+  fireEvent.click(screen.getByRole('button', { name: 'Templates' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Alipay receipt code' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Templates' }))
+  const row = screen.getByRole('row', { name: /支付宝收款码/ })
+  fireEvent.click(within(row).getByRole('button', { name: 'Open menu' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }))
+  expect(screen.queryByRole('row', { name: /支付宝收款码/ })).toBeNull()
+  expect(
+    JSON.parse(screen.getByLabelText('保存内容').textContent || '[]')
+  ).toEqual([{ name: '银行卡', type: 'stripe' }])
 })

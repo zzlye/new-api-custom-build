@@ -139,6 +139,16 @@ func (c *Client) Query(ctx context.Context, start, end time.Time, page, pageSize
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
+		// 错误响应仅展示已知错误码的固定解释，不透传原始正文及敏感字段。
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, 16*1024+1))
+		var failure struct {
+			Code string `json:"code"`
+		}
+		if readErr == nil && len(body) <= 16*1024 && common.Unmarshal(body, &failure) == nil {
+			if failure.Code == "not-online-app" {
+				return nil, fmt.Errorf("支付宝账务查询失败：应用未上线（not-online-app，HTTP %d）", response.StatusCode)
+			}
+		}
 		return nil, fmt.Errorf("支付宝账务查询返回 HTTP %d", response.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))

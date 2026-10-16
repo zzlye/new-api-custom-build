@@ -45,7 +45,6 @@ import {
   PaymentMethodDialog,
   type PaymentMethodData,
 } from './payment-method-dialog'
-import { withReceiptPaymentMethod } from './payment-methods'
 
 type PaymentMethodsVisualEditorProps = {
   value: string
@@ -130,15 +129,12 @@ export function PaymentMethodsVisualEditor({
   const [editData, setEditData] = useState<PaymentMethodData | null>(null)
 
   const paymentMethods = useMemo(() => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(
-      withReceiptPaymentMethod(value),
-      {
-        fallback: [],
-        validator: isArray,
-        validatorMessage: 'Payment methods must be a JSON array',
-        context: 'payment methods',
-      }
-    )
+    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
+      fallback: [],
+      validator: isArray,
+      validatorMessage: 'Payment methods must be a JSON array',
+      context: 'payment methods',
+    })
 
     return parsed.filter(
       (item): item is PaymentMethodData =>
@@ -166,14 +162,11 @@ export function PaymentMethodsVisualEditor({
   }, [paymentMethods, searchText])
 
   const handleSave = (data: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(
-      withReceiptPaymentMethod(value),
-      {
-        fallback: [],
-        validator: isArray,
-        silent: true,
-      }
-    )
+    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
+      fallback: [],
+      validator: isArray,
+      silent: true,
+    })
 
     const updatedArray = [...parsed]
 
@@ -235,14 +228,11 @@ export function PaymentMethodsVisualEditor({
   )
 
   const handleDelete = (method: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(
-      withReceiptPaymentMethod(value),
-      {
-        fallback: [],
-        validator: isArray,
-        silent: true,
-      }
-    )
+    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
+      fallback: [],
+      validator: isArray,
+      silent: true,
+    })
 
     const updatedArray = parsed.filter(
       (item) =>
@@ -270,14 +260,11 @@ export function PaymentMethodsVisualEditor({
   }
 
   const handleInsertTemplate = (template: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(
-      withReceiptPaymentMethod(value),
-      {
-        fallback: [],
-        validator: isArray,
-        silent: true,
-      }
-    )
+    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
+      fallback: [],
+      validator: isArray,
+      silent: true,
+    })
 
     // 收款码按支付类型去重，改名后仍是同一个入口。
     const exists = parsed.some(
@@ -437,7 +424,6 @@ export function PaymentMethodsVisualEditor({
                       deleteLabel={t('Delete')}
                       menuLabel={t('Open menu')}
                       onEdit={() => handleEdit(method)}
-                      deleteDisabled={method.type === 'alipay_receipt'}
                       onDelete={() => handleDelete(method)}
                     />
                   </div>
@@ -485,7 +471,6 @@ export function PaymentMethodsVisualEditor({
                       </Button>
                       <Button
                         type='button'
-                        disabled={method.type === 'alipay_receipt'}
                         variant='ghost'
                         size='sm'
                         onClick={(e) => {

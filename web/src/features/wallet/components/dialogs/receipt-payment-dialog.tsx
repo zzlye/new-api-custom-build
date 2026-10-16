@@ -20,6 +20,7 @@ export function ReceiptPaymentDialog(props: {
   const { t } = useTranslation()
   const client = useQueryClient()
   const [confirmClose, setConfirmClose] = useState(false)
+  const [now, setNow] = useState(Date.now)
   const query = useQuery({
     queryKey: ['receipt-order', props.tradeNo],
     queryFn: () => getReceiptOrder(props.tradeNo || ''),
@@ -41,10 +42,27 @@ export function ReceiptPaymentDialog(props: {
     // 账务确认成功后刷新钱包，避免显示旧余额让用户误以为没有到账。
     if (order?.status === 'success') void onPaid?.()
   }, [order?.status, onPaid])
-  const expired = Boolean(
-    order && order.receipt.expires_at * 1000 <= Date.now()
+  const deadline = (order?.receipt.expires_at || 0) * 1000
+  const secondsLeft = Math.max(
+    0,
+    Math.ceil((deadline - Math.max(now, Date.now())) / 1000)
   )
+  const expired = Boolean(order && secondsLeft === 0)
   const payable = order?.status === 'pending' && !expired && !order.paid_time
+  useEffect(() => {
+    if (!props.tradeNo || !payable) return
+    // 付款采用绝对到期时间；查单失败或页面从后台恢复都不能延长付款窗口。
+    // 通用 useCountdown 到零会重置，适用于验证码冷却，不能用于订单失效。
+    const updateClock = () => setNow(Date.now())
+    const timer = window.setInterval(updateClock, 1000)
+    window.addEventListener('focus', updateClock)
+    document.addEventListener('visibilitychange', updateClock)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', updateClock)
+      document.removeEventListener('visibilitychange', updateClock)
+    }
+  }, [props.tradeNo, deadline, payable])
   return (
     <>
       <Dialog
@@ -100,6 +118,11 @@ export function ReceiptPaymentDialog(props: {
             {payable ? (
               <>
                 <p>{t('Enter the exact amount shown, including cents.')}</p>
+                <p className='font-medium tabular-nums' role='timer'>
+                  {t('Time left to pay')}:{' '}
+                  {String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:
+                  {String(secondsLeft % 60).padStart(2, '0')}
+                </p>
                 <p className='text-muted-foreground text-sm'>
                   {t('Expires at')}: {formatTimestamp(order.receipt.expires_at)}
                 </p>
