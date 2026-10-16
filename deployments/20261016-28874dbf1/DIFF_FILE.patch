@@ -1,0 +1,18 @@
+--- 原入口
++++ 新入口
+@@ -24,7 +24,7 @@
+ 
+ api.zzlye.xyz, api.zzlye.site {
+ 
+-    reverse_proxy 127.0.0.1:3002
++    reverse_proxy 127.0.0.1:3001
+ }
+ 
+ ak.zzlye.site {
+@@ -41,5 +41,5 @@
+ 
+ # 保留原有直连端口，统一转发到新版实例。
+ http://:3000 {
+-    reverse_proxy 127.0.0.1:3002
++    reverse_proxy 127.0.0.1:3001
+ }

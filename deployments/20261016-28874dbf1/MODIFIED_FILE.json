@@ -1,0 +1,61 @@
+{
+  "application_commit": "28874dbf1acaf744297a61dbedde05ffa4a00ec1",
+  "server": "38.244.15.80",
+  "container_name": "new-api",
+  "container_id": "70dea6be118ea954e857ebacaa676ca9ffaa341e05b9e5e2484c51e481b26c49",
+  "image": "new-api-local:28874dbf1",
+  "image_id": "sha256:8a95bbfd00ccc9c28ac011138513b12fef3fbc8acc8b2bb69bc43893454bf596",
+  "binary_sha256": "39392578f84033cb7ac73fde92f7f47dda944bdc912c11bc9318a5f26d2a2e80",
+  "version_before": "",
+  "version_after": "",
+  "backend_source_unchanged": false,
+  "database_backup_bytes": 146256165,
+  "old_tasks_at_switch": 15,
+  "old_tasks_now": 0,
+  "waiting_task_handover": {
+    "id": 191092,
+    "linked_task_id": "task_b8ESTspOH1pScrAzezAVoDs7PjGRiapw",
+    "handed_over_at": 1792159698,
+    "verified": true
+  },
+  "old_exit_code": 0,
+  "old_container_removed": true,
+  "other_containers_not_restarted": true,
+  "workshop_internal_api_ok": true,
+  "desktop_update_route_preserved": true,
+  "changed_option_keys": [],
+  "checks": {
+    "receipt_display_checked": true,
+    "receipt_config_preserved": true,
+    "order_logs": true,
+    "routes": 8,
+    "frontend_assets": 10
+  },
+  "monitor": {
+    "https://api.zzlye.xyz/api/status": {
+      "samples": 264,
+      "failed": 0,
+      "max_ms": 1036
+    },
+    "https://api.zzlye.site/api/status": {
+      "samples": 264,
+      "failed": 0,
+      "max_ms": 254
+    },
+    "http://127.0.0.1:3000/api/status": {
+      "samples": 264,
+      "failed": 0,
+      "max_ms": 83
+    },
+    "https://zzlye.xyz/": {
+      "samples": 264,
+      "failed": 0,
+      "max_ms": 339
+    }
+  },
+  "interrupted_tasks": 0,
+  "switched_at": 1792159242,
+  "finished_at": 1792159742,
+  "rollback": "/opt/new-api/backups/update-20261016-28874dbf1/ROLLBACK.sh",
+  "backup_directory": "/opt/new-api/backups/update-20261016-28874dbf1"
+}
