@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,7 +157,7 @@ func TestUnifiedTaskRoutesPreserveContracts(t *testing.T) {
 	require.NoError(t, common.Unmarshal(request(internalPath, "routeowner").Body.Bytes(), &internalResponse))
 	require.NoError(t, common.Unmarshal(request(nativePath, "routeowner").Body.Bytes(), &nativeResponse))
 	assert.Equal(t, string(model.AsyncRelayTaskStatusSucceeded), internalResponse["status"])
-	assert.Equal(t, internalPath, internalResponse["poll_url"])
+	assert.Equal(t, system_setting.PublicServerURL(internalPath), internalResponse["poll_url"])
 	assert.Contains(t, internalResponse, "result")
 	assert.Contains(t, internalResponse, "media")
 	assert.Equal(t, native.TaskID, nativeResponse["task_id"])

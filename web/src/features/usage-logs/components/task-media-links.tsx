@@ -21,6 +21,8 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useStatus } from '@/hooks/use-status'
+import { publicServerAddress } from '@/lib/public-address'
 
 import { taskMediaAddress } from '../lib/media-address'
 import type { TaskMedia } from '../types'
@@ -72,6 +74,7 @@ export function TaskMediaLinks(props: {
   expiresAt?: number
 }) {
   const { t } = useTranslation()
+  const { status } = useStatus()
   const [expired, setExpired] = useState(
     Boolean(props.expiresAt && props.expiresAt * 1000 <= Date.now())
   )
@@ -85,9 +88,14 @@ export function TaskMediaLinks(props: {
     return () => clearTimeout(timer)
   }, [props.expiresAt])
   if (expired) return null
-  const origin = window.location.origin
+  // 复制和新窗口打开使用公开地址；登录态预览仍通过原有同源接口获取文件。
+  const serverAddress = publicServerAddress(status, window.location.origin)
+  const origin =
+    (typeof status?.task_public_address === 'string' &&
+      status.task_public_address) ||
+    serverAddress
   const preview = taskMediaAddress(props.media.preview_url, origin, 'preview')
-  const content = taskMediaAddress(props.media.url, origin, 'api')
+  const content = taskMediaAddress(props.media.url, serverAddress, 'api')
   // 旧接口即使仍带上游地址，也只展示本站的文件入口。
   if (!preview && !content) return null
   return (

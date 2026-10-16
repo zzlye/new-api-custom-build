@@ -51,9 +51,11 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useStatus } from '@/hooks/use-status'
 import { getUserModels } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 import { MOTION_TRANSITION } from '@/lib/motion'
+import { publicServerAddress } from '@/lib/public-address'
 import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
@@ -143,8 +145,8 @@ function getCurrentOrigin(): string {
   return window.location.origin
 }
 
-function normalizeEndpoint(sourceUrl?: string): string {
-  const fallback = `${getCurrentOrigin()}/v1/chat/completions`
+function normalizeEndpoint(sourceUrl?: string, serverAddress?: string): string {
+  const fallback = `${serverAddress || getCurrentOrigin()}/v1/chat/completions`
   const trimmed = sourceUrl?.trim()
   if (!trimmed) return fallback
 
@@ -459,6 +461,8 @@ function CompactQuickAction(props: { action: QuickAction }) {
 }
 
 export function OverviewDashboard() {
+  const { status } = useStatus()
+  const serverAddress = publicServerAddress(status, getCurrentOrigin())
   const { t } = useTranslation()
   const setupGuideId = useId()
   const setupGuideToggleRef = useRef<HTMLButtonElement>(null)
@@ -586,7 +590,7 @@ export function OverviewDashboard() {
   )
 
   const requestExample = useMemo<RequestExample>(() => {
-    const endpoint = normalizeEndpoint(apiInfoItems[0]?.url)
+    const endpoint = normalizeEndpoint(apiInfoItems[0]?.url, serverAddress)
     const model = modelsQuery.data?.[0] ?? 'gpt-4o-mini'
     const keyName = preferredKey?.name ?? t('No API key yet')
     const ready = Boolean(preferredKey?.id && model)
@@ -601,7 +605,7 @@ export function OverviewDashboard() {
         : 'sk-...',
       ready,
     }
-  }, [apiInfoItems, modelsQuery.data, preferredKey, t])
+  }, [apiInfoItems, modelsQuery.data, preferredKey, serverAddress, t])
 
   const completedStepCount = startSteps.filter((step) => step.completed).length
   const setupComplete = completedStepCount === startSteps.length

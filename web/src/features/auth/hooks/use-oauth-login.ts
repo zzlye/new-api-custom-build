@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 
 import { clearAuthentication } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
+import { publicServerAddress } from '@/lib/public-address'
 import { AuthOperationError } from '@/lib/secure-verification'
 import { createServerError } from '@/lib/server-error-message'
 
@@ -43,6 +44,7 @@ export function useOAuthLogin(
   redirectTo?: string
 ) {
   const { t } = useTranslation()
+  const serverAddress = publicServerAddress(status, window.location.origin)
   const [isLoading, setIsLoading] = useState(false)
   const [githubButtonText, setGithubButtonText] = useState('')
   const [githubButtonDisabled, setGithubButtonDisabled] = useState(false)
@@ -115,7 +117,11 @@ export function useOAuthLogin(
       const state = await createOAuthFlow('discord', 'login')
       rememberOAuthLoginRedirect(state, redirectTo)
 
-      const url = buildDiscordOAuthUrl(status.discord_client_id, state)
+      const url = buildDiscordOAuthUrl(
+        status.discord_client_id,
+        state,
+        serverAddress
+      )
       window.open(url, '_self')
     } catch (error) {
       handleServerError(
@@ -138,7 +144,8 @@ export function useOAuthLogin(
       const url = buildOIDCOAuthUrl(
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
-        state
+        state,
+        serverAddress
       )
       window.open(url, '_self')
     } catch (error) {
@@ -159,7 +166,11 @@ export function useOAuthLogin(
       const state = await createOAuthFlow('linuxdo', 'login')
       rememberOAuthLoginRedirect(state, redirectTo)
 
-      const url = buildLinuxDOOAuthUrl(status.linuxdo_client_id, state)
+      const url = buildLinuxDOOAuthUrl(
+        status.linuxdo_client_id,
+        state,
+        serverAddress
+      )
       window.open(url, '_self')
     } catch (error) {
       handleServerError(
@@ -204,7 +215,7 @@ export function useOAuthLogin(
       const state = await createOAuthFlow(provider.slug, 'login')
       rememberOAuthLoginRedirect(state, redirectTo)
 
-      const redirectUri = `${window.location.origin}/oauth/${provider.slug}`
+      const redirectUri = `${serverAddress}/oauth/${provider.slug}`
       const url = new URL(provider.authorization_endpoint)
       url.searchParams.set('client_id', provider.client_id)
       url.searchParams.set('redirect_uri', redirectUri)

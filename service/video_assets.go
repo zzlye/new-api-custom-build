@@ -245,7 +245,7 @@ func resolveVideoMediaSource(value any, userID int, taskID, kind string, urlOnly
 	if err := model.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&use).Error; err != nil {
 		return nil, err
 	}
-	base := strings.TrimRight(system_setting.ServerAddress, "/")
+	base := system_setting.PublicTaskBaseAddress()
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, fmt.Errorf("请先配置可公开访问的站点地址")

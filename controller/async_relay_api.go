@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -55,6 +56,10 @@ func asyncRelayMediaLinks(task *model.AsyncRelayTask, prefix string) []dto.TaskM
 		return nil
 	}
 	media := make([]dto.TaskMedia, 0, len(files))
+	// 对外 API 使用公开地址；控制台的认证文件请求保留同源路径，避免跨域发送账户凭据。
+	if strings.HasPrefix(prefix, "/v1/") {
+		prefix = system_setting.PublicServerURL(prefix)
+	}
 	for index, file := range files {
 		media = append(media, dto.TaskMedia{URL: prefix + task.TaskID + "/media/" + strconv.Itoa(index),
 			PreviewURL: asyncRelayMediaPreviewURL(task, "media", index),
@@ -74,7 +79,7 @@ func GetAsyncRelayTask(c *gin.Context) {
 	expired := model.AsyncRelayTaskExpired(task, common.GetTimestamp())
 	response := gin.H{"id": task.TaskID, "task_id": task.TaskID, "object": asyncRelayObjectForFormat(relaytypes.RelayFormat(task.RequestFormat)),
 		"status": task.Status, "created": task.CreatedAt, "updated": task.UpdatedAt, "model": task.ModelName,
-		"poll_url": "/v1/tasks/" + task.TaskID, "result_expired": expired,
+		"poll_url": system_setting.PublicServerURL("/v1/tasks/" + task.TaskID), "result_expired": expired,
 	}
 	if task.FinishedAt > 0 {
 		response["expires_at"] = task.FinishedAt + common.AsyncMediaRetentionSeconds()

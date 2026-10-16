@@ -216,6 +216,7 @@ beforeEach(async () => {
       mutations: { retry: false },
     },
   })
+  client.setQueryData(['status'], { server_address: 'http://localhost' })
 })
 afterEach(async () => {
   await act(async () => root.unmount())
@@ -800,6 +801,35 @@ describe('任务生成结果', () => {
 })
 
 describe('任务媒体地址与独立预览', () => {
+  test('修改公开地址后复制链接跟随新域名及前缀，预览请求仍留在当前会话', async () => {
+    client.setQueryData(['status'], {
+      server_address: 'https://new.example',
+      task_public_address: 'https://media.example:8443/gateway',
+    })
+    await renderTaskDetails()
+    await openTaskDetails()
+    assert.ok(
+      document.querySelector(
+        'a[href="https://media.example:8443/gateway/task-media/async_fixture/media/0"]'
+      )
+    )
+    assert.ok(
+      document.body.textContent?.includes(
+        'https://new.example/api/task/async_fixture/media/0'
+      )
+    )
+    assert.ok(getCalls.every((path) => path.startsWith('/api/task/')))
+    await act(async () => {
+      client.setQueryData(['status'], {
+        server_address: 'https://changed.example/root',
+      })
+    })
+    assert.ok(
+      document.querySelector(
+        'a[href="https://changed.example/root/task-media/async_fixture/media/0"]'
+      )
+    )
+  })
   test('仅含图片数据时仍展示本地地址，不虚构上游地址', async () => {
     assert.ok(taskDetails.media?.[0])
     delete taskDetails.media[0].source_url
@@ -823,7 +853,9 @@ describe('任务媒体地址与独立预览', () => {
       await act(async () =>
         root.render(
           <I18nextProvider i18n={i18n}>
-            <TaskMediaLinks media={media} expiresAt={expiresAt} />
+            <QueryClientProvider client={client}>
+              <TaskMediaLinks media={media} expiresAt={expiresAt} />
+            </QueryClientProvider>
           </I18nextProvider>
         )
       )

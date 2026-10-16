@@ -57,6 +57,7 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
+import { isValidTaskPublicAddress } from '../general/task-public-address'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AlipayReceiptSettings } from './alipay-receipt-settings'
@@ -82,20 +83,6 @@ import {
   type WaffoSettingsValues,
 } from './waffo-settings-section'
 
-function isHttpOriginUrl(value: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return true
-
-  try {
-    const url = new URL(trimmed)
-    const isHttpProtocol = url.protocol === 'http:' || url.protocol === 'https:'
-    const hasNoPath = url.pathname === '' || url.pathname === '/'
-    return isHttpProtocol && hasNoPath && !url.search && !url.hash
-  } catch {
-    return false
-  }
-}
-
 const paymentSchema = z.object({
   PayAddress: z.string().refine((value) => {
     const trimmed = value.trim()
@@ -109,8 +96,8 @@ const paymentSchema = z.object({
   CustomCallbackAddress: z
     .string()
     .refine(
-      isHttpOriginUrl,
-      'Enter only a top-level callback domain, for example https://api.example.com, without any path.'
+      isValidTaskPublicAddress,
+      'Enter an absolute HTTP(S) URL without credentials, query parameters, or fragments'
     ),
   PayMethods: z.string().superRefine((value, ctx) => {
     const error = getJsonError(value)

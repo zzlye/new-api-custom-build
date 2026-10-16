@@ -77,6 +77,26 @@ describe('任务音频下载文件名', () => {
 
 describe('任务媒体地址', () => {
   const origin = 'https://localhost:8443'
+  test('管理员配置的媒体域名和路径前缀用于复制及打开链接', () => {
+    const base = 'https://media.example:8443/gateway/'
+    const path = `/task-media/async_example/reference/0?expires=2000000000&signature=${'a'.repeat(64)}`
+    assert.equal(
+      taskMediaAddress(path, base, 'preview'),
+      base.slice(0, -1) + path
+    )
+    assert.equal(
+      taskMediaAddress(base.slice(0, -1) + path, base, 'preview'),
+      base.slice(0, -1) + path
+    )
+    assert.equal(
+      taskMediaAddress('/api/task/async_example/media/0', base, 'api'),
+      `${base}api/task/async_example/media/0`
+    )
+    assert.equal(
+      taskMediaAddress(`https://old.example${path}`, base, 'preview'),
+      ''
+    )
+  })
   test('本站文件直链保留文件级签名，拒绝混入账户密钥和重复有效期', () => {
     const path = '/task-media/async_example/media/0'
     const signed = `${path}?expires=2000000000&signature=${'a'.repeat(64)}`

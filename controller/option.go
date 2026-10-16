@@ -251,7 +251,8 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
-	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
+	// 三种公开基础地址使用同一校验，避免查询参数、片段或凭据破坏后续链接拼接。
+	if (option.Key == "TaskPublicAddress" || option.Key == "ServerAddress" || option.Key == "CustomCallbackAddress") && option.Value.(string) != "" {
 		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {
 			common.ApiErrorMsg(c, err.Error())
 			return

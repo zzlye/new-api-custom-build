@@ -42,6 +42,7 @@ const STATUS_RELATED_KEYS = new Set([
   'InviteTopUpCommissionRatio',
   'oidc.display_name',
   'ServerAddress',
+  'TaskPublicAddress',
   'passkey.enabled',
   'passkey.rp_id',
   'passkey.legacy_rp_ids',
@@ -76,6 +77,14 @@ export function useUpdateOption() {
       if (data.success) {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+
+        // 域名变更后重新取得文件级链接，避免详情缓存继续提供旧域名。
+        if (
+          variables.key === 'ServerAddress' ||
+          variables.key === 'TaskPublicAddress'
+        ) {
+          queryClient.invalidateQueries({ queryKey: ['async-task-details'] })
+        }
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.has(variables.key)) {

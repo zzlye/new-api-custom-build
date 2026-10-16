@@ -4,15 +4,60 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAsyncMediaLinksFollowCurrentPublicAddress(t *testing.T) {
+	prepareAsyncMediaController(t)
+	task := createCompletedAsyncImage(t, 31)
+	previousServer, previousTask := system_setting.ServerAddress, system_setting.TaskPublicAddress
+	t.Cleanup(func() { system_setting.ServerAddress, system_setting.TaskPublicAddress = previousServer, previousTask })
+	// 同一历史任务切换配置后必须返回新地址，不能受调用者 Host 影响。
+	for _, tc := range []struct{ server, task, base string }{
+		{"https://site.example/root/", "", "https://site.example/root"},
+		{"https://changed.example", "https://media.example:8443/gateway/", "https://media.example:8443/gateway"},
+		{"https://changed.example", "", "https://changed.example"},
+	} {
+		system_setting.ServerAddress, system_setting.TaskPublicAddress = tc.server, tc.task
+		response := asyncControllerRequest(GetAsyncRelayTask, http.MethodGet, "/v1/tasks/"+task.TaskID, 31, common.RoleCommonUser, gin.Params{{Key: "task_id", Value: task.TaskID}}, "")
+		require.Equal(t, http.StatusOK, response.Code)
+		var result struct {
+			PollURL string `json:"poll_url"`
+			Media   []struct {
+				URL        string `json:"url"`
+				PreviewURL string `json:"preview_url"`
+			} `json:"media"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, strings.TrimRight(tc.server, "/")+"/v1/tasks/"+task.TaskID, result.PollURL)
+		require.Len(t, result.Media, 1)
+		assert.Equal(t, result.PollURL+"/media/0", result.Media[0].URL)
+		assert.Contains(t, result.Media[0].PreviewURL, tc.base+"/task-media/")
+		for _, kind := range []string{"reference", "media"} {
+			link := asyncRelayMediaPreviewURL(task, kind, 0)
+			assert.Contains(t, link, tc.base+"/task-media/"+task.TaskID+"/"+kind+"/0?")
+			parsed, err := url.Parse(link)
+			require.NoError(t, err)
+			if kind == "media" {
+				// 反向代理剥离配置的路径前缀后，原文件签名仍须验证通过。
+				requestPath := "/task-media/" + task.TaskID + "/media/0?" + parsed.RawQuery
+				response := asyncControllerRequest(GetAsyncRelayMediaDirect, http.MethodGet, requestPath, 0, 0,
+					gin.Params{{Key: "task_id", Value: task.TaskID}, {Key: "kind", Value: "media"}, {Key: "index", Value: "0"}}, "")
+				assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			}
+		}
+	}
+}
 
 // 详情中提供可再次访问的本地地址，并不对外返回上游地址。
 func TestAsyncTaskDetailsRecordMediaURLs(t *testing.T) {

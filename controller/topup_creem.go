@@ -369,9 +369,10 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 }
 
 type CreemCheckoutRequest struct {
-	ProductId string `json:"product_id"`
-	RequestId string `json:"request_id"`
-	Customer  struct {
+	ProductId  string `json:"product_id"`
+	RequestId  string `json:"request_id"`
+	SuccessURL string `json:"success_url"`
+	Customer   struct {
 		Email string `json:"email"`
 	} `json:"customer"`
 	Metadata map[string]string `json:"metadata,omitempty"`
@@ -398,6 +399,8 @@ func genCreemLink(ctx context.Context, referenceId string, product *CreemProduct
 	requestData := CreemCheckoutRequest{
 		ProductId: product.ProductId,
 		RequestId: referenceId, // 这个作为订单ID传递给Creem
+		// 每笔新订单读取当前站点，避免继续使用平台商品中保存的旧返回域名。
+		SuccessURL: paymentReturnPath("/wallet?show_history=true"),
 		Customer: struct {
 			Email string `json:"email"`
 		}{

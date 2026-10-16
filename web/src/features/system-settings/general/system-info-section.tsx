@@ -48,7 +48,7 @@ import { isValidTaskPublicAddress } from './task-public-address'
 
 const _systemInfoSchema = z.object({
   SystemName: z.string().min(1),
-  ServerAddress: z.string().optional(),
+  ServerAddress: z.string().refine(isValidTaskPublicAddress).optional(),
   TaskPublicAddress: z.string().refine(isValidTaskPublicAddress),
   Logo: z.string().url().optional().or(z.literal('')),
   Footer: z.string().optional(),
@@ -99,7 +99,15 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     SystemName: z.string().min(1, {
       error: () => t('System name is required'),
     }),
-    ServerAddress: z.string().optional(),
+    ServerAddress: z
+      .string()
+      .refine(isValidTaskPublicAddress, {
+        error: () =>
+          t(
+            'Enter an absolute HTTP(S) URL without credentials, query parameters, or fragments'
+          ),
+      })
+      .optional(),
     TaskPublicAddress: z.string().refine(isValidTaskPublicAddress, {
       error: () =>
         t(

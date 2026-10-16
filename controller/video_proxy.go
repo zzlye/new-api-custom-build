@@ -522,7 +522,13 @@ func normalizeTaskMediaHost(scheme, host string) string {
 }
 
 func isSelfTaskMediaURL(c *gin.Context, target *url.URL) bool {
-	if c == nil || target == nil || !isTaskMediaProxyPath(target.Path) {
+	if target == nil {
+		return false
+	}
+	if path, configured := configuredTaskMediaPath(target); configured && isTaskMediaProxyPath(path) {
+		return true
+	}
+	if c == nil || c.Request == nil || !isTaskMediaProxyPath(target.Path) {
 		return false
 	}
 	targetHost := normalizeTaskMediaHost(target.Scheme, target.Host)
@@ -548,6 +554,22 @@ func isSelfTaskMediaURL(c *gin.Context, target *url.URL) bool {
 	return false
 }
 
+// 独立公开域名和反代前缀仍属于本站；只对配置匹配的地址剥离前缀。
+func configuredTaskMediaPath(target *url.URL) (string, bool) {
+	for _, address := range []string{system_setting.ServerAddress, system_setting.TaskPublicAddress} {
+		base, err := url.Parse(strings.TrimSpace(address))
+		if err != nil || base.Host == "" || !strings.EqualFold(target.Scheme, base.Scheme) ||
+			normalizeTaskMediaHost(target.Scheme, target.Host) != normalizeTaskMediaHost(base.Scheme, base.Host) {
+			continue
+		}
+		prefix := strings.TrimRight(base.Path, "/")
+		if strings.HasPrefix(target.Path, prefix+"/") {
+			return strings.TrimPrefix(target.Path, prefix), true
+		}
+	}
+	return target.Path, false
+}
+
 func isTaskMediaProxyPath(path string) bool {
 	if strings.HasPrefix(path, "/v1/videos/") && strings.HasSuffix(path, "/content") {
 		return true
@@ -565,6 +587,9 @@ func isTaskMediaFallbackLoop(rawURL, taskID string) bool {
 	path, err := url.PathUnescape(parsedURL.EscapedPath())
 	if err != nil {
 		path = parsedURL.Path
+	}
+	if configuredPath, configured := configuredTaskMediaPath(parsedURL); configured {
+		path = configuredPath
 	}
 	if path == "/v1/videos/"+taskID+"/content" {
 		return true

@@ -121,6 +121,12 @@ func CreateWaffoPancakeCheckoutSession(ctx context.Context, params *WaffoPancake
 		},
 		BuyerIdentity: params.BuyerIdentity,
 	}
+	// 专用返回地址优先；未配置时每笔新订单跟随当前站点，覆盖商品里的历史地址。
+	returnURL := strings.TrimSpace(setting.WaffoPancakeReturnURL)
+	if returnURL == "" {
+		returnURL = PaymentReturnURL("/wallet?show_history=true")
+	}
+	sdkParams.SuccessURL = optionalString(returnURL)
 	if params.PriceSnapshot != nil {
 		sdkParams.PriceSnapshot = &pancake.PriceInfo{
 			Amount:      params.PriceSnapshot.Amount,

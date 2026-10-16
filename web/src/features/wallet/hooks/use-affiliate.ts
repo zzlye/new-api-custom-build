@@ -19,7 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useCallback } from 'react'
 
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useStatus } from '@/hooks/use-status'
 import { handleServerError } from '@/lib/handle-server-error'
+import { publicServerAddress } from '@/lib/public-address'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { getAffiliateCode } from '../api'
@@ -31,7 +33,14 @@ import { generateAffiliateLink } from '../lib'
 
 export function useAffiliate() {
   const [affiliateCode, setAffiliateCode] = useState<string>('')
-  const [affiliateLink, setAffiliateLink] = useState<string>('')
+  const { status } = useStatus()
+  // 邀请码不变时，域名设置更新也应立即反映在推广链接中。
+  const affiliateLink = affiliateCode
+    ? generateAffiliateLink(
+        affiliateCode,
+        publicServerAddress(status, window.location.origin)
+      )
+    : ''
   const [loading, setLoading] = useState(true)
   const { copyToClipboard } = useCopyToClipboard()
 
@@ -43,8 +52,6 @@ export function useAffiliate() {
 
       if (response.success && response.data) {
         setAffiliateCode(response.data)
-        const link = generateAffiliateLink(response.data)
-        setAffiliateLink(link)
       }
     } catch (error) {
       handleServerError(error)

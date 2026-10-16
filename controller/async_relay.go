@@ -15,6 +15,7 @@ import (
 	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -227,10 +228,11 @@ func EnqueueAsyncRelayRequest(c *gin.Context, format relaytypes.RelayFormat) err
 		}
 		return delivery.serve(c, task.TaskID)
 	}
-	c.Header("Location", "/v1/tasks/"+task.TaskID)
+	pollURL := system_setting.PublicServerURL("/v1/tasks/" + task.TaskID)
+	c.Header("Location", pollURL)
 	c.Header("Retry-After", "3")
 	c.Header("Preference-Applied", "respond-async")
-	c.JSON(http.StatusAccepted, gin.H{"id": task.TaskID, "task_id": task.TaskID, "object": asyncRelayObjectForFormat(format), "status": task.Status, "created": task.CreatedAt, "model": task.ModelName, "poll_url": "/v1/tasks/" + task.TaskID, "request_path": task.RequestPath})
+	c.JSON(http.StatusAccepted, gin.H{"id": task.TaskID, "task_id": task.TaskID, "object": asyncRelayObjectForFormat(format), "status": task.Status, "created": task.CreatedAt, "model": task.ModelName, "poll_url": pollURL, "request_path": task.RequestPath})
 	return nil
 }
 

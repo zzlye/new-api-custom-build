@@ -103,10 +103,7 @@ func BuildTaskArtifactContentURL(taskID, artifactKey string) (string, error) {
 		return "", ErrTaskArtifactAccessInvalid
 	}
 
-	baseAddress := strings.TrimSpace(system_setting.TaskPublicAddress)
-	if baseAddress == "" {
-		baseAddress = strings.TrimSpace(system_setting.ServerAddress)
-	}
+	baseAddress := system_setting.PublicTaskBaseAddress()
 	if err := ValidateTaskArtifactBaseURL(baseAddress); err != nil {
 		return "", err
 	}

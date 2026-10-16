@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -22,7 +23,7 @@ func asyncRelayMediaPreviewURL(task *model.AsyncRelayTask, kind string, index in
 	deadline := strconv.FormatInt(expires, 10)
 	signature := common.GenerateHMACWithKey([]byte(common.SessionSecret), "async-media-v1\n"+path+"\n"+deadline)
 	query := url.Values{"expires": {deadline}, "signature": {signature}}
-	return path + "?" + query.Encode()
+	return system_setting.PublicTaskURL(path) + "?" + query.Encode()
 }
 
 // GetAsyncRelayMediaDirect 返回原始图片或视频，不进入控制台页面；签名同时绑定任务、文件种类和序号。

@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -25,10 +24,7 @@ func isGeminiImageURLTask(task *model.AsyncRelayTask) bool {
 
 // geminiImageURLBaseAddress 只使用管理员设置的公开地址，避免把请求头中的任意主机写入图片链接。
 func geminiImageURLBaseAddress() string {
-	if address := strings.TrimSpace(system_setting.TaskPublicAddress); address != "" {
-		return address
-	}
-	return strings.TrimSpace(system_setting.ServerAddress)
+	return system_setting.PublicTaskBaseAddress()
 }
 
 // geminiImageURLResponse 保留 Gemini 图片结果结构，以文件链接代替内嵌图片和大签名。
@@ -50,7 +46,7 @@ func geminiImageURLResponse(task *model.AsyncRelayTask) (gin.H, error) {
 			continue
 		}
 		parts = append(parts, gin.H{"fileData": gin.H{"mimeType": file.ContentType,
-			"fileUri": strings.TrimRight(base, "/") + asyncRelayMediaPreviewURL(task, "media", index)}})
+			"fileUri": asyncRelayMediaPreviewURL(task, "media", index)}})
 	}
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("生成结果中没有可返回的图片")

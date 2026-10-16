@@ -79,7 +79,15 @@ export function taskMediaAddress(
 ): string {
   if (!value) return ''
   try {
-    const address = new URL(value, origin)
+    const base = new URL(origin)
+    const basePath = base.pathname.replace(/\/+$/, '')
+    // 相对接口路径保留部署前缀；绝对地址必须属于管理员配置的媒体站点。
+    const address = new URL(
+      value.startsWith('/') && !value.startsWith('//')
+        ? `${base.origin}${basePath}${value}`
+        : value,
+      base
+    )
     if (
       !['http:', 'https:'].includes(address.protocol) ||
       address.username ||
@@ -93,9 +101,10 @@ export function taskMediaAddress(
         ? address.href
         : ''
     }
-    const prefix = kind === 'preview' ? '/task-media/' : '/api/task/'
+    const prefix =
+      basePath + (kind === 'preview' ? '/task-media/' : '/api/task/')
     if (
-      address.origin !== origin ||
+      address.origin !== base.origin ||
       address.hash ||
       !address.pathname.startsWith(prefix)
     ) {

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { SystemStatus } from '@/features/auth/types'
+import { publicServerAddress } from '@/lib/public-address'
 
 // ============================================================================
 // OAuth URL Builders
@@ -46,12 +47,16 @@ export function buildGitHubOAuthUrl(clientId: string, state: string): string {
 /**
  * Build Discord OAuth URL
  */
-export function buildDiscordOAuthUrl(clientId: string, state: string): string {
+export function buildDiscordOAuthUrl(
+  clientId: string,
+  state: string,
+  serverAddress = window.location.origin
+): string {
   const url = new URL('https://discord.com/oauth2/authorize')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set(
     'redirect_uri',
-    `${window.location.origin}/oauth/discord`
+    `${serverAddress.replace(/\/+$/, '')}/oauth/discord`
   )
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('scope', 'identify+openid')
@@ -65,11 +70,15 @@ export function buildDiscordOAuthUrl(clientId: string, state: string): string {
 export function buildOIDCOAuthUrl(
   authUrl: string,
   clientId: string,
-  state: string
+  state: string,
+  serverAddress = window.location.origin
 ): string {
   const url = new URL(authUrl)
   url.searchParams.set('client_id', clientId)
-  url.searchParams.set('redirect_uri', `${window.location.origin}/oauth/oidc`)
+  url.searchParams.set(
+    'redirect_uri',
+    `${serverAddress.replace(/\/+$/, '')}/oauth/oidc`
+  )
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('scope', 'openid profile email')
   url.searchParams.set('state', state)
@@ -79,8 +88,12 @@ export function buildOIDCOAuthUrl(
 /**
  * Build LinuxDO OAuth URL
  */
-export function buildLinuxDOOAuthUrl(clientId: string, state: string): string {
-  return `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${clientId}&state=${state}`
+export function buildLinuxDOOAuthUrl(
+  clientId: string,
+  state: string,
+  serverAddress = window.location.origin
+): string {
+  return `https://connect.linux.do/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(`${serverAddress.replace(/\/+$/, '')}/oauth/linuxdo`)}`
 }
 
 export function buildOAuthAuthorizationUrl(
@@ -88,6 +101,7 @@ export function buildOAuthAuthorizationUrl(
   state: string,
   status: SystemStatus
 ): string {
+  const serverAddress = publicServerAddress(status, window.location.origin)
   switch (provider) {
     case 'github':
       if (status.github_client_id) {
@@ -96,7 +110,11 @@ export function buildOAuthAuthorizationUrl(
       break
     case 'discord':
       if (status.discord_client_id) {
-        return buildDiscordOAuthUrl(status.discord_client_id, state)
+        return buildDiscordOAuthUrl(
+          status.discord_client_id,
+          state,
+          serverAddress
+        )
       }
       break
     case 'oidc':
@@ -104,13 +122,18 @@ export function buildOAuthAuthorizationUrl(
         return buildOIDCOAuthUrl(
           status.oidc_authorization_endpoint,
           status.oidc_client_id,
-          state
+          state,
+          serverAddress
         )
       }
       break
     case 'linuxdo':
       if (status.linuxdo_client_id) {
-        return buildLinuxDOOAuthUrl(status.linuxdo_client_id, state)
+        return buildLinuxDOOAuthUrl(
+          status.linuxdo_client_id,
+          state,
+          serverAddress
+        )
       }
       break
     default: {
@@ -122,7 +145,7 @@ export function buildOAuthAuthorizationUrl(
         url.searchParams.set('client_id', custom.client_id)
         url.searchParams.set(
           'redirect_uri',
-          `${window.location.origin}/oauth/${provider}`
+          `${serverAddress}/oauth/${provider}`
         )
         url.searchParams.set('response_type', 'code')
         url.searchParams.set('state', state)

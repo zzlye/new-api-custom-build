@@ -652,3 +652,36 @@ func TestSelfTaskMediaURLGuard(t *testing.T) {
 	assert.True(t, isTaskMediaFallbackLoop(remoteURL.String(), "task-1"))
 	assert.False(t, isTaskMediaFallbackLoop(remoteURL.String(), "task-2"))
 }
+
+func TestSelfTaskMediaURLGuardWithPublicAddress(t *testing.T) {
+	oldServer, oldTask := system_setting.ServerAddress, system_setting.TaskPublicAddress
+	t.Cleanup(func() {
+		system_setting.ServerAddress, system_setting.TaskPublicAddress = oldServer, oldTask
+	})
+	system_setting.ServerAddress = "https://public.example/site/"
+	system_setting.TaskPublicAddress = "https://media.example:8443/files/"
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "http://internal:3000/content", nil)
+	// 反代入口、公开站点和独立媒体域名都不能回流到自己的内容代理。
+	for _, raw := range []string{
+		"https://public.example/site/v1/videos/task-1/content",
+		"https://media.example:8443/files/v1/tasks/task-1/artifacts/0/content",
+	} {
+		target, err := url.Parse(raw)
+		require.NoError(t, err)
+		assert.True(t, isSelfTaskMediaURL(c, target), raw)
+		assert.True(t, isTaskMediaFallbackLoop(raw, "task-1"), raw)
+		assert.False(t, isTaskMediaFallbackLoop(raw, "task-2"), raw)
+	}
+	for _, raw := range []string{
+		"https://other.example/files/v1/videos/task-1/content",
+		"https://media.example:9443/files/v1/videos/task-1/content",
+		"https://media.example:8443/files-other/v1/videos/task-1/content",
+		"https://media.example:8443/files/movie.mp4",
+	} {
+		target, err := url.Parse(raw)
+		require.NoError(t, err)
+		assert.False(t, isSelfTaskMediaURL(c, target), raw)
+		assert.False(t, isTaskMediaFallbackLoop(raw, "task-1"), raw)
+	}
+}
