@@ -1,0 +1,54 @@
+{
+  "application_commit": "50f9016bf8e1ba7cd3f76e594ae44c6ee36778b4",
+  "server": "38.244.15.80",
+  "container_name": "new-api",
+  "container_id": "e4017caf3a60f233ad0769399d6fc0cd8db5dc330c0a264537490ae1513dafd7",
+  "image": "new-api-local:50f9016bf",
+  "image_id": "sha256:3c6e7b4da0e8c054648c58d47340c3f272d5ada3423e7a59f167c1e27e69a926",
+  "binary_sha256": "75626d9f911288e5b4c85631726bb46dc966acd0f75f56a7e56cec64d6a12114",
+  "version_before": "",
+  "version_after": "",
+  "backend_source_unchanged": true,
+  "database_backup_bytes": 145303895,
+  "old_tasks_at_switch": 2,
+  "old_tasks_now": 0,
+  "old_exit_code": 0,
+  "old_container_removed": true,
+  "other_containers_not_restarted": true,
+  "workshop_internal_api_ok": true,
+  "desktop_update_route_preserved": true,
+  "changed_option_keys": [],
+  "checks": {
+    "receipt_config_preserved": true,
+    "order_logs": true,
+    "routes": 8,
+    "frontend_assets": 9
+  },
+  "monitor": {
+    "https://api.zzlye.xyz/api/status": {
+      "samples": 243,
+      "failed": 0,
+      "max_ms": 5321
+    },
+    "https://api.zzlye.site/api/status": {
+      "samples": 243,
+      "failed": 0,
+      "max_ms": 1298
+    },
+    "http://127.0.0.1:3000/api/status": {
+      "samples": 243,
+      "failed": 0,
+      "max_ms": 79
+    },
+    "https://zzlye.xyz/": {
+      "samples": 243,
+      "failed": 0,
+      "max_ms": 1681
+    }
+  },
+  "interrupted_tasks": 0,
+  "switched_at": 1792154184,
+  "finished_at": 1792154624,
+  "rollback": "/opt/new-api/backups/update-20261016-50f9016bf/ROLLBACK.sh",
+  "backup_directory": "/opt/new-api/backups/update-20261016-50f9016bf"
+}
