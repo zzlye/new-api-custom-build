@@ -9,6 +9,8 @@ import {
   type StaticDataTableColumn,
 } from '@/components/data-table'
 import { Dialog } from '@/components/dialog'
+import { SectionPageLayout } from '@/components/layout'
+import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -54,6 +56,7 @@ interface OrderDetail extends Order {
     message: string
   }[]
 }
+type OrderAction = { tradeNo: string; type: 'retry' | 'close' }
 async function orderRequest<T>(
   path: string,
   params?: Record<string, unknown>
@@ -76,7 +79,7 @@ export function OrderLogs() {
   const [provider, setProvider] = useState('all')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string | null>(null)
-  const [action, setAction] = useState<'retry' | 'close' | null>(null)
+  const [action, setAction] = useState<OrderAction | null>(null)
   const list = useQuery({
     queryKey: ['order-logs', search, status, provider, page],
     queryFn: () =>
@@ -94,9 +97,10 @@ export function OrderLogs() {
     enabled: Boolean(selected),
   })
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (target: OrderAction) => {
+      // 操作绑定确认时的订单，不依赖详情弹窗的选择状态，避免列表操作串单。
       const response = await api.post(
-        `/api/user/order-logs/${encodeURIComponent(selected || '')}/${action}`
+        `/api/user/order-logs/${encodeURIComponent(target.tradeNo)}/${target.type}`
       )
       requireServerSuccess(response.data)
     },
@@ -122,6 +126,35 @@ export function OrderLogs() {
     creem: 'Creem',
     waffo: 'Waffo',
     waffo_pancake: 'Waffo Pancake',
+  }
+  const statusItems = { all: t('All statuses'), ...statuses }
+  const providerItems = { all: t('All payment methods'), ...providers }
+  function renderPaymentActions(order: Order) {
+    if (!isRoot || order.status !== 'pending') return null
+    return (
+      <>
+        {order.payment_provider === 'alipay_receipt' ? (
+          <Button
+            size='sm'
+            variant='outline'
+            disabled={mutation.isPending}
+            onClick={() =>
+              setAction({ tradeNo: order.trade_no, type: 'retry' })
+            }
+          >
+            {t('Retry callback')}
+          </Button>
+        ) : null}
+        <Button
+          size='sm'
+          variant='destructive'
+          disabled={mutation.isPending || order.paid_time > 0}
+          onClick={() => setAction({ tradeNo: order.trade_no, type: 'close' })}
+        >
+          {t('Close order')}
+        </Button>
+      </>
+    )
   }
   const columns: StaticDataTableColumn<Order>[] = [
     {
@@ -191,134 +224,149 @@ export function OrderLogs() {
       cell: (row) => formatTimestamp(row.create_time),
     },
     { id: 'ip', header: t('IP address'), cell: (row) => row.create_ip || '-' },
+    {
+      id: 'actions',
+      header: t('Actions'),
+      cell: (order) => (
+        <div className='flex items-center gap-2'>
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={() => setSelected(order.trade_no)}
+          >
+            {t('Details')}
+          </Button>
+          {renderPaymentActions(order)}
+        </div>
+      ),
+    },
   ]
   const row = detail.data
   return (
-    <div className='space-y-4 p-4 md:p-6'>
-      <h1 className='text-2xl font-semibold'>{t('Order logs')}</h1>
-      <div className='flex flex-wrap items-center gap-2'>
-        <Input
-          aria-label={t('Search orders')}
-          className='w-full sm:w-72'
-          placeholder={t('Username, user ID or order number')}
-          maxLength={128}
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              setSearch(keyword)
-              setPage(1)
-            }
-          }}
-        />
-        <Button
-          onClick={() => {
-            setSearch(keyword)
-            setPage(1)
-          }}
-        >
-          {t('Search')}
-        </Button>
-        <Select
-          value={status}
-          onValueChange={(value) => {
-            setStatus(value || 'all')
-            setPage(1)
-          }}
-        >
-          <SelectTrigger aria-label={t('Status')} className='w-40'>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value='all'>{t('All statuses')}</SelectItem>
-            {Object.entries(statuses).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={provider}
-          onValueChange={(value) => {
-            setProvider(value || 'all')
-            setPage(1)
-          }}
-        >
-          <SelectTrigger aria-label={t('Payment method')} className='w-44'>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value='all'>{t('All payment methods')}</SelectItem>
-            {Object.entries(providers).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          variant='outline'
-          disabled={list.isFetching}
-          onClick={() => void list.refetch()}
-        >
-          {t('Refresh')}
-        </Button>
-      </div>
-      {list.isError ? <p role='alert'>{t('Failed to load orders')}</p> : null}
-      <StaticDataTable
-        columns={columns}
-        data={list.data?.items || []}
-        getRowKey={(row) => row.id}
-        emptyContent={list.isPending ? t('Loading...') : t('No orders')}
-      />
-      <div className='flex items-center justify-end gap-3'>
-        <span>
-          {t('Total {{count}} orders', { count: list.data?.total || 0 })}
-        </span>
-        <Button
-          variant='outline'
-          disabled={page === 1 || list.isFetching}
-          onClick={() => setPage(page - 1)}
-        >
-          {t('Previous')}
-        </Button>
-        <span>{formatNumber(page, locale)}</span>
-        <Button
-          variant='outline'
-          disabled={page * 20 >= (list.data?.total || 0) || list.isFetching}
-          onClick={() => setPage(page + 1)}
-        >
-          {t('Next')}
-        </Button>
-      </div>
+    <>
+      <SectionPageLayout>
+        <SectionPageLayout.Title>{t('Order logs')}</SectionPageLayout.Title>
+        <SectionPageLayout.Content>
+          <div className='space-y-4'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Input
+                aria-label={t('Search orders')}
+                className='w-full sm:w-72'
+                placeholder={t('Username, user ID or order number')}
+                maxLength={128}
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    setSearch(keyword)
+                    setPage(1)
+                  }
+                }}
+              />
+              <Button
+                onClick={() => {
+                  setSearch(keyword)
+                  setPage(1)
+                }}
+              >
+                {t('Search')}
+              </Button>
+              <Select
+                items={statusItems}
+                value={status}
+                onValueChange={(value) => {
+                  setStatus(value || 'all')
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger aria-label={t('Status')} className='w-40'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='all'>{t('All statuses')}</SelectItem>
+                  {Object.entries(statuses).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                items={providerItems}
+                value={provider}
+                onValueChange={(value) => {
+                  setProvider(value || 'all')
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger
+                  aria-label={t('Payment method')}
+                  className='w-44'
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='all'>
+                    {t('All payment methods')}
+                  </SelectItem>
+                  {Object.entries(providers).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant='outline'
+                disabled={list.isFetching}
+                onClick={() => void list.refetch()}
+              >
+                {t('Refresh')}
+              </Button>
+            </div>
+            {list.isError ? (
+              <p role='alert'>{t('Failed to load orders')}</p>
+            ) : null}
+            <StaticDataTable
+              columns={columns}
+              data={list.data?.items || []}
+              getRowKey={(row) => row.id}
+              emptyContent={list.isPending ? t('Loading...') : t('No orders')}
+            />
+          </div>
+          <PageFooterPortal>
+            <div className='flex flex-wrap items-center justify-end gap-3'>
+              <span>
+                {t('Total {{count}} orders', { count: list.data?.total || 0 })}
+              </span>
+              <Button
+                variant='outline'
+                disabled={page === 1 || list.isFetching}
+                onClick={() => setPage(page - 1)}
+              >
+                {t('Previous page')}
+              </Button>
+              <span>{formatNumber(page, locale)}</span>
+              <Button
+                variant='outline'
+                disabled={
+                  page * 20 >= (list.data?.total || 0) || list.isFetching
+                }
+                onClick={() => setPage(page + 1)}
+              >
+                {t('Next page')}
+              </Button>
+            </div>
+          </PageFooterPortal>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
       <Dialog
         open={Boolean(selected)}
         onOpenChange={(open) => {
           if (!open) setSelected(null)
         }}
         title={t('Order details')}
-        footer={
-          isRoot && row?.status === 'pending' ? (
-            <>
-              {row.payment_provider === 'alipay_receipt' ? (
-                <Button
-                  disabled={mutation.isPending}
-                  onClick={() => setAction('retry')}
-                >
-                  {t('Retry callback')}
-                </Button>
-              ) : null}
-              <Button
-                variant='destructive'
-                disabled={mutation.isPending || row.paid_time > 0}
-                onClick={() => setAction('close')}
-              >
-                {t('Close order')}
-              </Button>
-            </>
-          ) : undefined
-        }
+        footer={row ? renderPaymentActions(row) : undefined}
       >
         {detail.isPending ? t('Loading...') : null}
         {detail.isError ? (
@@ -368,20 +416,26 @@ export function OrderLogs() {
       <ConfirmDialog
         open={Boolean(action)}
         onOpenChange={(open) => {
-          if (!open) setAction(null)
+          if (!open && !mutation.isPending) setAction(null)
         }}
-        title={action === 'retry' ? t('Retry callback') : t('Close order')}
+        title={
+          action?.type === 'retry' ? t('Retry callback') : t('Close order')
+        }
         desc={
-          action === 'retry'
+          action?.type === 'retry'
             ? t('Reconcile the receipt and retry crediting this order.')
             : t(
                 'Closing this order does not refund a payment. Do not pay after closing.'
               )
         }
-        destructive={action === 'close'}
+        destructive={action?.type === 'close'}
         isLoading={mutation.isPending}
-        handleConfirm={() => mutation.mutate()}
-      />
-    </div>
+        handleConfirm={() => {
+          if (action && !mutation.isPending) mutation.mutate(action)
+        }}
+      >
+        <p className='text-sm break-all'>{action?.tradeNo}</p>
+      </ConfirmDialog>
+    </>
   )
 }
