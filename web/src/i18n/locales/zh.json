@@ -1,5 +1,17 @@
 {
   "translation": {
+    "Manual order credit": "人工补单",
+    "Review credit": "核对补单",
+    "Alipay transaction number": "支付宝交易号",
+    "Reason for manual credit": "补单原因",
+    "Confirm manual credit": "确认人工补单",
+    "Confirm credit": "确认到账",
+    "Credit the original order amount of {{credit}} after confirming receipt.": "确认已收到款项后，按原订单额度 {{credit}} 到账。",
+    "Enter a valid amount with up to two decimals.": "请输入有效金额，最多两位小数。",
+    "Amount must be greater than zero and no more than 100001.": "金额须大于零且不超过 100001 元。",
+    "Enter an Alipay transaction number of 8 to 64 digits.": "请输入 8 至 64 位数字的支付宝交易号。",
+    "Enter the reason for manual credit.": "请填写补单原因。",
+    "Reason cannot exceed 500 characters.": "补单原因最多 500 字。",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

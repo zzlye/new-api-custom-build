@@ -44,7 +44,10 @@ const receipt = {
   last_error: '',
 }
 
-async function renderOrders(role: number = ROLE.SUPER_ADMIN) {
+async function renderOrders(
+  role: number = ROLE.SUPER_ADMIN,
+  terminalStatuses: string[] = []
+) {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'operator', role })
   vi.spyOn(api, 'get').mockResolvedValue({
     data: {
@@ -63,7 +66,8 @@ async function renderOrders(role: number = ROLE.SUPER_ADMIN) {
             id: 3,
             trade_no: 'paid-order',
             status: 'success',
-            paid_time: 1792112500,
+            paid_time: 0,
+            actual_money: 6.8,
           },
           {
             ...receipt,
@@ -71,6 +75,12 @@ async function renderOrders(role: number = ROLE.SUPER_ADMIN) {
             trade_no: 'crediting-order',
             paid_time: 1792112500,
           },
+          ...terminalStatuses.map((status, index) => ({
+            ...receipt,
+            id: 5 + index,
+            status,
+            trade_no: `${status}-order`,
+          })),
         ],
         total: 4,
       },
@@ -172,9 +182,16 @@ test('旧通道不提供补回调，已到账订单不再操作，已收款订�
     expect(
       within(row).queryByRole('button', { name: '补回调' })
     ).not.toBeInTheDocument()
+    expect(
+      within(row).queryByRole('button', { name: '人工补单' })
+    ).not.toBeInTheDocument()
   }
   const row = screen.getByRole('row', { name: /crediting-order/ })
   expect(within(row).getByRole('button', { name: '关闭订单' })).toBeDisabled()
+  // 人工补单没有支付宝账务时间时，也应展示已登记的实收金额。
+  expect(screen.getByRole('row', { name: /paid-order/ })).toHaveTextContent(
+    '6.80'
+  )
   client.clear()
 })
 
@@ -187,8 +204,114 @@ test('普通管理员只可查看订单，不出现补回调和关闭操作', as
     screen.queryByRole('button', { name: '关闭订单' })
   ).not.toBeInTheDocument()
   expect(screen.getAllByRole('button', { name: '详情' })).toHaveLength(4)
+  expect(
+    screen.queryByRole('button', { name: '人工补单' })
+  ).not.toBeInTheDocument()
   client.clear()
 })
+
+test('人工补单校验资料并二次确认，按原额度提交所选订单且不发送可篡改额度', async () => {
+  const post = vi
+    .spyOn(api, 'post')
+    .mockResolvedValue({ data: { success: true } })
+  const { client } = await renderOrders()
+  fireEvent.click(
+    within(screen.getByRole('row', { name: /receipt-order/ })).getByRole(
+      'button',
+      { name: '人工补单' }
+    )
+  )
+  const dialog = await screen.findByRole('dialog', { name: '人工补单' })
+  expect(within(dialog).getByText('receipt-order')).toBeVisible()
+  fireEvent.click(within(dialog).getByRole('button', { name: '核对补单' }))
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole('textbox', { name: '实收金额' })
+    ).toHaveAttribute('aria-invalid', 'true')
+  )
+  expect(post).not.toHaveBeenCalled()
+  fireEvent.change(within(dialog).getByRole('textbox', { name: '实收金额' }), {
+    target: { value: '6.80' },
+  })
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: '支付宝交易号' }),
+    { target: { value: '202610170000000000000001' } }
+  )
+  fireEvent.change(within(dialog).getByRole('textbox', { name: '补单原因' }), {
+    target: { value: '用户付错金额，已核对' },
+  })
+  fireEvent.click(within(dialog).getByRole('button', { name: '核对补单' }))
+  const confirmation = await screen.findByRole('alertdialog', {
+    name: '确认人工补单',
+  })
+  expect(confirmation).toHaveTextContent('按原订单额度')
+  expect(confirmation).toHaveTextContent('6.80')
+  expect(post).not.toHaveBeenCalled()
+  fireEvent.click(
+    within(confirmation).getByRole('button', { name: '确认到账' })
+  )
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      '/api/user/order-logs/receipt-order/manual-credit',
+      {
+        actual_money: '6.80',
+        provider_trade_no: '202610170000000000000001',
+        reason: '用户付错金额，已核对',
+      }
+    )
+  )
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: '人工补单' })
+    ).not.toBeInTheDocument()
+  )
+  client.clear()
+})
+
+test.each(['expired', 'closed'])(
+  '根用户可补%s订单，失败展示原因且保留输入',
+  async (status) => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({
+      data: { success: false, message: '该交易号已用于其他订单' },
+    })
+    const { client } = await renderOrders(ROLE.SUPER_ADMIN, [status])
+    fireEvent.click(
+      within(
+        screen.getByRole('row', { name: new RegExp(`${status}-order`) })
+      ).getByRole('button', { name: '人工补单' })
+    )
+    const dialog = await screen.findByRole('dialog', { name: '人工补单' })
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: '实收金额' }),
+      { target: { value: '7' } }
+    )
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: '支付宝交易号' }),
+      { target: { value: '202610170000000000000002' } }
+    )
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: '补单原因' }),
+      { target: { value: '补单核对' } }
+    )
+    fireEvent.click(within(dialog).getByRole('button', { name: '核对补单' }))
+    const confirmation = await screen.findByRole('alertdialog')
+    fireEvent.click(
+      within(confirmation).getByRole('button', { name: '确认到账' })
+    )
+    expect(await within(confirmation).findByRole('alert')).toHaveTextContent(
+      '该交易号已用于其他订单'
+    )
+    fireEvent.click(within(confirmation).getByRole('button', { name: '取消' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(
+      within(dialog).getByRole('textbox', { name: '补单原因' })
+    ).toHaveValue('补单核对')
+    expect(post).toHaveBeenCalledTimes(1)
+    client.clear()
+  }
+)
 
 test('订单内容使用页面滚动区，分页固定在滚动区域外', async () => {
   const { client } = await renderOrders()

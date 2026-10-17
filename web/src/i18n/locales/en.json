@@ -1,5 +1,17 @@
 {
   "translation": {
+    "Manual order credit": "Manual order credit",
+    "Review credit": "Review credit",
+    "Alipay transaction number": "Alipay transaction number",
+    "Reason for manual credit": "Reason for manual credit",
+    "Confirm manual credit": "Confirm manual credit",
+    "Confirm credit": "Confirm credit",
+    "Credit the original order amount of {{credit}} after confirming receipt.": "Credit the original order amount of {{credit}} after confirming receipt.",
+    "Enter a valid amount with up to two decimals.": "Enter a valid amount with up to two decimals.",
+    "Amount must be greater than zero and no more than 100001.": "Amount must be greater than zero and no more than 100001.",
+    "Enter an Alipay transaction number of 8 to 64 digits.": "Enter an Alipay transaction number of 8 to 64 digits.",
+    "Enter the reason for manual credit.": "Enter the reason for manual credit.",
+    "Reason cannot exceed 500 characters.": "Reason cannot exceed 500 characters.",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

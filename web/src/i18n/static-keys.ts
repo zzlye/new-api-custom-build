@@ -19,6 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // 人工补单表单的校验消息由公共 FormMessage 动态翻译。
+  'Enter a valid amount with up to two decimals.',
+  'Amount must be greater than zero and no more than 100001.',
+  'Enter an Alipay transaction number of 8 to 64 digits.',
+  'Enter the reason for manual credit.',
+  'Reason cannot exceed 500 characters.',
   'Task usage metadata is unavailable. Pricing details cannot be displayed.',
   'This expression cannot be expanded into a price table. View the original expression below.',
   'This operation is only supported for vLLM or SGLang channels',

@@ -112,7 +112,7 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					require.NoError(t, err)
 					assert.EqualValues(t, 1000, first.Receipt.AmountCents)
 					assert.EqualValues(t, 1001, second.Receipt.AmountCents)
-					assert.Equal(t, 5005000, second.Receipt.CreditQuota)
+					assert.Equal(t, 5000000, second.Receipt.CreditQuota)
 					replay, err := model.CreateReceiptOrder(1, 10, 1000, 5000000, "", now)
 					require.NoError(t, err)
 					assert.Equal(t, first.Id, replay.Id)
@@ -249,7 +249,7 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					nextDay := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, local.Location())
 					_, err = model.CreateReceiptOrder(1, 10, 1000, 5000000, "", nextDay)
 					require.NoError(t, err)
-					// 有尾差时记录实际到账额度和实付金额，不能使用下单原金额。
+					// 尾差仅用于付款匹配，到账及返佣按原充值额度，日志单独记录实付金额。
 					tailOrder, err := model.CreateReceiptOrder(2, 10, 1000, 5000000, "127.0.0.2", nextDay)
 					require.NoError(t, err)
 					require.EqualValues(t, 1001, tailOrder.Receipt.AmountCents)
@@ -261,7 +261,7 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					require.NoError(t, model.SettleReceiptOrder(tailID))
 					var tailLog model.Log
 					require.NoError(t, db.Where("user_id = ? AND type = ?", 2, model.LogTypeTopup).First(&tailLog).Error)
-					assert.Equal(t, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：10.010000", logger.LogQuota(5005000)), tailLog.Content)
+					assert.Equal(t, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：10.010000", logger.LogQuota(5000000)), tailLog.Content)
 					settings := receiptControllerRequest(GetAlipayReceiptSettings, 1, common.RoleRootUser, "", "")
 					assert.NotContains(t, settings.Body.String(), cfg.PrivateKey)
 					assert.Contains(t, settings.Body.String(), `"private_key_configured":true`)
@@ -270,6 +270,135 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+func TestAlipayReceiptManualCreditDatabaseMatrix(t *testing.T) {
+	cfg, _ := receiptTestConfig(t)
+	cfg.DailyLimit = 20
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			dsn := os.Getenv("TEST_" + strings.ToUpper(dialect) + "_DSN")
+			if dialect != "sqlite" && dsn == "" {
+				t.Skip("未配置真实数据库")
+			}
+			db, _ := newAuditTestDatabase(t, dialect, dsn)
+			oldDB, oldLog, oldRedis, oldBatch, oldCommission := model.DB, model.LOG_DB, common.RedisEnabled, common.BatchUpdateEnabled, common.InviteTopUpCommissionRatio
+			mainType, logType := common.MainDatabaseType(), common.LogDatabaseType()
+			t.Cleanup(func() {
+				model.DB, model.LOG_DB, common.RedisEnabled, common.BatchUpdateEnabled, common.InviteTopUpCommissionRatio = oldDB, oldLog, oldRedis, oldBatch, oldCommission
+				common.SetDatabaseTypes(mainType, logType)
+			})
+			model.DB, model.LOG_DB, common.RedisEnabled, common.BatchUpdateEnabled, common.InviteTopUpCommissionRatio = db, db, false, false, 0.1
+			common.SetDatabaseTypes(common.DatabaseType(dialect), common.DatabaseType(dialect))
+			require.NoError(t, db.AutoMigrate(&model.User{}, &model.Option{}, &model.TopUp{}, &model.ReceiptGate{}, &model.ReceiptOrder{}, &model.ReceiptPayment{}, &model.OrderEvent{}, &model.Log{}))
+			for _, user := range []model.User{
+				{Id: 1, Username: "buyer", AffCode: "buyer", InviterId: 3, Status: common.UserStatusEnabled},
+				{Id: 2, Username: "other", AffCode: "other", Status: common.UserStatusEnabled},
+				{Id: 3, Username: "inviter", AffCode: "inviter", Status: common.UserStatusEnabled},
+				{Id: 99, Username: "root", AffCode: "root", Role: common.RoleRootUser, Status: common.UserStatusEnabled},
+			} {
+				require.NoError(t, db.Create(&user).Error)
+			}
+			require.NoError(t, model.SaveAlipayReceiptConfig(cfg))
+			now := time.Now().Add(-20 * time.Second)
+			other, err := model.CreateReceiptOrder(2, 10, 1000, 5000000, "192.0.2.2", now)
+			require.NoError(t, err)
+			order, err := model.CreateReceiptOrder(1, 10, 1000, 5000000, "192.0.2.1", now)
+			require.NoError(t, err)
+			assert.Equal(t, 10.01, order.Money)
+			assert.Equal(t, 5000000, order.CreditQuota)
+			require.NoError(t, model.ConfirmReceiptOrder(order.TradeNo, 1, now))
+			wrongPayment := alipayaccountlog.Record{AccountLogID: "wrong-income", AlipayOrderNo: "202610170000000000000001", Amount: "9.80", Direction: "收入", Type: "收款", OccurredAt: now.Add(2 * time.Second)}
+			id, err := model.AcceptReceipt(cfg, wrongPayment)
+			require.NoError(t, err)
+			assert.Zero(t, id)
+			require.ErrorContains(t, model.SettleReceiptOrder(order.Id), "尚未查到")
+			require.ErrorContains(t, model.ManualCreditReceiptOrder(order.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.90", "错额付款", "192.0.2.99"), "不一致")
+			require.ErrorContains(t, model.ManualCreditReceiptOrder(order.TradeNo, 1, wrongPayment.AlipayOrderNo, "9.80", "错额付款", ""), "仅根用户")
+			for _, role := range []int{common.RoleAdminUser, common.RoleCommonUser} {
+				assert.Equal(t, http.StatusForbidden, receiptControllerRequest(ManualCreditOrderLog, 99, role, `{}`, order.TradeNo).Code)
+			}
+			for _, money := range []string{"0", "-1", "1.001", "100001.01", "1e999999999", "NaN"} {
+				require.Error(t, model.ManualCreditReceiptOrder(order.TradeNo, 99, wrongPayment.AlipayOrderNo, money, "错额付款", ""))
+			}
+			require.Error(t, model.ManualCreditReceiptOrder(order.TradeNo, 99, "", "9.80", "错额付款", ""))
+			require.Error(t, model.ManualCreditReceiptOrder(order.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.80", " ", ""))
+			// 模拟重复提交，充值、邀请赠金和操作记录都只能写入一次。
+			var wg sync.WaitGroup
+			results := make(chan error, 4)
+			for range 4 {
+				wg.Go(func() {
+					results <- model.ManualCreditReceiptOrder(order.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.80", "错额付款人工核对", "192.0.2.99")
+				})
+			}
+			wg.Wait()
+			close(results)
+			for err := range results {
+				require.NoError(t, err)
+			}
+			var buyer, inviter model.User
+			require.NoError(t, db.First(&buyer, 1).Error)
+			require.NoError(t, db.First(&inviter, 3).Error)
+			assert.Equal(t, 5000000, buyer.Quota)
+			assert.Equal(t, 500000, inviter.GiftQuota)
+			require.ErrorContains(t, model.ManualCreditReceiptOrder(order.TradeNo, 99, "202610170000000000000099", "9.80", "错误的重复提交", ""), "订单已到账")
+			detail, err := model.GetOrderLogDetail(order.TradeNo)
+			require.NoError(t, err)
+			assert.Equal(t, common.TopUpStatusSuccess, detail.Status)
+			assert.Equal(t, 10.01, detail.Money)
+			assert.Equal(t, 9.8, detail.ActualMoney)
+			assert.Equal(t, wrongPayment.OccurredAt.Unix(), detail.PaidTime)
+			require.Len(t, detail.Events, 3)
+			assert.Equal(t, 99, detail.Events[2].ActorID)
+			assert.Contains(t, detail.Events[2].Message, "错额付款人工核对")
+			assert.Contains(t, detail.Events[2].Message, "192.0.2.99")
+			var count int64
+			require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", 1, model.LogTypeTopup).Count(&count).Error)
+			assert.EqualValues(t, 1, count)
+			require.ErrorContains(t, model.ManualCreditReceiptOrder(other.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.80", "重复流水", ""), "其他订单")
+			// 关闭不释放金额槽位；超过原保留期才复用，且仍按原额度入账。
+			require.NoError(t, model.ClosePaymentOrder(other.TradeNo, 2, 99))
+			replacement, err := model.CreateReceiptOrder(2, 10, 1000, 5000000, "", now)
+			require.NoError(t, err)
+			assert.Equal(t, 10.02, replacement.Money)
+			assert.Equal(t, 5000000, replacement.CreditQuota)
+			// 未扫到的真实收款可人工登记；迟到扫描与自动结算不会重复入账。
+			body := `{"provider_trade_no":"202610170000000000000002","actual_money":"9.50","reason":"核对支付宝后补单","credit_quota":999999999,"user_id":99}`
+			response := receiptControllerRequest(ManualCreditOrderLog, 99, common.RoleRootUser, body, other.TradeNo)
+			assert.Contains(t, response.Body.String(), `"success":true`)
+			late := wrongPayment
+			late.AccountLogID, late.AlipayOrderNo, late.Amount = "late-income", "202610170000000000000002", "9.50"
+			id, err = model.AcceptReceipt(cfg, late)
+			require.NoError(t, err)
+			assert.Equal(t, other.Id, id)
+			require.NoError(t, model.SettleReceiptOrder(other.Id))
+			var otherUser model.User
+			require.NoError(t, db.First(&otherUser, 2).Error)
+			assert.Equal(t, 5000000, otherUser.Quota)
+			// 超限时整个事务回滚，修正余额后可以用同一交易号补已过期订单。
+			require.NoError(t, model.ExpireReceiptOrder(replacement.Id))
+			require.NoError(t, db.Model(&model.User{}).Where("id = ?", 2).Update("quota", common.MaxWalletQuota).Error)
+			err = model.ManualCreditReceiptOrder(replacement.TradeNo, 99, "202610170000000000000003", "10", "过期补单", "")
+			require.ErrorIs(t, err, model.ErrTopUpQuotaLimitExceeded)
+			require.NoError(t, db.Model(&model.ReceiptPayment{}).Where("provider_trade_no = ?", "202610170000000000000003").Count(&count).Error)
+			assert.Zero(t, count)
+			require.NoError(t, db.Model(&model.User{}).Where("id = ?", 2).Update("quota", 5000000).Error)
+			require.NoError(t, model.ManualCreditReceiptOrder(replacement.TradeNo, 99, "202610170000000000000003", "10", "过期补单", ""))
+			reused, err := model.CreateReceiptOrder(1, 10, 1000, 5000000, "", time.Unix(other.Receipt.ReservedUntil, 0))
+			require.NoError(t, err)
+			assert.Equal(t, 10.0, reused.Money)
+			// 清理删除人工原因和详情，但不删除交易防重记录，也不允许补已清理订单。
+			_, err = model.DeleteOldOrderLogs(context.Background(), time.Now().Unix()+1, 100)
+			require.NoError(t, err)
+			require.NoError(t, db.Model(&model.OrderEvent{}).Where("top_up_id = ?", order.Id).Count(&count).Error)
+			assert.Zero(t, count)
+			require.ErrorContains(t, model.ManualCreditReceiptOrder(order.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.80", "再补", ""), "已清理")
+			require.ErrorContains(t, model.ManualCreditReceiptOrder(reused.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.80", "再补", ""), "其他订单")
+			epay := model.TopUp{TradeNo: "epay-manual-rejected", UserId: 1, PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending}
+			require.NoError(t, db.Create(&epay).Error)
+			require.ErrorIs(t, model.ManualCreditReceiptOrder(epay.TradeNo, 99, "202610170000000000000004", "10", "通道错误", ""), model.ErrPaymentMethodMismatch)
 		})
 	}
 }

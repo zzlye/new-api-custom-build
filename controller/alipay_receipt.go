@@ -219,3 +219,26 @@ func CloseOrderLog(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
+
+func ManualCreditOrderLog(c *gin.Context) {
+	if c.GetInt("role") != common.RoleRootUser {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	// 只接收核对信息，用户、到账额度及订单状态均由服务端读取。
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var req struct {
+		ProviderTradeNo string `json:"provider_trade_no"`
+		ActualMoney     string `json:"actual_money"`
+		Reason          string `json:"reason"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, errors.New("人工补单参数无效"))
+		return
+	}
+	if err := model.ManualCreditReceiptOrder(c.Param("trade_no"), c.GetInt("id"), req.ProviderTradeNo, req.ActualMoney, req.Reason, c.ClientIP()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}

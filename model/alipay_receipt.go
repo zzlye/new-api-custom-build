@@ -218,11 +218,8 @@ func CreateReceiptOrder(userID int, amount int64, baseCents int64, quota int, ip
 		if payCents > baseCents+99 {
 			return errors.New("当前相同金额订单较多，请稍后再试")
 		}
-		// 尾差按创建时的报价同比例计入余额，不受后续价格或分组修改影响。
-		credit, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(int64(quota)).Mul(decimal.NewFromInt(payCents)).Div(decimal.NewFromInt(baseCents)))
-		if err != nil || credit <= 0 {
-			return ErrInvalidTopUpQuota
-		}
+		// 尾差仅用于识别付款，到账额度固定为原充值报价，不随实付尾差增加。
+		credit := quota
 		if user.Quota > common.MaxWalletQuota-credit {
 			return ErrWalletQuotaLimitExceeded
 		}
@@ -417,7 +414,7 @@ func SettleReceiptOrder(id int) error {
 	if err == nil && credited {
 		syncCreditUserQuotaCache(top.UserId, receipt.CreditQuota, "alipay receipt")
 		finishTopUpInviteCommission(commission)
-		// 沿用在线充值详情格式，使用已核验的实付金额及实际入账额度（包含尾差）。
+		// 原充值额度与核验实付金额分别记录，尾差不增加余额。
 		RecordTopupLog(top.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(receipt.CreditQuota), top.ActualMoney), top.CreateIP, AlipayReceiptProvider, AlipayReceiptProvider)
 	}
 	if err != nil {

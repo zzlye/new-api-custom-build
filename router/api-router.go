@@ -157,6 +157,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/order-logs", controller.GetOrderLogs)
 				adminRoute.GET("/order-logs/:trade_no", controller.GetOrderLogDetail)
 				adminRoute.POST("/order-logs/:trade_no/retry", middleware.RootAuth(), middleware.UserCriticalRateLimit("receipt-recheck"), controller.RetryOrderCallback)
+				adminRoute.POST("/order-logs/:trade_no/manual-credit", middleware.RootAuth(), middleware.UserCriticalRateLimit("receipt-manual-credit"), controller.ManualCreditOrderLog)
 				adminRoute.POST("/order-logs/:trade_no/close", middleware.RootAuth(), middleware.UserCriticalRateLimit("receipt-close"), controller.CloseOrderLog)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)

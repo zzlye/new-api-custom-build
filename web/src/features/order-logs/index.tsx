@@ -28,6 +28,8 @@ import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { ManualCreditDialog } from './components/manual-credit-dialog'
+
 interface Order {
   id: number
   user_id: number
@@ -80,6 +82,7 @@ export function OrderLogs() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string | null>(null)
   const [action, setAction] = useState<OrderAction | null>(null)
+  const [manualOrder, setManualOrder] = useState<Order | null>(null)
   const list = useQuery({
     queryKey: ['order-logs', search, status, provider, page],
     queryFn: () =>
@@ -130,10 +133,22 @@ export function OrderLogs() {
   const statusItems = { all: t('All statuses'), ...statuses }
   const providerItems = { all: t('All payment methods'), ...providers }
   function renderPaymentActions(order: Order) {
-    if (!isRoot || order.status !== 'pending') return null
+    if (!isRoot) return null
     return (
       <>
-        {order.payment_provider === 'alipay_receipt' ? (
+        {order.payment_provider === 'alipay_receipt' &&
+        ['pending', 'expired', 'closed'].includes(order.status) ? (
+          <Button
+            size='sm'
+            variant='outline'
+            disabled={mutation.isPending}
+            onClick={() => setManualOrder(order)}
+          >
+            {t('Manual order credit')}
+          </Button>
+        ) : null}
+        {order.payment_provider === 'alipay_receipt' &&
+        order.status === 'pending' ? (
           <Button
             size='sm'
             variant='outline'
@@ -145,14 +160,18 @@ export function OrderLogs() {
             {t('Retry callback')}
           </Button>
         ) : null}
-        <Button
-          size='sm'
-          variant='destructive'
-          disabled={mutation.isPending || order.paid_time > 0}
-          onClick={() => setAction({ tradeNo: order.trade_no, type: 'close' })}
-        >
-          {t('Close order')}
-        </Button>
+        {order.status === 'pending' ? (
+          <Button
+            size='sm'
+            variant='destructive'
+            disabled={mutation.isPending || order.paid_time > 0}
+            onClick={() =>
+              setAction({ tradeNo: order.trade_no, type: 'close' })
+            }
+          >
+            {t('Close order')}
+          </Button>
+        ) : null}
       </>
     )
   }
@@ -206,7 +225,8 @@ export function OrderLogs() {
       id: 'actual',
       header: t('Amount received'),
       cell: (row) =>
-        row.paid_time
+        row.paid_time ||
+        (row.payment_provider === 'alipay_receipt' && row.status === 'success')
           ? new Intl.NumberFormat(locale, {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
@@ -436,6 +456,13 @@ export function OrderLogs() {
       >
         <p className='text-sm break-all'>{action?.tradeNo}</p>
       </ConfirmDialog>
+      {manualOrder ? (
+        <ManualCreditDialog
+          key={manualOrder.trade_no}
+          order={manualOrder}
+          onClose={() => setManualOrder(null)}
+        />
+      ) : null}
     </>
   )
 }
