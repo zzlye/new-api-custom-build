@@ -113,6 +113,7 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 			{name: "首次渠道未勾选不重试", status: 500, codes: "500", budget: 2, selected: []int{2, 3}, want: [3]int32{1, 0, 0}},
 			{name: "只勾选失败渠道也能切到备用", status: 500, codes: "500", budget: 2, selected: []int{1}, want: [3]int32{1, 1, 0}},
 			{name: "原渠道重试后再切换", status: 503, codes: "503", budget: 2, same: 1, want: [3]int32{2, 1, 0}},
+			{name: "超过旧上限仍按次数重试再切换", status: 503, codes: "503", budget: 21, same: 6, want: [3]int32{7, 1, 0}},
 			{name: "原渠道第二次成功无需切换", status: 503, codes: "503", budget: 2, same: 1, firstRecovers: true, want: [3]int32{2, 0, 0}},
 			{name: "缓存开启时仍先原渠道后备用", status: 503, codes: "503", budget: 2, same: 1, cache: true, want: [3]int32{2, 1, 0}},
 			{name: "独立错误码不限制未勾选备用", status: 503, codes: "503", budget: 2, same: 1, perChannel: true, selected: []int{1}, want: [3]int32{2, 1, 0}},
@@ -413,7 +414,7 @@ func TestAsyncMediaRoutingDatabaseMatrix(t *testing.T) {
 			require.NoError(t, db.First(&saved).Error)
 			require.Equal(t, config, saved.Value)
 			require.Equal(t, 1, operation_setting.GetAsyncMediaRetryPolicy().SameChannelRetries)
-			for _, invalid := range []string{`{}`, `{"max_retries":21,"status_codes":"500"}`, `{"max_retries":1.5,"status_codes":"500"}`, `{"status_codes":"200"}`, `{"status_codes":"600"}`, `{"status_codes":"503-500"}`, `{"status_codes":"500","channel_ids":[1,1]}`, `{"status_codes":"500","channel_ids":[0]}`} {
+			for _, invalid := range []string{`{}`, `{"max_retries":-1,"status_codes":"500"}`, `{"max_retries":1.5,"status_codes":"500"}`, `{"status_codes":"200"}`, `{"status_codes":"600"}`, `{"status_codes":"503-500"}`, `{"status_codes":"500","channel_ids":[1,1]}`, `{"status_codes":"500","channel_ids":[0]}`} {
 				require.Error(t, model.UpdateOption(operation_setting.AsyncMediaRetryOption, invalid))
 				require.Equal(t, 2, operation_setting.GetAsyncMediaRetryPolicy().MaxRetries)
 			}

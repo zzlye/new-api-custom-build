@@ -44,8 +44,9 @@ export function createAsyncMediaRetrySchema(t: TFunction) {
   return z
     .object({
       enabled: z.boolean(),
-      max_retries: z.number().int().min(0).max(20),
-      same_channel_retries: z.number().int().min(0).max(5),
+      // 次数由根用户设置，仅验证非负整数和 JavaScript 可精确表示的整数范围。
+      max_retries: z.number().int().min(0),
+      same_channel_retries: z.number().int().min(0),
       // 旧通用字段只用于首次展示已有策略，提交时只保存渠道规则。
       status_codes: z.string().optional(),
       selected_channels_only: z.boolean(),

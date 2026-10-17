@@ -256,7 +256,6 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                   <Input
                     type='number'
                     min={0}
-                    max={5}
                     step={1}
                     {...safeNumberFieldProps(field)}
                   />
@@ -280,7 +279,6 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
                   <Input
                     type='number'
                     min={0}
-                    max={20}
                     step={1}
                     {...safeNumberFieldProps(field)}
                   />

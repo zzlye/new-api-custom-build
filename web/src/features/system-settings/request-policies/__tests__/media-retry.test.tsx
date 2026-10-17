@@ -124,27 +124,34 @@ describe('媒体换渠道重试设置', () => {
     expect(api.put).not.toHaveBeenCalled()
   })
 
-  it('原渠道重试次数独立保存且不占用换渠道次数', async () => {
-    mount()
+  it('超过旧上限的原渠道和换渠道次数可以独立保存并重新加载', async () => {
+    const rerender = mount()
     await screen.findByRole('checkbox', { name: /Banana/ })
     fireEvent.change(
       screen.getByRole('spinbutton', { name: 'Same-channel retry limit' }),
-      { target: { value: '2' } }
+      { target: { value: '6' } }
     )
     fireEvent.change(
       screen.getByRole('spinbutton', { name: 'Channel switch retry limit' }),
-      { target: { value: '5' } }
+      { target: { value: '100' } }
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
     const body = vi.mocked(api.put).mock.calls[0][1] as { value: string }
     expect(JSON.parse(body.value)).toMatchObject({
-      same_channel_retries: 2,
-      max_retries: 5,
+      same_channel_retries: 6,
+      max_retries: 100,
     })
+    await act(async () => rerender(body.value))
+    expect(
+      screen.getByRole('spinbutton', { name: 'Same-channel retry limit' })
+    ).toHaveValue(6)
+    expect(
+      screen.getByRole('spinbutton', { name: 'Channel switch retry limit' })
+    ).toHaveValue(100)
   })
 
-  it.each(['-1', '6', '1.5'])('原渠道次数 %s 无效时阻止保存', async (value) => {
+  it.each(['-1', '1.5'])('原渠道次数 %s 无效时阻止保存', async (value) => {
     mount()
     await screen.findByRole('checkbox', { name: /Banana/ })
     const input = screen.getByRole('spinbutton', {
@@ -230,7 +237,7 @@ describe('媒体换渠道重试设置', () => {
     }
   )
 
-  it.each(['-1', '21', '1.5'])('次数 %s 无效时阻止保存', async (value) => {
+  it.each(['-1', '1.5'])('次数 %s 无效时阻止保存', async (value) => {
     mount()
     await screen.findByRole('checkbox', { name: /Banana/ })
     fireEvent.change(

@@ -2,6 +2,7 @@ package operation_setting
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,11 +34,16 @@ func ParseAsyncMediaRetryPolicy(value string) (AsyncMediaRetryPolicy, error) {
 	if err := common.UnmarshalJsonStr(value, &policy); err != nil {
 		return policy, fmt.Errorf("媒体重试设置格式无效")
 	}
-	if policy.MaxRetries < 0 || policy.MaxRetries > 20 {
-		return policy, fmt.Errorf("换渠道重试次数必须是 0 到 20 的整数")
+	if policy.MaxRetries < 0 {
+		return policy, fmt.Errorf("换渠道重试次数必须是非负整数")
 	}
-	if policy.SameChannelRetries < 0 || policy.SameChannelRetries > 5 {
-		return policy, fmt.Errorf("原渠道重试次数必须是 0 到 5 的整数")
+	if policy.SameChannelRetries < 0 {
+		return policy, fmt.Errorf("原渠道重试次数必须是非负整数")
+	}
+	// 次数由根用户决定；只防止总尝试次数的整数溢出，不能绕回负数而跳过执行。
+	if policy.MaxRetries == math.MaxInt || policy.SameChannelRetries == math.MaxInt ||
+		policy.MaxRetries+1 > math.MaxInt/(policy.SameChannelRetries+1) {
+		return policy, fmt.Errorf("重试次数组合超出系统整数范围")
 	}
 	if policy.ChannelStatusCodes == nil {
 		// 尚未保存新版界面的旧配置保留原行为，避免升级时突然丢失路由策略。

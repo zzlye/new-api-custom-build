@@ -1,6 +1,8 @@
 package operation_setting
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -80,6 +82,13 @@ func TestAsyncMediaRetryLegacyAndValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, legacy.MatchesStatus(12, 500))
 	require.Zero(t, legacy.SameChannelRetries, "旧配置不隐式启用原渠道付费重发")
+	// 由管理员决定次数，不再使用原渠道五次、换渠道二十次的固定上限。
+	for _, counts := range [][2]int{{6, 21}, {100, 100}} {
+		policy, err := ParseAsyncMediaRetryPolicy(fmt.Sprintf(`{"channel_status_codes":{},"same_channel_retries":%d,"max_retries":%d}`, counts[0], counts[1]))
+		require.NoError(t, err)
+		require.Equal(t, counts[0], policy.SameChannelRetries)
+		require.Equal(t, counts[1], policy.MaxRetries)
+	}
 	for _, value := range []string{
 		`{"channel_status_codes":{"0":"500"}}`,
 		`{"channel_status_codes":{"12":""}}`,
@@ -88,8 +97,12 @@ func TestAsyncMediaRetryLegacyAndValidation(t *testing.T) {
 		`{"channel_status_codes":{"12":"503-500"}}`,
 		`{"channel_status_codes":{"abc":"500"}}`,
 		`{"channel_status_codes":{},"same_channel_retries":-1}`,
-		`{"channel_status_codes":{},"same_channel_retries":6}`,
 		`{"channel_status_codes":{},"same_channel_retries":1.5}`,
+		`{"channel_status_codes":{},"max_retries":-1}`,
+		`{"channel_status_codes":{},"max_retries":1.5}`,
+		fmt.Sprintf(`{"channel_status_codes":{},"max_retries":%d}`, math.MaxInt),
+		fmt.Sprintf(`{"channel_status_codes":{},"same_channel_retries":%d}`, math.MaxInt),
+		fmt.Sprintf(`{"channel_status_codes":{},"same_channel_retries":2,"max_retries":%d}`, math.MaxInt/2),
 	} {
 		_, err := ParseAsyncMediaRetryPolicy(value)
 		require.Error(t, err, value)
