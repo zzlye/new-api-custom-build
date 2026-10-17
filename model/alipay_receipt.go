@@ -120,15 +120,16 @@ func SaveAlipayReceiptConfig(c AlipayReceiptConfig) error {
 }
 
 type ReceiptOrder struct {
-	TopUpID       int    `json:"top_up_id" gorm:"primaryKey;autoIncrement:false"`
-	AccountID     string `json:"-" gorm:"size:32;index:idx_receipt_amount,priority:1"`
-	AppID         string `json:"-" gorm:"size:32"`
-	QRCode        string `json:"qr_code" gorm:"type:text"`
-	AmountCents   int64  `json:"amount_cents" gorm:"index:idx_receipt_amount,priority:2"`
-	CreditQuota   int    `json:"credit_quota"`
-	ConfirmedAt   int64  `json:"confirmed_at"`
-	ExpiresAt     int64  `json:"expires_at" gorm:"index"`
-	ReservedUntil int64  `json:"-" gorm:"index:idx_receipt_amount,priority:3"`
+	TopUpID     int    `json:"top_up_id" gorm:"primaryKey;autoIncrement:false"`
+	AccountID   string `json:"-" gorm:"size:32;index:idx_receipt_amount,priority:1"`
+	AppID       string `json:"-" gorm:"size:32"`
+	QRCode      string `json:"qr_code" gorm:"type:text"`
+	AmountCents int64  `json:"amount_cents" gorm:"index:idx_receipt_amount,priority:2"`
+	CreditQuota int    `json:"credit_quota"`
+	ConfirmedAt int64  `json:"confirmed_at"`
+	ExpiresAt   int64  `json:"expires_at" gorm:"index"`
+	// 保留旧字段供数据库兼容；金额占用由付款期限、订单状态和已关联流水共同决定。
+	ReservedUntil int64 `json:"-" gorm:"index:idx_receipt_amount,priority:3"`
 }
 
 // 流水摘要永久防重，清理展示日志不删除本表；未匹配收入也不能被后来的订单认领。
@@ -204,7 +205,13 @@ func CreateReceiptOrder(userID int, amount int64, baseCents int64, quota int, ip
 			return errors.New("今日支付宝收款码订单次数已用完")
 		}
 		var reserved []int64
-		if err := tx.Model(&ReceiptOrder{}).Where("account_id = ? AND amount_cents >= ? AND amount_cents <= ? AND reserved_until > ?", cfg.AccountID, baseCents, baseCents+99, now.Unix()).Pluck("amount_cents", &reserved).Error; err != nil {
+		// 只占用有效待支付金额；终态或到期未收款立即释放，不因旧版 63 分钟保留值继续涨尾差。
+		// 已核实收入但尚未入账的原单继续占用，直到原子结算成功；所有分配仍在账户写锁内。
+		if err := tx.Model(&ReceiptOrder{}).
+			Joins("JOIN top_ups ON top_ups.id = receipt_orders.top_up_id").
+			Where("receipt_orders.account_id = ? AND receipt_orders.amount_cents >= ? AND receipt_orders.amount_cents <= ? AND top_ups.payment_provider = ? AND top_ups.status = ?", cfg.AccountID, baseCents, baseCents+99, AlipayReceiptProvider, common.TopUpStatusPending).
+			Where("receipt_orders.expires_at > ? OR EXISTS (SELECT 1 FROM receipt_payments WHERE receipt_payments.top_up_id = receipt_orders.top_up_id)", now.Unix()).
+			Pluck("receipt_orders.amount_cents", &reserved).Error; err != nil {
 			return err
 		}
 		occupied := make(map[int64]bool, len(reserved))
@@ -227,7 +234,7 @@ func CreateReceiptOrder(userID int, amount int64, baseCents int64, quota int, ip
 		if err := tx.Create(&view.TopUp).Error; err != nil {
 			return err
 		}
-		view.Receipt = ReceiptOrder{TopUpID: view.Id, AccountID: cfg.AccountID, AppID: cfg.AppID, QRCode: cfg.QRCode, AmountCents: payCents, CreditQuota: credit, ExpiresAt: now.Unix() + 180, ReservedUntil: now.Unix() + 180 + 3600}
+		view.Receipt = ReceiptOrder{TopUpID: view.Id, AccountID: cfg.AccountID, AppID: cfg.AppID, QRCode: cfg.QRCode, AmountCents: payCents, CreditQuota: credit, ExpiresAt: now.Unix() + 180, ReservedUntil: now.Unix() + 180}
 		if err := tx.Create(&view.Receipt).Error; err != nil {
 			return err
 		}

@@ -246,7 +246,8 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					assert.Zero(t, events)
 					// 北京时间跨零点后恢复个人额度，不使用浏览器时间。
 					local := now.In(time.FixedZone("CST", 28800))
-					nextDay := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, local.Location())
+					// 留足旧版金额保留期，跨日次数测试不依赖执行时刻距午夜还有多久。
+					nextDay := time.Date(local.Year(), local.Month(), local.Day()+1, 2, 0, 0, 0, local.Location())
 					_, err = model.CreateReceiptOrder(1, 10, 1000, 5000000, "", nextDay)
 					require.NoError(t, err)
 					// 尾差仅用于付款匹配，到账及返佣按原充值额度，日志单独记录实付金额。
@@ -268,6 +269,54 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser} {
 						assert.Equal(t, http.StatusForbidden, receiptControllerRequest(SaveAlipayReceiptSettings, 1, role, `{}`, "").Code)
 					}
+					t.Run("金额按有效订单占用而非历史订单累计", func(t *testing.T) {
+						for id := 101; id <= 105; id++ {
+							name := fmt.Sprintf("slot-%d", id)
+							require.NoError(t, db.Create(&model.User{Id: id, Username: name, AffCode: name, Status: common.UserStatusEnabled}).Error)
+						}
+						a, err := model.CreateReceiptOrder(101, 40, 4000, 20000000, "", now)
+						require.NoError(t, err)
+						require.NoError(t, model.ConfirmReceiptOrder(a.TradeNo, 101, now))
+						paid := alipayaccountlog.Record{AccountLogID: "slot-income", AlipayOrderNo: "slot-trade", Direction: "收入", Type: "收款", Amount: "40.00", OccurredAt: now.Add(2 * time.Second)}
+						id, err := model.AcceptReceipt(cfg, paid)
+						require.NoError(t, err)
+						require.Equal(t, a.Id, id)
+						require.NoError(t, model.SettleReceiptOrder(id))
+						b, err := model.CreateReceiptOrder(102, 40, 4000, 20000000, "", now.Add(5*time.Second))
+						require.NoError(t, err)
+						require.Equal(t, 40.0, b.Money, "已到账金额应立即复用")
+						require.NoError(t, model.ConfirmReceiptOrder(b.TradeNo, 102, now.Add(5*time.Second)))
+						// 原流水重复扫描仍归原单；新单确认前的迟到流水不能串给新单。
+						id, err = model.AcceptReceipt(cfg, paid)
+						require.NoError(t, err)
+						assert.Equal(t, a.Id, id)
+						paid.AccountLogID, paid.AlipayOrderNo = "slot-delayed", "slot-delayed-trade"
+						id, err = model.AcceptReceipt(cfg, paid)
+						require.NoError(t, err)
+						assert.Zero(t, id)
+						require.NoError(t, model.ClosePaymentOrder(b.TradeNo, 102, 102))
+						c, err := model.CreateReceiptOrder(103, 40, 4000, 20000000, "", now.Add(10*time.Second))
+						require.NoError(t, err)
+						assert.Equal(t, 40.0, c.Money, "关闭订单不再占用金额")
+						// 不依赖扫描进程刷新状态，付款期满就能复用未收款金额。
+						expiredAt := time.Unix(c.Receipt.ExpiresAt, 0)
+						d, err := model.CreateReceiptOrder(104, 40, 4000, 20000000, "", expiredAt)
+						require.NoError(t, err)
+						assert.Equal(t, 40.0, d.Money, "过期未收款订单不再占用金额")
+						require.NoError(t, model.ConfirmReceiptOrder(d.TradeNo, 104, expiredAt))
+						paid.AccountLogID, paid.AlipayOrderNo, paid.OccurredAt = "slot-unsettled", "slot-unsettled-trade", expiredAt.Add(2*time.Second)
+						id, err = model.AcceptReceipt(cfg, paid)
+						require.NoError(t, err)
+						require.Equal(t, d.Id, id)
+						e, err := model.CreateReceiptOrder(105, 40, 4000, 20000000, "", expiredAt.Add(2*time.Hour))
+						require.NoError(t, err)
+						assert.Equal(t, 40.01, e.Money, "已收款未入账继续占用金额")
+						require.NoError(t, model.SettleReceiptOrder(d.Id))
+						f, err := model.CreateReceiptOrder(101, 40, 4000, 20000000, "", expiredAt.Add(2*time.Hour))
+						require.NoError(t, err)
+						assert.Equal(t, 40.0, f.Money, "入账后优先复用最低空闲金额")
+						assert.Equal(t, 20000000, f.CreditQuota)
+					})
 				})
 			}
 		})
@@ -358,11 +407,11 @@ func TestAlipayReceiptManualCreditDatabaseMatrix(t *testing.T) {
 			require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", 1, model.LogTypeTopup).Count(&count).Error)
 			assert.EqualValues(t, 1, count)
 			require.ErrorContains(t, model.ManualCreditReceiptOrder(other.TradeNo, 99, wrongPayment.AlipayOrderNo, "9.80", "重复流水", ""), "其他订单")
-			// 关闭不释放金额槽位；超过原保留期才复用，且仍按原额度入账。
+			// 关闭立即释放金额槽位；人工补单仍只处理原订单，不影响复用金额的新单。
 			require.NoError(t, model.ClosePaymentOrder(other.TradeNo, 2, 99))
 			replacement, err := model.CreateReceiptOrder(2, 10, 1000, 5000000, "", now)
 			require.NoError(t, err)
-			assert.Equal(t, 10.02, replacement.Money)
+			assert.Equal(t, 10.0, replacement.Money)
 			assert.Equal(t, 5000000, replacement.CreditQuota)
 			// 未扫到的真实收款可人工登记；迟到扫描与自动结算不会重复入账。
 			body := `{"provider_trade_no":"202610170000000000000002","actual_money":"9.50","reason":"核对支付宝后补单","credit_quota":999999999,"user_id":99}`
