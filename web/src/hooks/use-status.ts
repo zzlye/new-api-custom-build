@@ -32,16 +32,23 @@ function getInitialStatus(): SystemStatus | undefined {
  * Every caller reads the same cache entry, so mounting this hook in several
  * components costs one request. See `statusQueryOptions` for cache lifetimes.
  */
-export function useStatus() {
-  const { data, isLoading, error } = useQuery({
+export function useStatus(liveUpdates = false) {
+  const { data, isLoading, isPlaceholderData, error } = useQuery({
     ...statusQueryOptions,
+    // 只有根页面公告订阅开启定时检查，其余调用继续共享缓存。
+    ...(liveUpdates && {
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: 'always' as const,
+      refetchOnReconnect: 'always' as const,
+      meta: { errorToast: false },
+    }),
     // Use localStorage data as initial data
     placeholderData: getInitialStatus(),
   })
 
   return {
     status: (data as SystemStatus | null) ?? null,
-    loading: isLoading,
+    loading: isLoading || (liveUpdates && isPlaceholderData),
     error,
   }
 }

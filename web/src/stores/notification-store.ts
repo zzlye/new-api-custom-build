@@ -26,11 +26,13 @@ interface NotificationState {
   readAnnouncementKeys: string[]
   // Timestamp of last "Close Today" action
   closedUntilDate: string | null
+  // 当日免打扰只覆盖关闭时已有的公告版本，新发布内容仍然提醒。
+  closedContentKeys: string[] | null
 
   // Actions
   markNoticeRead: (noticeContent: string) => void
   markAnnouncementsRead: (keys: string[]) => void
-  setClosedUntilDate: (date: string | null) => void
+  setClosedUntilDate: (date: string | null, contentKeys?: string[]) => void
   isAnnouncementRead: (key: string) => boolean
   isNoticeClosed: () => boolean
 }
@@ -45,6 +47,7 @@ export const useNotificationStore = create<NotificationState>()(
       lastReadNotice: '',
       readAnnouncementKeys: [],
       closedUntilDate: null,
+      closedContentKeys: null,
 
       markNoticeRead: (noticeContent: string) => {
         // Persist the full trimmed content so edits beyond 100 chars register
@@ -60,8 +63,8 @@ export const useNotificationStore = create<NotificationState>()(
         }))
       },
 
-      setClosedUntilDate: (date: string | null) => {
-        set({ closedUntilDate: date })
+      setClosedUntilDate: (date: string | null, contentKeys?: string[]) => {
+        set({ closedUntilDate: date, closedContentKeys: contentKeys ?? null })
       },
 
       isAnnouncementRead: (key: string) => {
@@ -82,6 +85,7 @@ export const useNotificationStore = create<NotificationState>()(
         lastReadNotice: state.lastReadNotice,
         readAnnouncementKeys: state.readAnnouncementKeys,
         closedUntilDate: state.closedUntilDate,
+        closedContentKeys: state.closedContentKeys,
       }),
     }
   )

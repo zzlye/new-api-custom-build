@@ -63,7 +63,7 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
  * Hook to manage notifications (Notice + Announcements)
  * Provides unread counts and read status management
  */
-export function useNotifications() {
+export function useNotifications(liveUpdates = false) {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'notice' | 'announcements'>(
     'notice'
@@ -78,17 +78,27 @@ export function useNotifications() {
     queryKey: ['notice'],
     queryFn: async () => requireServerSuccess(await getNotice()),
     staleTime: 1000 * 60 * 5, // 5 minutes
+    ...(liveUpdates && {
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: 'always' as const,
+      refetchOnReconnect: 'always' as const,
+      meta: { errorToast: false },
+    }),
   })
 
   // Fetch Announcements from status
-  const { status, loading: statusLoading } = useStatus()
+  const { status, loading: statusLoading } = useStatus(liveUpdates)
   const announcementsEnabled = status?.announcements_enabled ?? false
   const announcements = useMemo<Record<string, unknown>[]>(() => {
     if (!announcementsEnabled) return []
-    return ((status?.announcements || []) as Record<string, unknown>[]).slice(
-      0,
-      20
-    )
+    // 后台新增公告追加在末尾，先按发布时间排序再截取，避免新公告被旧条目挤掉。
+    return [...((status?.announcements || []) as Record<string, unknown>[])]
+      .sort(
+        (a, b) =>
+          (Date.parse(String(b.publishDate ?? '')) || 0) -
+          (Date.parse(String(a.publishDate ?? '')) || 0)
+      )
+      .slice(0, 20)
   }, [announcementsEnabled, status?.announcements])
 
   // Notification store
@@ -103,6 +113,24 @@ export function useNotifications() {
   const noticeContent = noticeResponse?.success
     ? (noticeResponse.data || '').trim()
     : ''
+
+  // 按可见内容识别版本：相同编号的正文修改也需要提醒，排序不影响版本。
+  const contentKeys = useMemo(() => {
+    const keys = announcements.map(
+      (item) =>
+        `announcement:${JSON.stringify({
+          id: item.id ?? null,
+          publishDate: item.publishDate ?? '',
+          content: String(item.content ?? '').trim(),
+          extra: String(item.extra ?? '').trim(),
+          type: item.type ?? '',
+          title: String(item.title ?? '').trim(),
+          link: String(item.link ?? '').trim(),
+        })}`
+    )
+    if (noticeContent) keys.push(`notice:${noticeContent}`)
+    return keys.sort()
+  }, [announcements, noticeContent])
 
   // Calculate unread counts
   const unreadCounts = useMemo(() => {
@@ -170,6 +198,7 @@ export function useNotifications() {
     // Data
     notice: noticeContent,
     announcements,
+    contentKeys,
     loading: noticeLoading || statusLoading,
 
     // Unread counts
