@@ -126,6 +126,10 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 			{name: "504已经接单不重发", status: 504, codes: "504", budget: 2, same: 1, body: `{"task_id":"accepted-job"}`, want: [3]int32{1, 0, 0}},
 			{name: "504响应不完整不重发", status: 504, codes: "504", budget: 2, same: 1, mode: "truncated", want: [3]int32{1, 0, 0}},
 			{name: "原渠道重试开启仍不重发已接单", status: 503, codes: "503", budget: 2, same: 1, body: `{"task_id":"accepted-job"}`, want: [3]int32{1, 0, 0}},
+			// 空结果容器不能被当成成功产物，非空产物和任务编号仍需防止重复提交。
+			{name: "503空结果不拦截重试", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"unavailable","type":"upstream_error"},"result":{},"output":[]}`, want: [3]int32{2, 1, 0}},
+			{name: "503非空结果仍不重发", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"later error"},"result":{"url":"https://example.com/result.png"}}`, want: [3]int32{1, 0, 0}},
+			{name: "503非空产物数组仍不重发", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"later error"},"output":["https://example.com/result.png"]}`, want: [3]int32{1, 0, 0}},
 			{name: "配置504直接切换备用", status: 504, codes: "500-599", budget: 2, want: [3]int32{1, 1, 0}},
 			{name: "请求超时不重发", status: 408, codes: "400-599", budget: 2, want: [3]int32{1, 0, 0}},
 			{name: "响应含任务编号不重发", status: 500, codes: "500", budget: 2, body: `{"task_id":"accepted-job","error":{"message":"later error"}}`, want: [3]int32{1, 0, 0}},

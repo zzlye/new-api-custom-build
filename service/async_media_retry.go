@@ -97,7 +97,15 @@ func asyncMediaHasAcceptedResult(value any) bool {
 			key = strings.ToLower(strings.ReplaceAll(key, "_", ""))
 			switch key {
 			case "id", "taskid", "job", "jobid", "predictionid", "b64json", "url", "output", "result":
-				if nested != nil && nested != "" {
+				// 空结果容器不代表已经接单；保留非空对象和数组的重复提交保护。
+				present := nested != nil && nested != ""
+				switch result := nested.(type) {
+				case map[string]any:
+					present = len(result) > 0
+				case []any:
+					present = len(result) > 0
+				}
+				if present {
 					return true
 				}
 			case "status", "state":
