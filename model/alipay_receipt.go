@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/pkg/alipayaccountlog"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -416,7 +417,8 @@ func SettleReceiptOrder(id int) error {
 	if err == nil && credited {
 		syncCreditUserQuotaCache(top.UserId, receipt.CreditQuota, "alipay receipt")
 		finishTopUpInviteCommission(commission)
-		RecordTopupLog(top.UserId, "支付宝收款码充值成功", top.CreateIP, AlipayReceiptProvider, AlipayReceiptProvider)
+		// 沿用在线充值详情格式，使用已核验的实付金额及实际入账额度（包含尾差）。
+		RecordTopupLog(top.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(receipt.CreditQuota), top.ActualMoney), top.CreateIP, AlipayReceiptProvider, AlipayReceiptProvider)
 	}
 	if err != nil {
 		DB.Model(&TopUp{}).Where("id = ? AND status = ? AND paid_time > 0", id, common.TopUpStatusPending).Update("last_error", "已收款但入账失败，请补回调")

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/alipayaccountlog"
@@ -184,6 +185,12 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					require.NoError(t, db.First(&inviter, 3).Error)
 					assert.Equal(t, 5000000, user.Quota)
 					assert.Equal(t, 500000, inviter.GiftQuota)
+					// 成功入账沿用充值详情格式，重复结算不能增加日志。
+					var topupLogs []model.Log
+					require.NoError(t, db.Where("user_id = ? AND type = ?", 1, model.LogTypeTopup).Find(&topupLogs).Error)
+					require.Len(t, topupLogs, 1)
+					assert.Equal(t, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：10.000000", logger.LogQuota(5000000)), topupLogs[0].Content)
+					assert.Contains(t, topupLogs[0].Other, `"payment_method":"alipay_receipt"`)
 					// 并发创建并关闭仅剩的一次名额，不能依赖前端按钮或进程内计数。
 					ids := make(chan int, 6)
 					errorsSeen := make(chan error, 6)
@@ -242,6 +249,19 @@ func TestAlipayReceiptDatabaseMatrix(t *testing.T) {
 					nextDay := time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, local.Location())
 					_, err = model.CreateReceiptOrder(1, 10, 1000, 5000000, "", nextDay)
 					require.NoError(t, err)
+					// 有尾差时记录实际到账额度和实付金额，不能使用下单原金额。
+					tailOrder, err := model.CreateReceiptOrder(2, 10, 1000, 5000000, "127.0.0.2", nextDay)
+					require.NoError(t, err)
+					require.EqualValues(t, 1001, tailOrder.Receipt.AmountCents)
+					require.NoError(t, model.ConfirmReceiptOrder(tailOrder.TradeNo, 2, nextDay.Add(time.Second)))
+					tailPayment := alipayaccountlog.Record{AccountLogID: "tail-income", AlipayOrderNo: "tail-trade", Direction: "收入", Type: "收款", Amount: "10.01", OccurredAt: nextDay.Add(3 * time.Second)}
+					tailID, err := model.AcceptReceipt(cfg, tailPayment)
+					require.NoError(t, err)
+					require.Equal(t, tailOrder.Id, tailID)
+					require.NoError(t, model.SettleReceiptOrder(tailID))
+					var tailLog model.Log
+					require.NoError(t, db.Where("user_id = ? AND type = ?", 2, model.LogTypeTopup).First(&tailLog).Error)
+					assert.Equal(t, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：10.010000", logger.LogQuota(5005000)), tailLog.Content)
 					settings := receiptControllerRequest(GetAlipayReceiptSettings, 1, common.RoleRootUser, "", "")
 					assert.NotContains(t, settings.Body.String(), cfg.PrivateKey)
 					assert.Contains(t, settings.Body.String(), `"private_key_configured":true`)
