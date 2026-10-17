@@ -128,6 +128,10 @@ func TestAsyncMediaRoutingRules(t *testing.T) {
 			{name: "原渠道重试开启仍不重发已接单", status: 503, codes: "503", budget: 2, same: 1, body: `{"task_id":"accepted-job"}`, want: [3]int32{1, 0, 0}},
 			// 空结果容器不能被当成成功产物，非空产物和任务编号仍需防止重复提交。
 			{name: "503空结果不拦截重试", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"unavailable","type":"upstream_error"},"result":{},"output":[]}`, want: [3]int32{2, 1, 0}},
+			{name: "503错误中的任务编号不等于接单", status: 503, codes: "503", budget: 2, same: 1, allFail: true, body: `{"error":{"message":"media protocol submit failed with HTTP 503 (response_bytes=123)","task_id":"async_failed-task"}}`, want: [3]int32{2, 2, 2}},
+			{name: "429错误中的任务编号不等于接单", status: 429, codes: "429", budget: 2, same: 1, body: `{"error":{"message":"media protocol submit failed with HTTP 429 (response_bytes=129)","task_id":"async_failed-task"}}`, want: [3]int32{2, 1, 0}},
+			{name: "错误诊断编号不能掩盖顶层受理编号", status: 503, codes: "503", budget: 2, same: 1, body: `{"task_id":"accepted-task","error":{"message":"later error","task_id":"diagnostic-task"}}`, want: [3]int32{1, 0, 0}},
+			{name: "错误对象含运行状态仍不重发", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"poll temporarily unavailable","task_id":"accepted-task","status":"processing"}}`, want: [3]int32{1, 0, 0}},
 			{name: "503非空结果仍不重发", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"later error"},"result":{"url":"https://example.com/result.png"}}`, want: [3]int32{1, 0, 0}},
 			{name: "503非空产物数组仍不重发", status: 503, codes: "503", budget: 2, same: 1, body: `{"error":{"message":"later error"},"output":["https://example.com/result.png"]}`, want: [3]int32{1, 0, 0}},
 			{name: "配置504直接切换备用", status: 504, codes: "500-599", budget: 2, want: [3]int32{1, 1, 0}},

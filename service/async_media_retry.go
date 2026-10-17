@@ -68,7 +68,7 @@ func ObserveAsyncMediaHTTPFailure(ctx context.Context, response *http.Response, 
 	evidence.status = response.StatusCode
 	evidence.rejected = readErr == nil && response.StatusCode >= 400 && response.StatusCode <= 599 && response.Header.Get("Location") == ""
 	var payload any
-	if common.Unmarshal(body, &payload) == nil && asyncMediaHasAcceptedResult(payload) {
+	if common.Unmarshal(body, &payload) == nil && asyncMediaHasAcceptedResult(payload, false) {
 		evidence.rejected = false
 	}
 	// 自定义视频协议的任务编号可以使用任意字段名，同样必须阻止重复付费提交。
@@ -90,11 +90,16 @@ func asyncMediaUpstreamStatus(c *gin.Context, fallback int) int {
 }
 
 // 错误响应仍携带任务编号、生成结果或运行状态时，保守保留原任务，绝不换渠道再付费。
-func asyncMediaHasAcceptedResult(value any) bool {
+func asyncMediaHasAcceptedResult(value any, errorDetails bool) bool {
 	switch item := value.(type) {
 	case map[string]any:
 		for key, nested := range item {
 			key = strings.ToLower(strings.ReplaceAll(key, "_", ""))
+			// 明确错误对象中的编号仅用于诊断失败任务，不是新的接单凭据。
+			// 状态和产物仍继续检查，防止忽略正在执行或已有结果的任务。
+			if errorDetails && (key == "id" || key == "taskid" || key == "job" || key == "jobid" || key == "predictionid") {
+				continue
+			}
 			switch key {
 			case "id", "taskid", "job", "jobid", "predictionid", "b64json", "url", "output", "result":
 				// 空结果容器不代表已经接单；保留非空对象和数组的重复提交保护。
@@ -116,13 +121,20 @@ func asyncMediaHasAcceptedResult(value any) bool {
 					}
 				}
 			}
-			if asyncMediaHasAcceptedResult(nested) {
+			isErrorDetails := false
+			if key == "error" {
+				if detail, ok := nested.(map[string]any); ok {
+					message, _ := detail["message"].(string)
+					isErrorDetails = strings.TrimSpace(message) != ""
+				}
+			}
+			if asyncMediaHasAcceptedResult(nested, isErrorDetails) {
 				return true
 			}
 		}
 	case []any:
 		for _, nested := range item {
-			if asyncMediaHasAcceptedResult(nested) {
+			if asyncMediaHasAcceptedResult(nested, false) {
 				return true
 			}
 		}
