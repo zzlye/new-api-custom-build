@@ -49,6 +49,7 @@ const basicAuthSchema = z.object({
   PasswordRegisterEnabled: z.boolean(),
   EmailVerificationEnabled: z.boolean(),
   RegisterEnabled: z.boolean(),
+  RegisterInviteCodeRequired: z.boolean(),
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
   EmailDomainWhitelist: z.string(),
@@ -101,8 +102,12 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
       }
     })
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
+    try {
+      for (const update of updates) {
+        await updateOption.mutateAsync(update)
+      }
+    } catch {
+      // 保存失败已由设置请求统一提示，停止后续更新并保留表单供用户重试。
     }
   }
 
@@ -166,6 +171,26 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                   <FormDescription>
                     {t('Allow registration with password')}
                   </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='RegisterInviteCodeRequired'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>
+                    {t('Require invitation code for registration')}
+                  </FormLabel>
                 </SettingsSwitchContent>
                 <FormControl>
                   <Switch

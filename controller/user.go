@@ -257,16 +257,22 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
-	// 注册必须提供有效邀请码，避免无效码占用用户名后无法注册
+	// 选填只放行空邀请码；填写了邀请码仍必须校验，避免创建后丢失邀请关系。
 	affCode := strings.TrimSpace(user.AffCode)
-	if affCode == "" {
+	common.OptionMapRWMutex.RLock()
+	inviteCodeRequired := common.RegisterInviteCodeRequired
+	common.OptionMapRWMutex.RUnlock()
+	if inviteCodeRequired && affCode == "" {
 		common.ApiErrorMsg(c, "邀请码无效")
 		return
 	}
-	inviterId, err := model.GetUserIdByAffCode(affCode)
-	if err != nil || inviterId == 0 {
-		common.ApiErrorMsg(c, "邀请码无效")
-		return
+	inviterId := 0
+	if affCode != "" {
+		inviterId, err = model.GetUserIdByAffCode(affCode)
+		if err != nil || inviterId == 0 {
+			common.ApiErrorMsg(c, "邀请码无效")
+			return
+		}
 	}
 	// 未开启邮箱验证时，不把空邮箱参与唯一性检查
 	emailForExistCheck := ""

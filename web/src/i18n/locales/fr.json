@@ -2987,6 +2987,8 @@
     "Invalidate": "Invalider",
     "Invalidated": "Invalidé",
     "Invert match": "Inverser la correspondance",
+    "Require invitation code for registration": "Exiger un code d’invitation pour l’inscription",
+    "Invitation Code (optional)": "Code d’invitation (facultatif)",
     "Invitation Code": "Code d'invitation",
     "Invitation Quota": "Quota d'invitation",
     "Invite Info": "Informations sur l'invitation",

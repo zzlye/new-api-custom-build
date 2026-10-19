@@ -3005,6 +3005,8 @@
     "Invalidate": "作废",
     "Invalidated": "已作废",
     "Invert match": "反向匹配",
+    "Require invitation code for registration": "注册必须填写邀请码",
+    "Invitation Code (optional)": "邀请码（选填）",
     "Invitation Code": "邀请码",
     "Invitation Quota": "邀请额度",
     "Invite Info": "邀请信息",

@@ -55,6 +55,7 @@ func InitOptionMap() {
 	common.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(common.WeChatAuthEnabled)
 	common.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(common.TurnstileCheckEnabled)
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
+	common.OptionMap["RegisterInviteCodeRequired"] = strconv.FormatBool(common.RegisterInviteCodeRequired)
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
@@ -237,6 +238,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == "RegisterInviteCodeRequired" && value != "true" && value != "false" {
+		return fmt.Errorf("注册邀请码必填设置必须为 true 或 false")
+	}
 	if key == operation_setting.AsyncMediaRetryOption {
 		_, err := operation_setting.ParseAsyncMediaRetryPolicy(value)
 		return err
@@ -352,8 +356,8 @@ func validateAppearanceFloatRange(value string, min, max float64, label string) 
 }
 
 func UpdateOption(key string, value string) error {
-	// 媒体重试策略只有数据库完整提交后才更新内存，写入失败不能返回保存成功。
-	if key == operation_setting.AsyncMediaRetryOption {
+	// 重试策略和注册限制只有数据库完整提交后才更新内存，写入失败不能返回保存成功。
+	if key == operation_setting.AsyncMediaRetryOption || key == "RegisterInviteCodeRequired" {
 		return UpdateOptionsBulk(map[string]string{key: value})
 	}
 	if IsUserModelPricingOption(key) {
@@ -482,6 +486,11 @@ func updateOptionMap(key string, value string) (err error) {
 	}
 
 	// 处理传统配置项...
+	if key == "RegisterInviteCodeRequired" {
+		// 异常历史值不放宽注册限制，只有明确的 false 才允许选填。
+		common.RegisterInviteCodeRequired = value != "false"
+		return nil
+	}
 	if strings.HasSuffix(key, "Permission") {
 		intValue, _ := strconv.Atoi(value)
 		switch key {

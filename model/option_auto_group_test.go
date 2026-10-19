@@ -1,11 +1,42 @@
 package model
 
 import (
+	"maps"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRegisterInvitationOptionReloadPreservesPolicy(t *testing.T) {
+	useFrontendOptionMigrationDB(t)
+	previousRequired, previousOptions := common.RegisterInviteCodeRequired, common.OptionMap
+	common.OptionMap = maps.Clone(previousOptions)
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
+	t.Cleanup(func() {
+		common.RegisterInviteCodeRequired, common.OptionMap = previousRequired, previousOptions
+	})
+
+	// 未保存开关的旧安装保持必填；重载只应用数据库里明确保存的设置。
+	common.RegisterInviteCodeRequired = true
+	loadOptionsFromDatabase()
+	require.True(t, common.RegisterInviteCodeRequired)
+	for _, value := range []string{"false", "true", "false"} {
+		require.NoError(t, UpdateOption("RegisterInviteCodeRequired", value))
+		common.RegisterInviteCodeRequired = value != "true"
+		loadOptionsFromDatabase()
+		require.Equal(t, value == "true", common.RegisterInviteCodeRequired)
+		require.Equal(t, value, common.OptionMap["RegisterInviteCodeRequired"])
+	}
+
+	// 即便数据库中存在异常值，也不能误关必填限制。
+	require.NoError(t, DB.Save(&Option{Key: "RegisterInviteCodeRequired", Value: "invalid"}).Error)
+	loadOptionsFromDatabase()
+	require.True(t, common.RegisterInviteCodeRequired)
+}
 
 func TestValidateOptionValueRejectsInvalidMaxTokenAutoGroups(t *testing.T) {
 	for _, value := range []string{"", "0", "-1", "1.5", "invalid"} {

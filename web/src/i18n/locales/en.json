@@ -3005,6 +3005,8 @@
     "Invalidate": "Invalidate",
     "Invalidated": "Invalidated",
     "Invert match": "Invert match",
+    "Require invitation code for registration": "Require invitation code for registration",
+    "Invitation Code (optional)": "Invitation Code (optional)",
     "Invitation Code": "Invitation Code",
     "Invitation Quota": "Invitation Quota",
     "Invite Info": "Invite Info",

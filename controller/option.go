@@ -199,6 +199,11 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, errors.New("请在支付宝收款码设置中修改配置"))
 		return
 	}
+	// 注册限制只允许根用户修改，处理器与根用户设置路由双重校验。
+	if option.Key == "RegisterInviteCodeRequired" && c.GetInt("role") != common.RoleRootUser {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改注册邀请码设置"})
+		return
+	}
 	// 视频规则统一经过专用接口校验，通用设置接口不允许绕过。
 	if strings.HasPrefix(option.Key, video_setting.OptionPrefix) || option.Key == video_setting.RegistryKey {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请在视频渠道协议中修改规则"})

@@ -2987,6 +2987,8 @@
     "Invalidate": "Аннулировать",
     "Invalidated": "Аннулирована",
     "Invert match": "Инвертировать совпадение",
+    "Require invitation code for registration": "Требовать код приглашения при регистрации",
+    "Invitation Code (optional)": "Код приглашения (необязательно)",
     "Invitation Code": "Код приглашения",
     "Invitation Quota": "Квота приглашений",
     "Invite Info": "Информация о приглашении",

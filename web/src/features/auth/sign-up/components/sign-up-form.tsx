@@ -41,7 +41,7 @@ import { Label } from '@/components/ui/label'
 import { register, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
-import { registerFormSchema } from '@/features/auth/constants'
+import { createRegisterFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
@@ -88,8 +88,16 @@ export function SignUpForm({
     validateTurnstile,
   })
 
-  const form = useForm<z.infer<typeof registerFormSchema>>({
-    resolver: zodResolver(registerFormSchema),
+  const inviteCodeRequired =
+    status?.register_invite_code_required ??
+    status?.data?.register_invite_code_required ??
+    true
+  const schema = useMemo(
+    () => createRegisterFormSchema(inviteCodeRequired),
+    [inviteCodeRequired]
+  )
+  const form = useForm<z.infer<typeof schema>>({
+    resolver: zodResolver(schema),
     defaultValues: {
       username: '',
       affCode: getAffiliateCode(),
@@ -141,7 +149,7 @@ export function SignUpForm({
     }
   }, [form])
 
-  async function onSubmit(data: z.infer<typeof registerFormSchema>) {
+  async function onSubmit(data: z.infer<typeof schema>) {
     if (requiresLegalConsent && !agreedToLegal) {
       toast.error(legalConsentErrorMessage)
       return
@@ -308,11 +316,16 @@ export function SignUpForm({
           name='affCode'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('Invitation Code')}</FormLabel>
+              <FormLabel>
+                {inviteCodeRequired
+                  ? t('Invitation Code')
+                  : t('Invitation Code (optional)')}
+              </FormLabel>
               <FormControl>
                 <Input
                   placeholder={t('Invitation Code')}
                   autoComplete='off'
+                  aria-required={inviteCodeRequired}
                   {...field}
                 />
               </FormControl>

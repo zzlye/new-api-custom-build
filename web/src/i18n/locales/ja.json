@@ -2987,6 +2987,8 @@
     "Invalidate": "無効化",
     "Invalidated": "無効化済み",
     "Invert match": "一致を反転",
+    "Require invitation code for registration": "登録時に招待コードを必須にする",
+    "Invitation Code (optional)": "招待コード（任意）",
     "Invitation Code": "招待コード",
     "Invitation Quota": "招待クォータ",
     "Invite Info": "招待情報",

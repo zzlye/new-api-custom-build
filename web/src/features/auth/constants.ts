@@ -29,18 +29,25 @@ export const loginFormSchema = z.object({
   password: z.string().min(1, 'Please enter your password'),
 })
 
-export const registerFormSchema = z
-  .object({
-    username: z.string().min(1, 'Please enter your username'),
-    affCode: z.string().trim().min(1, 'Invitation Code'),
-    email: z.string().optional(),
-    password: accountPasswordSchema,
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match.",
-    path: ['confirmPassword'],
-  })
+// 状态尚未加载或旧服务未返回开关时，继续要求邀请码，避免默认放宽限制。
+export function createRegisterFormSchema(inviteCodeRequired = true) {
+  return z
+    .object({
+      username: z.string().min(1, 'Please enter your username'),
+      affCode: inviteCodeRequired
+        ? z.string().trim().min(1, 'Invitation Code')
+        : z.string().trim(),
+      email: z.string().optional(),
+      password: accountPasswordSchema,
+      confirmPassword: z.string().min(1, 'Please confirm your password'),
+    })
+    .refine((data) => data.password === data.confirmPassword, {
+      message: "Passwords don't match.",
+      path: ['confirmPassword'],
+    })
+}
+
+export const registerFormSchema = createRegisterFormSchema()
 
 export const forgotPasswordFormSchema = z.object({
   email: z.string().email({
