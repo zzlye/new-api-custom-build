@@ -48,6 +48,27 @@ func listLotteryActivities(c *gin.Context, root bool) {
 			common.ApiError(c, err)
 			return
 		}
+		// 用户接口只返回参与所需字段，不能仅靠页面隐藏奖池和剩余份数。
+		visible := make([]gin.H, 0, len(items))
+		for _, item := range items {
+			visible = append(visible, gin.H{
+				"id":                   item.ID,
+				"name":                 item.Name,
+				"status":               item.Status,
+				"min_topup_quota":      item.MinTopUpQuota,
+				"topup_scope":          item.TopUpScope,
+				"topup_start":          item.TopUpStart,
+				"topup_end":            item.TopUpEnd,
+				"per_user_limit":       item.PerUserLimit,
+				"used_draws":           item.UsedDraws,
+				"eligible_topup_quota": item.EligibleTopUpQuota,
+				"created_at":           item.CreatedAt,
+				"started_at":           item.StartedAt,
+				"ended_at":             item.EndedAt,
+			})
+		}
+		common.ApiSuccess(c, gin.H{"items": visible, "total": total, "paid_topup_quota": paid})
+		return
 	}
 	common.ApiSuccess(c, gin.H{"items": items, "total": total, "paid_topup_quota": paid})
 }

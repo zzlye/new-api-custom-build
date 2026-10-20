@@ -638,6 +638,42 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 					}
 				}
 			})
+			t.Run("用户接口不泄露奖池和发奖配置但根管理接口保留", func(t *testing.T) {
+				gin.SetMode(gin.TestMode)
+				for _, role := range []int{1, 10, 100} {
+					r := gin.New()
+					r.Use(func(c *gin.Context) { c.Set("role", role); c.Set("id", 1) })
+					r.GET("/user", GetLotteryActivities)
+					r.GET("/admin", GetAdminLotteryActivities)
+					for _, path := range []string{"/user", "/admin"} {
+						w := httptest.NewRecorder()
+						r.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+						if path == "/admin" && role != 100 {
+							assert.Equal(t, 403, w.Code)
+							continue
+						}
+						var response struct {
+							Success bool
+							Data    struct{ Items []map[string]any }
+						}
+						require.NoError(t, common.Unmarshal(w.Body.Bytes(), &response))
+						require.True(t, response.Success)
+						require.NotEmpty(t, response.Data.Items)
+						for _, row := range response.Data.Items {
+							for _, key := range []string{"total_quota", "remaining_quota", "shares", "remaining_shares", "draw_count", "min_percent", "max_percent", "fixed_quota", "mode"} {
+								if path == "/admin" {
+									assert.Contains(t, row, key)
+								} else {
+									assert.NotContains(t, row, key)
+								}
+							}
+							for _, key := range []string{"id", "name", "status", "min_topup_quota", "topup_scope", "topup_start", "topup_end", "per_user_limit", "used_draws", "eligible_topup_quota"} {
+								assert.Contains(t, row, key)
+							}
+						}
+					}
+				}
+			})
 			t.Run("根权限及身份不可从请求伪造", func(t *testing.T) {
 				gin.SetMode(gin.TestMode)
 				for _, role := range []int{1, 10} {

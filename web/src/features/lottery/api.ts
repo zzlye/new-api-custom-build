@@ -5,15 +5,25 @@ import type {
   LotteryActivity,
   LotteryDraw,
   LotteryPage,
+  LotteryParticipantActivity,
   LotteryRules,
   LotteryWinner,
 } from './types'
 
 type Response<T> = { success: boolean; message?: string; data: T }
+type ActivityList<T> = LotteryPage<T> & { paid_topup_quota: number }
 
+export function getLotteryActivities(
+  root: true,
+  page: number
+): Promise<ActivityList<LotteryActivity>>
+export function getLotteryActivities(
+  root: false,
+  page: number
+): Promise<ActivityList<LotteryParticipantActivity>>
 export async function getLotteryActivities(root: boolean, page: number) {
   const response = await api.get<
-    Response<LotteryPage<LotteryActivity> & { paid_topup_quota: number }>
+    Response<ActivityList<LotteryActivity | LotteryParticipantActivity>>
   >(root ? '/api/lottery' : '/api/user/lottery', {
     params: { p: page, page_size: 10 },
   })

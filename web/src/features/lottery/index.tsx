@@ -29,7 +29,7 @@ import { LotteryHistory } from './lottery-history'
 import { LotteryStage } from './lottery-stage'
 import { LotteryWinners } from './lottery-winners'
 import { lotteryMoney } from './reward-format'
-import type { LotteryActivity } from './types'
+import type { LotteryParticipantActivity } from './types'
 
 export function LotteryPage() {
   const { t, i18n } = useTranslation()
@@ -38,7 +38,9 @@ export function LotteryPage() {
   const client = useQueryClient()
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<number | null>(null)
-  const [history, setHistory] = useState<LotteryActivity | null>(null)
+  const [history, setHistory] = useState<LotteryParticipantActivity | null>(
+    null
+  )
   const userId = useAuthStore((s) => s.auth.user?.id)
   // 请求失败时保留编号；再次点击先取回同一结果，避免响应丢失导致重复抽奖。
   const requests = useRef(new Map<number, string>())

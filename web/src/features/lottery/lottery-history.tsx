@@ -14,7 +14,7 @@ import { lotteryMoney } from './reward-format'
 import type { LotteryActivity } from './types'
 
 export function LotteryHistory(props: {
-  activity: LotteryActivity
+  activity: Pick<LotteryActivity, 'id' | 'name'>
   root?: boolean
   onClose: () => void
 }) {

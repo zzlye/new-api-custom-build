@@ -41,6 +41,24 @@ export type LotteryActivity = LotteryRules & {
   ended_at: number
 }
 
+// 用户端仅使用参与资格和个人次数，奖池与发奖配置只由 root 管理接口返回。
+export type LotteryParticipantActivity = Pick<
+  LotteryActivity,
+  | 'id'
+  | 'name'
+  | 'status'
+  | 'min_topup_quota'
+  | 'topup_scope'
+  | 'topup_start'
+  | 'topup_end'
+  | 'per_user_limit'
+  | 'used_draws'
+  | 'eligible_topup_quota'
+  | 'created_at'
+  | 'started_at'
+  | 'ended_at'
+>
+
 export type LotteryDraw = {
   id: number
   activity_id: number

@@ -10,10 +10,10 @@ import { formatNumber } from '@/lib/format'
 
 import { lotteryPeriod } from './lottery-time'
 import { lotteryMoney } from './reward-format'
-import { LOTTERY_STATUSES, type LotteryActivity } from './types'
+import { LOTTERY_STATUSES, type LotteryParticipantActivity } from './types'
 
 export function LotteryStage(props: {
-  activity: LotteryActivity
+  activity: LotteryParticipantActivity
   pending: boolean
   retrying: boolean
   onDraw: () => void
@@ -42,30 +42,11 @@ export function LotteryStage(props: {
       <div className='relative grid min-w-0 gap-6 p-6 sm:p-9 lg:min-h-[420px] lg:grid-cols-[1.35fr_1fr] lg:gap-12'>
         <div className='flex min-w-0 flex-col items-center justify-center py-4 text-center sm:py-5'>
           <div
-            className='lottery-gift border-primary/20 bg-primary/10 text-primary mb-7 flex size-24 items-center justify-center rounded-3xl border sm:size-28 dark:text-sky-300'
+            className='lottery-gift border-primary/20 bg-primary/10 text-primary flex size-32 items-center justify-center rounded-3xl border sm:size-44 dark:text-sky-300'
             aria-hidden='true'
           >
-            <Gift className='size-12 sm:size-14' strokeWidth={1.3} />
+            <Gift className='size-16 sm:size-24' strokeWidth={1.3} />
             <Sparkles className='lottery-spark size-6' />
-          </div>
-          <p className='text-muted-foreground text-sm'>
-            {t('Remaining prize pool')}
-          </p>
-          <p className='mt-3 max-w-full text-4xl font-semibold tracking-tight break-all tabular-nums sm:text-5xl xl:text-6xl'>
-            {lotteryMoney(a.remaining_quota, locale)}
-          </p>
-          <div className='text-muted-foreground mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm'>
-            <span>
-              {t('Total prize pool')}{' '}
-              <strong className='text-foreground font-medium'>
-                {lotteryMoney(a.total_quota, locale)}
-              </strong>
-            </span>
-            {a.mode === 'random_shares' ? (
-              <span>
-                {t('{{count}} shares remaining', { count: a.remaining_shares })}
-              </span>
-            ) : null}
           </div>
         </div>
         <div className='bg-background/30 flex min-w-0 flex-col justify-center rounded-2xl border p-5 sm:p-7'>

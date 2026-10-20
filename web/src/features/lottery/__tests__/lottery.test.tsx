@@ -111,6 +111,46 @@ afterEach(() => {
 })
 
 describe('抽奖界面', () => {
+  it('用户页不展示奖池金额和剩余份数，保留个人抽奖入口', async () => {
+    vi.mocked(api.get).mockImplementation(async (url) => ({
+      data: {
+        success: true,
+        data: url.endsWith('/winners')
+          ? []
+          : {
+              items: [
+                {
+                  ...activity,
+                  total_quota: 123456,
+                  remaining_quota: 9188,
+                  remaining_shares: 17,
+                },
+              ],
+              total: 1,
+            },
+      },
+    }))
+    render(fixture(<LotteryPage />))
+    const stage = await screen.findByRole('region', { name: '秋日抽奖' })
+    expect(stage).not.toHaveTextContent('剩余奖池')
+    expect(stage).not.toHaveTextContent('总奖池')
+    expect(stage).not.toHaveTextContent('91.88')
+    expect(stage).not.toHaveTextContent('1,234.56')
+    expect(stage).not.toHaveTextContent('17 份')
+    expect(
+      within(stage).getByRole('button', { name: '立即抽奖' })
+    ).toBeEnabled()
+    expect(
+      within(stage).getByRole('button', { name: '抽奖记录' })
+    ).toBeVisible()
+  })
+
+  it('root管理页仍显示奖池用于管理', async () => {
+    render(fixture(<LotterySettings />))
+    expect(await screen.findByText('秋日抽奖')).toBeVisible()
+    expect(screen.getByText('剩余 / 总奖池')).toBeVisible()
+  })
+
   it('只展示一个完整活动，切换历史活动不覆盖当前活动', async () => {
     const user = userEvent.setup()
     const old = { ...activity, id: 2, name: '上期抽奖', status: 'ended' }
