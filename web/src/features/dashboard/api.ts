@@ -17,12 +17,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import type {
+  ModelCacheStats,
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
 } from './types'
+
+export async function getModelCacheStats(
+  params: {
+    start_timestamp: number
+    end_timestamp: number
+    username?: string
+  },
+  signal?: AbortSignal
+) {
+  const res = await api.get<{
+    success: boolean
+    data: ModelCacheStats[]
+    message?: string
+  }>('/api/data/cache', { params, signal })
+  return requireServerSuccess(res.data).data
+}
 
 // ============================================================================
 // Dashboard APIs

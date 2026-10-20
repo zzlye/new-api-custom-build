@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "Taux de cache",
+    "Model cache statistics": "Statistiques de cache par modèle",
+    "Share cache statistics with users": "Partager les statistiques de cache avec les utilisateurs",
     "Navigation": "Navigation",
     "Lucky draw": "Tirage",
     "Draw activities": "Campagnes de tirage",

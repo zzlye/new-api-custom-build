@@ -34,6 +34,7 @@ func GetAllLogs(c *gin.Context) {
 		model.FormatRootLogs(logs)
 	}
 	pageInfo.SetTotal(int(total))
+	model.AttachLogCacheUsage(logs, c.GetInt("role"))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -57,6 +58,7 @@ func GetUserLogs(c *gin.Context) {
 		return
 	}
 	pageInfo.SetTotal(int(total))
+	model.AttachLogCacheUsage(logs, c.GetInt("role"))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return

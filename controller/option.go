@@ -199,6 +199,18 @@ func UpdateOption(c *gin.Context) {
 		common.ApiError(c, errors.New("请在支付宝收款码设置中修改配置"))
 		return
 	}
+	if option.Key == "general_setting.cache_stats_public" {
+		// 不依赖前端隐藏或路由约定，公开权限只能由根用户修改。
+		if c.GetInt("role") != common.RoleRootUser {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改缓存统计公开设置"})
+			return
+		}
+		value := fmt.Sprint(option.Value)
+		if value != "true" && value != "false" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "缓存统计公开设置必须为布尔值"})
+			return
+		}
+	}
 	// 注册限制只允许根用户修改，处理器与根用户设置路由双重校验。
 	if option.Key == "RegisterInviteCodeRequired" && c.GetInt("role") != common.RoleRootUser {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改注册邀请码设置"})

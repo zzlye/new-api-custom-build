@@ -22,9 +22,12 @@ import {
   useReactTable,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { act, render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
+
+import { useAuthStore } from '@/stores/auth-store'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { usageLogSchema, type UsageLog } from '../../data/schema'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
@@ -336,4 +339,37 @@ it('shows loading placeholders without displaying stale log fields', () => {
   expect(
     screen.queryByRole('button', { name: /^Model:/ })
   ).not.toBeInTheDocument()
+})
+
+it('手机日志关闭公开时仅根用户显示命中率，原缓存数字保留', () => {
+  const auth = useAuthStore.getState()
+  const system = useSystemConfigStore.getState()
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+  useSystemConfigStore.getState().setConfig({ cacheStatsPublic: false })
+  const view = renderLogs({
+    logs: [
+      {
+        ...log,
+        cache_usage: {
+          input_tokens: 1200,
+          read_tokens: 300,
+          write_tokens: 200,
+          hit_rate: 25,
+        },
+      },
+    ],
+  })
+  try {
+    expect(screen.getByText('Cache hit rate 25%')).toBeVisible()
+    act(() =>
+      useAuthStore.getState().auth.setUser({ id: 2, username: 'user', role: 1 })
+    )
+    expect(screen.queryByText('Cache hit rate 25%')).not.toBeInTheDocument()
+    expect(screen.getByText('Cache ↓ 300')).toBeVisible()
+    expect(screen.getByText('Cache ↑ 200')).toBeVisible()
+  } finally {
+    view.unmount()
+    useAuthStore.setState(auth, true)
+    useSystemConfigStore.setState(system, true)
+  }
 })

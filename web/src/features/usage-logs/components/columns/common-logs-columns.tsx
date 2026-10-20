@@ -71,6 +71,7 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
+import { CacheHitRate } from '../cache-hit-rate'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
@@ -725,7 +726,11 @@ export function useCommonLogsColumns(
 
           const promptTokens = log.prompt_tokens || 0
           const completionTokens = log.completion_tokens || 0
-          if (promptTokens === 0 && completionTokens === 0) {
+          if (
+            promptTokens === 0 &&
+            completionTokens === 0 &&
+            !hasAnyCacheTokens(other)
+          ) {
             return <span className='text-muted-foreground text-xs'>-</span>
           }
 
@@ -757,6 +762,7 @@ export function useCommonLogsColumns(
                   )}
                 </div>
               )}
+              <CacheHitRate log={log} />
             </div>
           )
         },

@@ -53,6 +53,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
 const dataDashboardSchema = z.object({
+  general_setting: z.object({ cache_stats_public: z.boolean() }),
   DataExportEnabled: z.boolean(),
   DataExportInterval: z.number().int().min(1).max(1440),
   DataExportDefaultTime: z.enum(['hour', 'day', 'week']),
@@ -84,10 +85,21 @@ export function DashboardSection({ defaultValues }: DashboardSectionProps) {
   }, [defaultValues, form])
 
   const onSubmit = async (values: DataDashboardFormValues) => {
-    const updates = Object.entries(values).filter(
+    const { general_setting, ...dashboard } = values
+    const updates = Object.entries(dashboard).filter(
       ([key, value]) =>
         value !== defaultValues[key as keyof DataDashboardFormValues]
     )
+
+    if (
+      general_setting.cache_stats_public !==
+      defaultValues.general_setting.cache_stats_public
+    ) {
+      await updateOption.mutateAsync({
+        key: 'general_setting.cache_stats_public',
+        value: general_setting.cache_stats_public,
+      })
+    }
 
     for (const [key, value] of updates) {
       await updateOption.mutateAsync({ key, value })
@@ -122,6 +134,25 @@ export function DashboardSection({ defaultValues }: DashboardSectionProps) {
             )}
           />
 
+          <FormField
+            control={form.control}
+            name='general_setting.cache_stats_public'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>
+                    {t('Share cache statistics with users')}
+                  </FormLabel>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
           <div className='grid gap-6 sm:grid-cols-2'>
             <FormField
               control={form.control}
@@ -154,12 +185,10 @@ export function DashboardSection({ defaultValues }: DashboardSectionProps) {
                 <FormItem>
                   <FormLabel>{t('Default time granularity')}</FormLabel>
                   <Select
-                    items={[
-                      ...granularityOptions.map((option) => ({
-                        value: option.value,
-                        label: t(option.label),
-                      })),
-                    ]}
+                    items={granularityOptions.map((option) => ({
+                      value: option.value,
+                      label: t(option.label),
+                    }))}
                     onValueChange={field.onChange}
                     value={field.value}
                     disabled={!isEnabled}

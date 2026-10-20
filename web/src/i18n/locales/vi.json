@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "Tỷ lệ trúng bộ nhớ đệm",
+    "Model cache statistics": "Thống kê bộ nhớ đệm theo mô hình",
+    "Share cache statistics with users": "Hiển thị thống kê bộ nhớ đệm cho người dùng",
     "Navigation": "Điều hướng",
     "Lucky draw": "Rút thưởng",
     "Draw activities": "Sự kiện rút thưởng",

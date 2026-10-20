@@ -134,6 +134,9 @@ type Log struct {
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
+
+	// 缓存统计仅在授权响应中计算，不落库、不改变原始计费字段。
+	CacheUsage *LogCacheUsage `json:"cache_usage,omitempty" gorm:"-"`
 }
 
 // don't use iota, avoid change log type value

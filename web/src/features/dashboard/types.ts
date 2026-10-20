@@ -18,6 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { TimeGranularity } from '@/lib/time'
 
+export interface ModelCacheStats {
+  model_name: string
+  requests: number
+  input_tokens: number
+  read_tokens: number
+  write_tokens: number
+  hit_rate: number
+}
+
 // ============================================================================
 // Quota & Usage Data Types
 // ============================================================================

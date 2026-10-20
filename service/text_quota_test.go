@@ -109,7 +109,7 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		estimate                                  int
 		usage                                     *dto.Usage
 		audio, stream, refund, insufficient, tool bool
-		realtime, reserveInsufficient             bool
+		realtime, reserveInsufficient, imageChat  bool
 		wallet, outboundImages                    int
 		groupRatio                                float64
 		want                                      int
@@ -130,6 +130,7 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		{name: "failed request refunds exactly once", expression: flat, refund: true},
 		{name: "insufficient wallet never reserves tokens", expression: flat, insufficient: true},
 		{name: "image cache stream settles usage and refunds unused reservation", expression: imageExpression, estimate: 10000, usage: imageUsage, stream: true, want: 4113, unit: billingexpr.BillingUnitToken},
+		{name: "多模态文字对话记录缓存命中率", expression: imageExpression, estimate: 10000, usage: imageUsage, imageChat: true, want: 4113, unit: billingexpr.BillingUnitToken},
 		{name: "audio settlement records image cache billing inputs", expression: imageExpression, estimate: 10000, usage: imageUsage, audio: true, want: 4113, unit: billingexpr.BillingUnitToken},
 		{name: "realtime records actual expression inputs", expression: imageExpression, estimate: 10000, usage: imageUsage, realtime: true, want: 4000, unit: billingexpr.BillingUnitToken},
 		{name: "image cache insufficient wallet never reserves tokens", expression: imageExpression, estimate: 10000, insufficient: true},
@@ -179,7 +180,7 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 			info.SetEstimatePromptTokens(tc.estimate)
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 			ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
-			if tc.expression == imageExpression {
+			if tc.expression == imageExpression && !tc.imageChat {
 				ctx.Request.URL.Path = "/v1/images/generations"
 				info.RelayMode = relayconstant.RelayModeImagesGenerations
 			}
@@ -267,6 +268,16 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 						} else {
 							if !tc.audio {
 								assert.Equal(t, float64(300), other["cache_tokens"])
+								// 实际写出的日志必须能还原完整输入，不能用扣除图片/缓存后的计费用量当分母。
+								cache := model.CacheUsageForLog(&log)
+								if tc.imageChat {
+									require.NotNil(t, cache)
+									assert.EqualValues(t, 1000, cache.InputTokens)
+									assert.Equal(t, 30.0, cache.HitRate)
+								} else {
+									assert.Nil(t, cache, "图片生成不显示缓存命中率")
+								}
+								assert.Equal(t, true, other["cache_input_includes_cache"])
 							}
 							assert.Equal(t, float64(200), other["image_cache_tokens"])
 							assert.Equal(t, float64(300), billable["p"])

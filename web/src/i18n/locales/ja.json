@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "キャッシュヒット率",
+    "Model cache statistics": "モデル別キャッシュ統計",
+    "Share cache statistics with users": "ユーザーにキャッシュ統計を公開",
     "Navigation": "ナビゲーション",
     "Lucky draw": "抽選",
     "Draw activities": "抽選イベント",

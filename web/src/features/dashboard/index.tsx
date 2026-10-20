@@ -35,6 +35,7 @@ import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { ModelCacheStatistics } from './components/models/model-cache-stats'
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
@@ -363,6 +364,7 @@ export function Dashboard() {
                   </Suspense>
                 </FadeIn>
               )}
+              <ModelCacheStatistics filters={modelFilters} />
               <FadeIn delay={0.1}>
                 <Suspense fallback={<ModelChartsFallback />}>
                   <LazyConsumptionDistributionChart

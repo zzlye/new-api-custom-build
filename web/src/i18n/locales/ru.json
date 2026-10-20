@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "Процент попаданий в кэш",
+    "Model cache statistics": "Статистика кэша моделей",
+    "Share cache statistics with users": "Показывать пользователям статистику кэша",
     "Navigation": "Навигация",
     "Lucky draw": "Розыгрыш",
     "Draw activities": "Розыгрыши",

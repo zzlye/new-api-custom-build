@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "缓存命中率",
+    "Model cache statistics": "模型缓存统计",
+    "Share cache statistics with users": "向用户公开缓存统计",
     "Navigation": "导航",
     "Lucky draw": "抽奖",
     "Draw activities": "抽奖活动",

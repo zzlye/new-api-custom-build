@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "快取命中率",
+    "Model cache statistics": "模型快取統計",
+    "Share cache statistics with users": "向使用者公開快取統計",
     "Navigation": "導覽",
     "Lucky draw": "抽獎",
     "Draw activities": "抽獎活動",

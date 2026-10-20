@@ -11,6 +11,8 @@ const (
 )
 
 type GeneralSetting struct {
+	// 关闭公开后，缓存命中率与看板缓存汇总仍对根用户开放。
+	CacheStatsPublic    bool   `json:"cache_stats_public"`
 	DocsLink            string `json:"docs_link"`
 	PingIntervalEnabled bool   `json:"ping_interval_enabled"`
 	PingIntervalSeconds int    `json:"ping_interval_seconds"`

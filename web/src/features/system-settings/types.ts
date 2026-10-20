@@ -248,6 +248,7 @@ export type ContentSettings = {
   'console_setting.faq_enabled': boolean
   'console_setting.uptime_kuma_enabled': boolean
   DataExportEnabled: boolean
+  'general_setting.cache_stats_public': boolean
   DataExportDefaultTime: string
   DataExportInterval: number
   Chats: string

@@ -1,5 +1,8 @@
 {
   "translation": {
+    "Cache hit rate": "Cache hit rate",
+    "Model cache statistics": "Model cache statistics",
+    "Share cache statistics with users": "Share cache statistics with users",
     "Navigation": "Navigation",
     "Lucky draw": "Lucky draw",
     "Draw activities": "Draw activities",

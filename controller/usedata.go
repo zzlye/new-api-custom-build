@@ -1,14 +1,45 @@
 package controller
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
 )
+
+func GetModelCacheStats(c *gin.Context) {
+	role := c.GetInt("role")
+	if !model.CanViewCacheStats(role) || c.GetInt("id") <= 0 {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无权查看缓存统计"})
+		return
+	}
+	start, end, ok := parseFlowQuotaTimeRange(c)
+	if !ok {
+		return
+	}
+	// 限定单次查询窗口并允许请求取消，避免全历史日志扫描拖住日志库。
+	if end-start > 31*24*3600 {
+		common.ApiErrorMsg(c, "缓存统计时间跨度不能超过 31 天")
+		return
+	}
+	userID, username := c.GetInt("id"), ""
+	if role == common.RoleRootUser {
+		userID, username = 0, c.Query("username")
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	data, err := model.GetModelCacheStats(ctx, start, end, userID, username)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
+}
 
 func parseFlowQuotaTimeRange(c *gin.Context) (int64, int64, bool) {
 	startTimestamp, err := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)

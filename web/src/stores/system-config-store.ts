@@ -44,6 +44,7 @@ export interface SystemConfig {
   footerHtml?: string
   demoSiteEnabled?: boolean
   displayTokenStatEnabled?: boolean
+  cacheStatsPublic?: boolean
   currency: CurrencyConfig
 }
 

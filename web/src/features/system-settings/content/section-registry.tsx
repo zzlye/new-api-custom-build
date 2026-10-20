@@ -45,6 +45,9 @@ const CONTENT_SECTIONS = [
       <DashboardSection
         defaultValues={{
           DataExportEnabled: settings.DataExportEnabled,
+          general_setting: {
+            cache_stats_public: settings['general_setting.cache_stats_public'],
+          },
           DataExportInterval: settings.DataExportInterval,
           DataExportDefaultTime: validateDataExportDefaultTime(
             settings.DataExportDefaultTime
