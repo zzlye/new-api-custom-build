@@ -144,6 +144,11 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
+				// 抽奖只使用登录用户身份，提交限流和防重均在服务端执行。
+				selfRoute.GET("/lottery", middleware.DisableCache(), controller.GetLotteryActivities)
+				selfRoute.GET("/lottery/:id/draws", middleware.DisableCache(), controller.GetLotteryDraws)
+				selfRoute.POST("/lottery/:id/draw", middleware.UserCriticalRateLimit("lottery-draw"), middleware.DisableCache(), controller.DrawLottery)
+
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
@@ -213,6 +218,15 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
+		lotteryRoute := apiRouter.Group("/lottery")
+		lotteryRoute.Use(middleware.RootAuth(), middleware.DisableCache())
+		{
+			lotteryRoute.GET("", controller.GetAdminLotteryActivities)
+			lotteryRoute.POST("", controller.SaveLotteryActivity)
+			lotteryRoute.PUT("/:id", controller.SaveLotteryActivity)
+			lotteryRoute.POST("/:id/state", controller.ChangeLotteryState)
+			lotteryRoute.GET("/:id/draws", controller.GetAdminLotteryDraws)
+		}
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		optionRoute.GET("/async_media_retry_channels", controller.GetAsyncMediaRetryChannels)

@@ -125,7 +125,8 @@ export function AppHeader({
       {rightContent ?? (
         <div className='ms-auto flex shrink-0 items-center gap-1 sm:gap-2'>
           {showTopNav && (
-            <div className='me-1 hidden lg:block'>
+            // TopNav 自带小屏菜单，不能再由外层隐藏，否则手机无法进入抽奖。
+            <div className='me-1'>
               <TopNav links={links} />
             </div>
           )}

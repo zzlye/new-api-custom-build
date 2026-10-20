@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { LotterySettings } from '@/features/lottery/lottery-settings'
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
@@ -207,6 +208,11 @@ const BILLING_SECTIONS = [
         }}
       />
     ),
+  },
+  {
+    id: 'lottery',
+    titleKey: 'Draw activities',
+    build: () => <LotterySettings />,
   },
 ] as const
 

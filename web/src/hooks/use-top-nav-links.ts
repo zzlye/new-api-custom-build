@@ -87,6 +87,13 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Rankings'), href: '/rankings', requiresAuth })
   }
 
+  // 抽奖独立页面与桌面、移动端共用同一个导航入口。
+  links.push({
+    title: t('Lucky draw'),
+    href: '/lottery',
+    requiresAuth: !isAuthed,
+  })
+
   // Docs (supports external links)
   if (modules?.docs !== false) {
     links.push({
