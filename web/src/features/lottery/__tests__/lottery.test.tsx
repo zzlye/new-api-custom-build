@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createInstance, type i18n } from 'i18next'
 import type { ReactNode } from 'react'
@@ -17,6 +23,7 @@ import {
 import { LotteryPage } from '..'
 import { LotteryForm } from '../lottery-form'
 import { LotterySettings } from '../lottery-settings'
+import { lotteryTimeStamp, lotteryTimeValue } from '../lottery-time'
 import type { LotteryActivity } from '../types'
 
 let client: QueryClient
@@ -29,8 +36,12 @@ const activity: LotteryActivity = {
   total_quota: 10000,
   remaining_quota: 10000,
   min_topup_quota: 10000,
+  topup_scope: 'lifetime',
+  topup_start: 0,
+  topup_end: 0,
   per_user_limit: 2,
   used_draws: 0,
+  eligible_topup_quota: 10000,
   draw_count: 0,
   min_percent: 0,
   max_percent: 0,
@@ -62,14 +73,25 @@ beforeEach(async () => {
   useSystemConfigStore
     .getState()
     .setConfig({ currency: { ...DEFAULT_CURRENCY_CONFIG, quotaPerUnit: 100 } })
-  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: {
-      success: true,
-      data: url.endsWith('/draws')
-        ? { items: [], total: 0 }
-        : { items: [{ ...activity }], total: 1, paid_topup_quota: 10000 },
-    },
-  }))
+  vi.spyOn(api, 'delete').mockResolvedValue({ data: { success: true } })
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url.endsWith('/winners')) {
+      return {
+        data: {
+          success: true,
+          data: [{ id: 1, username: 'p***t', quota: 100 }],
+        },
+      }
+    }
+    return {
+      data: {
+        success: true,
+        data: url.endsWith('/draws')
+          ? { items: [], total: 0 }
+          : { items: [{ ...activity }], total: 1, paid_topup_quota: 10000 },
+      },
+    }
+  })
   vi.spyOn(api, 'post').mockResolvedValue({
     data: {
       success: true,
@@ -89,6 +111,210 @@ afterEach(() => {
 })
 
 describe('抽奖界面', () => {
+  it('只展示一个完整活动，切换历史活动不覆盖当前活动', async () => {
+    const user = userEvent.setup()
+    const old = { ...activity, id: 2, name: '上期抽奖', status: 'ended' }
+    vi.mocked(api.get).mockImplementation(async (url) => ({
+      data: {
+        success: true,
+        data: url.endsWith('/winners')
+          ? []
+          : { items: [activity, old], total: 2 },
+      },
+    }))
+    render(fixture(<LotteryPage />))
+    expect(
+      await screen.findByRole('region', { name: '秋日抽奖' })
+    ).toBeVisible()
+    expect(screen.queryByText('固定份数拼手气')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: '上期抽奖' })
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: '切换活动' }))
+    await user.click(await screen.findByRole('option', { name: '上期抽奖' }))
+    expect(
+      await screen.findByRole('region', { name: '上期抽奖' })
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('region', { name: '秋日抽奖' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '立即抽奖' })).toBeDisabled()
+  })
+
+  it('真实中奖栏可以暂停继续，复制滚动项不重复读屏', async () => {
+    const user = userEvent.setup()
+    render(fixture(<LotteryPage />))
+    const ticker = await screen.findByRole('region', { name: '最新中奖' })
+    await within(ticker).findByRole('button', { name: '暂停滚动' })
+    expect(within(ticker).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(ticker).getByRole('listitem')).toHaveTextContent('p***t')
+    await user.click(within(ticker).getByRole('button', { name: '暂停滚动' }))
+    expect(
+      within(ticker).getByRole('button', { name: '继续滚动' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(ticker).getByRole('button', { name: '继续滚动' }))
+    expect(
+      within(ticker).getByRole('button', { name: '暂停滚动' })
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('时段门槛展示当前时段额度而非历史累计，未达门槛不能抽', async () => {
+    vi.mocked(api.get).mockImplementation(async (url) => ({
+      data: {
+        success: true,
+        data: url.endsWith('/winners')
+          ? []
+          : {
+              items: [
+                {
+                  ...activity,
+                  topup_scope: 'period',
+                  topup_start: 1792425600,
+                  topup_end: 1792511999,
+                  eligible_topup_quota: 9000,
+                },
+              ],
+              total: 1,
+              paid_topup_quota: 999999,
+            },
+      },
+    }))
+    render(fixture(<LotteryPage />))
+    expect(await screen.findByText('我的时段充值')).toBeVisible()
+    expect(screen.queryByText('我的累计充值')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '立即抽奖' })).toBeDisabled()
+    expect(await screen.findByText('暂无中奖记录')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: '暂停滚动' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('指定时段必须填写有效范围，保存按北京时间换算且切回累计清除范围', async () => {
+    const user = userEvent.setup()
+    const view = render(fixture(<LotteryForm onClose={vi.fn()} />))
+    await user.type(
+      screen.getByRole('textbox', { name: '活动名称' }),
+      '时段活动'
+    )
+    await user.click(screen.getByRole('combobox', { name: '充值门槛' }))
+    await user.click(
+      await screen.findByRole('option', { name: '指定时间段充值' })
+    )
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByText('请选择有效的充值起止时间')).toBeVisible()
+    expect(api.post).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('充值开始时间（北京时间）'), {
+      target: { value: '2026-10-20T00:00:00' },
+    })
+    fireEvent.change(screen.getByLabelText('充值结束时间（北京时间）'), {
+      target: { value: '2026-10-20T23:59:59' },
+    })
+    expect(
+      lotteryTimeStamp(
+        (screen.getByLabelText('充值开始时间（北京时间）') as HTMLInputElement)
+          .value
+      )
+    ).toBe(1792425600)
+    expect(
+      lotteryTimeStamp(
+        (screen.getByLabelText('充值结束时间（北京时间）') as HTMLInputElement)
+          .value
+      )
+    ).toBe(1792511999)
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/api/lottery',
+        expect.objectContaining({
+          topup_scope: 'period',
+          topup_start: 1792425600,
+          topup_end: 1792511999,
+        })
+      )
+    )
+    view.unmount()
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValue({ data: { success: true, data: activity } })
+    render(
+      fixture(
+        <LotteryForm
+          activity={{
+            ...activity,
+            status: 'draft',
+            topup_scope: 'period',
+            topup_start: 1792425600,
+            topup_end: 1792511999,
+          }}
+          onClose={vi.fn()}
+        />
+      )
+    )
+    await user.click(screen.getByRole('combobox', { name: '充值门槛' }))
+    await user.click(await screen.findByRole('option', { name: '累计充值' }))
+    expect(
+      screen.queryByLabelText('充值开始时间（北京时间）')
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith(
+        '/api/lottery/1',
+        expect.objectContaining({
+          topup_scope: 'lifetime',
+          topup_start: 0,
+          topup_end: 0,
+        })
+      )
+    )
+  })
+
+  it('root只能删除旧活动，取消不发请求，失败保留确认框后可重试', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.get).mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          items: [
+            activity,
+            { ...activity, id: 2, name: '旧活动', status: 'ended' },
+          ],
+          total: 2,
+        },
+      },
+    })
+    vi.mocked(api.delete).mockResolvedValueOnce({
+      data: { success: false, message: '删除失败' },
+    })
+    render(fixture(<LotterySettings />))
+    expect(await screen.findAllByRole('button', { name: '删除' })).toHaveLength(
+      1
+    )
+    await user.click(screen.getByRole('button', { name: '删除' }))
+    let dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '取消' }))
+    expect(api.delete).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: '删除' }))
+    dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: '删除' })).toBeEnabled()
+    )
+    expect(dialog).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+    expect(api.delete).toHaveBeenLastCalledWith('/api/lottery/2')
+  })
+
+  it('北京时间转换拒绝无效日期且不依赖浏览器本地时区', () => {
+    expect(lotteryTimeStamp('2026-10-20T00:00')).toBe(1792425600)
+    expect(lotteryTimeValue(1792425600)).toBe('2026-10-20T00:00:00')
+    expect(lotteryTimeStamp('2026-02-30T00:00')).toBe(0)
+    expect(lotteryTimeStamp('')).toBe(0)
+  })
+
   it('中文页面展示资格与剩余次数，记录弹窗能够打开关闭', async () => {
     const user = userEvent.setup()
     render(fixture(<LotteryPage />))
@@ -115,15 +341,22 @@ describe('抽奖界面', () => {
   ])(
     '活动暂停、次数耗尽或未达到门槛时禁用抽奖：%j',
     async ({ status, used_draws, paid }) => {
-      vi.mocked(api.get).mockResolvedValue({
-        data: {
-          success: true,
+      vi.mocked(api.get).mockImplementation(async (url) => {
+        if (url.endsWith('/winners')) {
+          return { data: { success: true, data: [] } }
+        }
+        return {
           data: {
-            items: [{ ...activity, status, used_draws }],
-            total: 1,
-            paid_topup_quota: paid,
+            success: true,
+            data: {
+              items: [
+                { ...activity, status, used_draws, eligible_topup_quota: paid },
+              ],
+              total: 1,
+              paid_topup_quota: paid,
+            },
           },
-        },
+        }
       })
       render(fixture(<LotteryPage />))
       expect(
@@ -214,6 +447,9 @@ describe('抽奖界面', () => {
       mode,
       total_quota: 10000,
       min_topup_quota: 10000,
+      topup_scope: 'lifetime',
+      topup_start: 0,
+      topup_end: 0,
       per_user_limit: 1,
       min_percent: mode.endsWith('_percent') ? 100 : 0,
       max_percent: mode.endsWith('_percent') ? 300 : 0,

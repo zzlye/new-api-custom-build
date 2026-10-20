@@ -6,6 +6,7 @@ import type {
   LotteryDraw,
   LotteryPage,
   LotteryRules,
+  LotteryWinner,
 } from './types'
 
 type Response<T> = { success: boolean; message?: string; data: T }
@@ -53,6 +54,18 @@ export async function getLotteryDraws(root: boolean, id: number, page: number) {
   const response = await api.get<Response<LotteryPage<LotteryDraw>>>(
     `${base}/${id}/draws`,
     { params: { p: page, page_size: 20 } }
+  )
+  return requireServerSuccess(response.data).data
+}
+
+export async function deleteLotteryActivity(id: number) {
+  const response = await api.delete<Response<null>>(`/api/lottery/${id}`)
+  requireServerSuccess(response.data)
+}
+
+export async function getLotteryWinners(id: number) {
+  const response = await api.get<Response<LotteryWinner[]>>(
+    `/api/user/lottery/${id}/winners`
   )
   return requireServerSuccess(response.data).data
 }

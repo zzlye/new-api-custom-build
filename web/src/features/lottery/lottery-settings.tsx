@@ -13,9 +13,14 @@ import { toIntlLocale } from '@/i18n/languages'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { changeLotteryState, getLotteryActivities } from './api'
+import {
+  changeLotteryState,
+  deleteLotteryActivity,
+  getLotteryActivities,
+} from './api'
 import { LotteryForm } from './lottery-form'
 import { LotteryHistory } from './lottery-history'
+import { lotteryPeriod } from './lottery-time'
 import { lotteryMoney } from './reward-format'
 import { LOTTERY_MODES, LOTTERY_STATUSES, type LotteryActivity } from './types'
 
@@ -29,6 +34,7 @@ export function LotterySettings() {
   const [editor, setEditor] = useState<LotteryActivity | 'new' | null>(null)
   const [history, setHistory] = useState<LotteryActivity | null>(null)
   const [ending, setEnding] = useState<LotteryActivity | null>(null)
+  const [deleting, setDeleting] = useState<LotteryActivity | null>(null)
   const query = useQuery({
     queryKey: ['lottery', 'admin', page],
     queryFn: () => getLotteryActivities(true, page),
@@ -40,6 +46,15 @@ export function LotterySettings() {
     onSuccess: () => {
       toast.success(t('Saved successfully'))
       setEnding(null)
+      void client.invalidateQueries({ queryKey: ['lottery'] })
+    },
+  })
+  const remove = useMutation({
+    mutationFn: deleteLotteryActivity,
+    onSuccess: () => {
+      toast.success(t('Deleted successfully'))
+      setDeleting(null)
+      setPage(1)
       void client.invalidateQueries({ queryKey: ['lottery'] })
     },
   })
@@ -103,8 +118,26 @@ export function LotterySettings() {
             },
             {
               id: 'threshold',
-              header: t('Cumulative top-up required'),
-              cell: (a) => lotteryMoney(a.min_topup_quota, locale),
+              header: t('Top-up eligibility'),
+              cell: (a) => (
+                <div className='space-y-1'>
+                  <div>
+                    {t(
+                      a.topup_scope === 'period'
+                        ? 'Period top-up required'
+                        : 'Cumulative top-up required'
+                    )}
+                  </div>
+                  <div>{lotteryMoney(a.min_topup_quota, locale)}</div>
+                  {a.topup_scope === 'period' ? (
+                    <div className='text-muted-foreground max-w-64 text-xs'>
+                      {t('Beijing time')}
+                      <br />
+                      {lotteryPeriod(a.topup_start, a.topup_end)}
+                    </div>
+                  ) : null}
+                </div>
+              ),
             },
             {
               id: 'limit',
@@ -179,6 +212,16 @@ export function LotterySettings() {
                   >
                     {t('Draw history')}
                   </Button>
+                  {['draft', 'ended', 'exhausted'].includes(a.status) ? (
+                    <Button
+                      size='sm'
+                      variant='ghost'
+                      disabled={remove.isPending}
+                      onClick={() => setDeleting(a)}
+                    >
+                      {t('Delete')}
+                    </Button>
+                  ) : null}
                 </div>
               ),
             },
@@ -216,6 +259,22 @@ export function LotterySettings() {
           onClose={() => setHistory(null)}
         />
       ) : null}
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(open) => {
+          if (!open && !remove.isPending) setDeleting(null)
+        }}
+        title={t('Delete draw activity')}
+        desc={t(
+          'Delete this activity? Issued rewards and financial records will be kept.'
+        )}
+        confirmText={t('Delete')}
+        destructive
+        isLoading={remove.isPending}
+        handleConfirm={() => {
+          if (deleting) remove.mutate(deleting.id)
+        }}
+      />
       <ConfirmDialog
         open={!!ending}
         onOpenChange={(open) => {

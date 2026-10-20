@@ -7251,6 +7251,25 @@
     "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.",
     "Move up": "Monter",
     "Move down": "Descendre",
-    "Time left to pay": "Temps restant pour payer"
+    "Time left to pay": "Temps restant pour payer",
+    "Top-up eligibility": "Condition de recharge",
+    "Lifetime top-ups": "Recharges cumulées",
+    "Top-ups within a period": "Recharges sur une période",
+    "Period top-up required": "Recharge requise sur la période",
+    "Your top-ups in this period": "Vos recharges sur la période",
+    "Top-up start (Beijing)": "Début des recharges (Pékin)",
+    "Top-up end (Beijing)": "Fin des recharges (Pékin)",
+    "Choose a valid top-up period": "Choisissez une période de recharge valide",
+    "Beijing time": "Heure de Pékin",
+    "Delete draw activity": "Supprimer le tirage",
+    "Delete this activity? Issued rewards and financial records will be kept.": "Supprimer cette activité ? Les récompenses versées et les écritures financières seront conservées.",
+    "Choose activity": "Choisir une activité",
+    "Your draw chances": "Vos chances de tirage",
+    "Eligible to participate": "Conditions remplies",
+    "Top-up requirement not met": "Seuil de recharge non atteint",
+    "Latest winners": "Derniers gagnants",
+    "No winners yet": "Aucun gagnant pour le moment",
+    "Pause winner scroll": "Suspendre le défilement",
+    "Resume winner scroll": "Reprendre le défilement"
   }
 }

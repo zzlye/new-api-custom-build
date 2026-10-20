@@ -7251,6 +7251,25 @@
     "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.",
     "Move up": "上へ移動",
     "Move down": "下へ移動",
-    "Time left to pay": "支払い期限まで"
+    "Time left to pay": "支払い期限まで",
+    "Top-up eligibility": "チャージ条件",
+    "Lifetime top-ups": "累計チャージ",
+    "Top-ups within a period": "指定期間のチャージ",
+    "Period top-up required": "期間内の必要チャージ額",
+    "Your top-ups in this period": "期間内のチャージ額",
+    "Top-up start (Beijing)": "チャージ開始日時（北京時間）",
+    "Top-up end (Beijing)": "チャージ終了日時（北京時間）",
+    "Choose a valid top-up period": "有効なチャージ期間を選択してください",
+    "Beijing time": "北京時間",
+    "Delete draw activity": "抽選イベントを削除",
+    "Delete this activity? Issued rewards and financial records will be kept.": "このイベントを削除しますか？付与済みの報酬と会計記録は保持されます。",
+    "Choose activity": "イベントを切り替え",
+    "Your draw chances": "自分の抽選",
+    "Eligible to participate": "参加条件を満たしています",
+    "Top-up requirement not met": "必要チャージ額に達していません",
+    "Latest winners": "最新の当選",
+    "No winners yet": "当選記録はまだありません",
+    "Pause winner scroll": "スクロールを停止",
+    "Resume winner scroll": "スクロールを再開"
   }
 }

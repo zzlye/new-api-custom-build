@@ -124,6 +124,36 @@ func DrawLottery(c *gin.Context) {
 }
 
 func GetLotteryDraws(c *gin.Context) { listLotteryDraws(c, false) }
+
+func DeleteLotteryActivity(c *gin.Context) {
+	if !lotteryRoot(c) {
+		return
+	}
+	id, err := lotteryID(c)
+	if err == nil {
+		err = model.DeleteLotteryActivity(id)
+	}
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+func GetLotteryWinners(c *gin.Context) {
+	id, err := lotteryID(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items, err := model.ListLotteryWinners(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, items)
+}
+
 func GetAdminLotteryDraws(c *gin.Context) {
 	if lotteryRoot(c) {
 		listLotteryDraws(c, true)

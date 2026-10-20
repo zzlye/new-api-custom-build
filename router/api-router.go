@@ -147,6 +147,7 @@ func SetApiRouter(router *gin.Engine) {
 				// 抽奖只使用登录用户身份，提交限流和防重均在服务端执行。
 				selfRoute.GET("/lottery", middleware.DisableCache(), controller.GetLotteryActivities)
 				selfRoute.GET("/lottery/:id/draws", middleware.DisableCache(), controller.GetLotteryDraws)
+				selfRoute.GET("/lottery/:id/winners", middleware.DisableCache(), controller.GetLotteryWinners)
 				selfRoute.POST("/lottery/:id/draw", middleware.UserCriticalRateLimit("lottery-draw"), middleware.DisableCache(), controller.DrawLottery)
 
 				// Custom OAuth bindings
@@ -224,6 +225,7 @@ func SetApiRouter(router *gin.Engine) {
 			lotteryRoute.GET("", controller.GetAdminLotteryActivities)
 			lotteryRoute.POST("", controller.SaveLotteryActivity)
 			lotteryRoute.PUT("/:id", controller.SaveLotteryActivity)
+			lotteryRoute.DELETE("/:id", controller.DeleteLotteryActivity)
 			lotteryRoute.POST("/:id/state", controller.ChangeLotteryState)
 			lotteryRoute.GET("/:id/draws", controller.GetAdminLotteryDraws)
 		}

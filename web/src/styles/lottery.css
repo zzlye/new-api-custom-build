@@ -1,0 +1,52 @@
+/* 页面沿用全站毛玻璃，仅在抽奖主区增加轻量奖池光晕。 */
+.lottery-stage {
+  position: relative;
+  isolation: isolate;
+}
+.lottery-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 22% 50%,
+    color-mix(in srgb, var(--primary) 12%, transparent),
+    transparent 65%
+  );
+}
+.lottery-gift {
+  position: relative;
+  transform: rotate(-8deg);
+  box-shadow: 0 12px 36px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.lottery-spark {
+  position: absolute;
+  right: -18px;
+  top: -12px;
+  transform: rotate(8deg);
+}
+.lottery-ticker-track {
+  animation: lottery-winner-scroll linear infinite;
+}
+.lottery-ticker:hover .lottery-ticker-track,
+.lottery-ticker[data-paused='true'] .lottery-ticker-track {
+  animation-play-state: paused;
+}
+@keyframes lottery-winner-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+/* 减少动态效果时保留可手动横向滚动的真实列表，不强迫用户看动画。 */
+@media (prefers-reduced-motion: reduce) {
+  .lottery-ticker {
+    overflow-x: auto;
+  }
+  .lottery-ticker-track {
+    animation: none;
+  }
+  .lottery-ticker-list[aria-hidden='true'] {
+    display: none;
+  }
+}

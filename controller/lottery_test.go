@@ -32,6 +32,18 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 			})
 			model.DB, model.LOG_DB, common.RedisEnabled, common.QuotaPerUnit = db, db, false, 100
 			common.SetDatabaseTypes(common.DatabaseType(dialect), common.DatabaseType(dialect))
+			t.Run("全新数据库重复建表和流水唯一约束", func(t *testing.T) {
+				fresh, _ := newAuditTestDatabase(t, dialect, dsn)
+				for range 2 {
+					require.NoError(t, fresh.AutoMigrate(&model.LotteryActivity{}, &model.LotteryDraw{}))
+				}
+				a := model.LotteryActivity{Name: "全新活动", Status: model.LotteryDraft, TotalQuota: 100, RemainingQuota: 100}
+				require.NoError(t, fresh.Create(&a).Error)
+				draw := model.LotteryDraw{ActivityID: a.ID, UserID: 1, RequestID: "fresh-unique-request", Quota: 10}
+				require.NoError(t, fresh.Create(&draw).Error)
+				draw.ID = 0
+				require.Error(t, fresh.Create(&draw).Error)
+			})
 			var version string
 			versionSQL := "SELECT VERSION()"
 			if dialect == "sqlite" {
@@ -50,9 +62,18 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 			}
 			// 充值底账已经存在时增加活动表；重复迁移不能改变老账号和历史订单。
 			require.NoError(t, db.Create(&model.TopUp{UserId: 1, TradeNo: "paid-100", Amount: 100, Money: 80, Status: common.TopUpStatusSuccess, PaymentProvider: model.PaymentProviderEpay, LogClearedAt: 1}).Error)
+			// 使用上一版本活动结构建立旧库，再验证新增门槛字段的默认值与重复迁移。
+			require.NoError(t, db.AutoMigrate(&lotteryActivityBeforePeriod{}))
+			require.NoError(t, db.Create(&lotteryActivityBeforePeriod{Name: "升级前活动", Status: model.LotteryDraft, Mode: model.LotteryFixed, TotalQuota: 100, RemainingQuota: 100, FixedQuota: 10, PerUserLimit: 1}).Error)
 			for range 2 {
 				require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.LotteryActivity{}, &model.LotteryDraw{}))
 			}
+			var migrated model.LotteryActivity
+			require.NoError(t, db.First(&migrated, 1).Error)
+			assert.Equal(t, model.LotteryTopUpLifetime, migrated.TopUpScope)
+			assert.Zero(t, migrated.TopUpStart)
+			assert.Zero(t, migrated.DeletedAt)
+			assert.Equal(t, 100, migrated.RemainingQuota)
 			var original model.User
 			require.NoError(t, db.First(&original, 1).Error)
 			assert.Equal(t, 100, original.Quota)
@@ -309,14 +330,156 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 					require.Error(t, err)
 				}
 			})
+			t.Run("指定时段只计实际到账并包含首尾秒", func(t *testing.T) {
+				require.NoError(t, db.Create(&model.User{Id: 10, Username: "period-user", AffCode: "period-user", Status: 1, Quota: 10000, GiftQuota: 10000}).Error)
+				for i, row := range []model.TopUp{
+					{CompleteTime: 99, CreditQuota: 10000},
+					{CreateTime: 1, CompleteTime: 100, CreditQuota: 400},
+					{CreateTime: 300, CompleteTime: 200, CreditQuota: 600},
+					{CreateTime: 150, CompleteTime: 201, CreditQuota: 10000},
+					{CreateTime: 150, CompleteTime: 0, CreditQuota: 10000},
+				} {
+					row.UserId, row.TradeNo, row.Status, row.PaymentProvider = 10, fmt.Sprintf("period-%d", i), common.TopUpStatusSuccess, model.AlipayReceiptProvider
+					require.NoError(t, db.Create(&row).Error)
+				}
+				rules := model.LotteryRules{Name: "时段活动", Mode: model.LotteryFixed, TotalQuota: 100, FixedQuota: 10, PerUserLimit: 2, MinTopUpQuota: 1000, TopUpScope: model.LotteryTopUpPeriod, TopUpStart: 100, TopUpEnd: 200}
+				for _, bounds := range [][2]int64{{0, 200}, {200, 100}, {100, 100}, {100, 253402272000}} {
+					invalid := rules
+					invalid.TopUpStart, invalid.TopUpEnd = bounds[0], bounds[1]
+					_, err := model.SaveLotteryActivity(0, 100, invalid)
+					require.Error(t, err)
+				}
+				a, err := model.SaveLotteryActivity(0, 100, rules)
+				require.NoError(t, err)
+				_, err = model.ChangeLotteryState(a.ID, "start")
+				require.NoError(t, err)
+				items, _, err := model.ListLotteryActivities(10, 0, 100, false)
+				require.NoError(t, err)
+				found := false
+				for _, item := range items {
+					if item.ID == a.ID {
+						found = true
+						assert.Equal(t, 1000, item.EligibleTopUpQuota)
+					}
+				}
+				require.True(t, found)
+				_, err = model.DrawLottery(a.ID, 10, "period-eligible-01", "")
+				require.NoError(t, err)
+				rules.MinTopUpQuota = 1001
+				b, err := model.SaveLotteryActivity(0, 100, rules)
+				require.NoError(t, err)
+				_, err = model.ChangeLotteryState(b.ID, "start")
+				require.NoError(t, err)
+				_, err = model.DrawLottery(b.ID, 10, "period-ineligible", "")
+				require.ErrorContains(t, err, "门槛")
+				rules.TopUpScope = model.LotteryTopUpLifetime
+				c, err := model.SaveLotteryActivity(0, 100, rules)
+				require.NoError(t, err)
+				assert.Zero(t, c.TopUpStart)
+				assert.Zero(t, c.TopUpEnd)
+				_, err = model.ChangeLotteryState(c.ID, "start")
+				require.NoError(t, err)
+				_, err = model.DrawLottery(c.ID, 10, "lifetime-eligible", "")
+				require.NoError(t, err)
+			})
+			t.Run("删除活动保留钱包流水及幂等且隐藏中奖栏", func(t *testing.T) {
+				a, err := model.SaveLotteryActivity(0, 100, model.LotteryRules{Name: "删除测试", Mode: model.LotteryFixed, TotalQuota: 30, FixedQuota: 10, PerUserLimit: 3})
+				require.NoError(t, err)
+				_, err = model.ChangeLotteryState(a.ID, "start")
+				require.NoError(t, err)
+				require.Error(t, model.DeleteLotteryActivity(a.ID))
+				first, err := model.DrawLottery(a.ID, 1, "delete-replay-001", "127.0.0.1")
+				require.NoError(t, err)
+				winners, err := model.ListLotteryWinners(a.ID)
+				require.NoError(t, err)
+				require.Len(t, winners, 1)
+				assert.Equal(t, "p***r", winners[0].Username)
+				payload, err := common.Marshal(winners)
+				require.NoError(t, err)
+				assert.JSONEq(t, fmt.Sprintf(`[{"id":%d,"username":"p***r","quota":10}]`, first.ID), string(payload))
+				_, err = model.ChangeLotteryState(a.ID, "end")
+				require.NoError(t, err)
+				var before model.User
+				require.NoError(t, db.First(&before, 1).Error)
+				for range 2 {
+					require.NoError(t, model.DeleteLotteryActivity(a.ID))
+				}
+				_, err = model.DrawLottery(a.ID, 1, "deleted-new-draw1", "")
+				require.Error(t, err)
+				replay, err := model.DrawLottery(a.ID, 1, "delete-replay-001", "")
+				require.NoError(t, err)
+				assert.Equal(t, first.ID, replay.ID)
+				var after model.User
+				require.NoError(t, db.First(&after, 1).Error)
+				assert.Equal(t, before.Quota, after.Quota)
+				assert.Equal(t, before.GiftQuota, after.GiftQuota)
+				winners, err = model.ListLotteryWinners(a.ID)
+				require.NoError(t, err)
+				assert.Empty(t, winners)
+				_, _, err = model.ListLotteryDraws(a.ID, 1, 0, 20, false)
+				require.Error(t, err)
+				_, total, err := model.ListLotteryDraws(a.ID, 0, 0, 20, true)
+				require.NoError(t, err)
+				assert.EqualValues(t, 1, total)
+				for _, root := range []bool{false, true} {
+					items, _, err := model.ListLotteryActivities(1, 0, 100, root)
+					require.NoError(t, err)
+					for _, item := range items {
+						assert.NotEqual(t, a.ID, item.ID)
+					}
+				}
+				_, err = model.ChangeLotteryState(a.ID, "start")
+				require.Error(t, err)
+			})
+			t.Run("结束删除和抽奖并发仍保持钱包奖池守恒", func(t *testing.T) {
+				a, err := model.SaveLotteryActivity(0, 100, model.LotteryRules{Name: "并发删除", Mode: model.LotteryFixed, TotalQuota: 30, FixedQuota: 10, PerUserLimit: 3})
+				require.NoError(t, err)
+				_, err = model.ChangeLotteryState(a.ID, "start")
+				require.NoError(t, err)
+				var before model.User
+				require.NoError(t, db.First(&before, 1).Error)
+				start := make(chan struct{})
+				drawn := make(chan error, 1)
+				deleted := make(chan error, 1)
+				go func() { <-start; _, err := model.DrawLottery(a.ID, 1, "concurrent-delete", ""); drawn <- err }()
+				go func() {
+					<-start
+					_, err := model.ChangeLotteryState(a.ID, "end")
+					if err == nil {
+						err = model.DeleteLotteryActivity(a.ID)
+					}
+					deleted <- err
+				}()
+				close(start)
+				drawErr := <-drawn
+				require.NoError(t, <-deleted)
+				var after model.User
+				require.NoError(t, db.First(&after, 1).Error)
+				require.NoError(t, db.First(a, a.ID).Error)
+				count := 0
+				if drawErr == nil {
+					count = 1
+				} else {
+					assert.ErrorContains(t, drawErr, "活动未开放")
+				}
+				assert.Equal(t, count*10, after.GiftQuota-before.GiftQuota)
+				assert.Equal(t, count*10, after.Quota-before.Quota)
+				assert.Equal(t, 30-count*10, a.RemainingQuota)
+				assert.Equal(t, count, a.DrawCount)
+				assert.Positive(t, a.DeletedAt)
+			})
 			t.Run("根权限及身份不可从请求伪造", func(t *testing.T) {
 				gin.SetMode(gin.TestMode)
 				for _, role := range []int{1, 10} {
 					r := gin.New()
 					r.Use(func(c *gin.Context) { c.Set("role", role); c.Set("id", 1) })
 					r.POST("/", SaveLotteryActivity)
+					r.DELETE("/:id", DeleteLotteryActivity)
 					w := httptest.NewRecorder()
 					r.ServeHTTP(w, httptest.NewRequest("POST", "/", strings.NewReader(`{"role":100}`)))
+					assert.Equal(t, 403, w.Code)
+					w = httptest.NewRecorder()
+					r.ServeHTTP(w, httptest.NewRequest("DELETE", "/1", nil))
 					assert.Equal(t, 403, w.Code)
 				}
 				a, err := model.SaveLotteryActivity(0, 100, model.LotteryRules{Name: "接口活动", Mode: model.LotteryFixed, TotalQuota: 10, FixedQuota: 10, PerUserLimit: 1})
@@ -343,3 +506,27 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 		})
 	}
 }
+
+// 固定上一版本结构用于升级验证，避免新字段反向污染迁移基线。
+type lotteryActivityBeforePeriod struct {
+	ID              int    `json:"id"`
+	Name            string `json:"name" gorm:"size:120"`
+	Status          string `json:"status" gorm:"size:20;index"`
+	Mode            string `json:"mode" gorm:"size:24"`
+	TotalQuota      int    `json:"total_quota" gorm:"type:bigint"`
+	RemainingQuota  int    `json:"remaining_quota" gorm:"type:bigint"`
+	MinTopUpQuota   int    `json:"min_topup_quota" gorm:"type:bigint"`
+	PerUserLimit    int    `json:"per_user_limit"`
+	MinPercent      int    `json:"min_percent"`
+	MaxPercent      int    `json:"max_percent"`
+	Shares          int    `json:"shares"`
+	RemainingShares int    `json:"remaining_shares"`
+	FixedQuota      int    `json:"fixed_quota" gorm:"type:bigint"`
+	DrawCount       int    `json:"draw_count" gorm:"type:bigint"`
+	CreatedBy       int    `json:"created_by"`
+	CreatedAt       int64  `json:"created_at"`
+	StartedAt       int64  `json:"started_at"`
+	EndedAt         int64  `json:"ended_at"`
+}
+
+func (lotteryActivityBeforePeriod) TableName() string { return "lottery_activities" }

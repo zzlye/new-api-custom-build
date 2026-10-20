@@ -7251,6 +7251,25 @@
     "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.",
     "Move up": "Di chuyển lên",
     "Move down": "Di chuyển xuống",
-    "Time left to pay": "Thời gian thanh toán còn lại"
+    "Time left to pay": "Thời gian thanh toán còn lại",
+    "Top-up eligibility": "Điều kiện nạp tiền",
+    "Lifetime top-ups": "Tổng tiền nạp",
+    "Top-ups within a period": "Nạp trong khoảng thời gian",
+    "Period top-up required": "Mức nạp yêu cầu trong kỳ",
+    "Your top-ups in this period": "Tiền nạp của bạn trong kỳ",
+    "Top-up start (Beijing)": "Bắt đầu nạp (giờ Bắc Kinh)",
+    "Top-up end (Beijing)": "Kết thúc nạp (giờ Bắc Kinh)",
+    "Choose a valid top-up period": "Chọn khoảng thời gian nạp hợp lệ",
+    "Beijing time": "Giờ Bắc Kinh",
+    "Delete draw activity": "Xóa chương trình rút thưởng",
+    "Delete this activity? Issued rewards and financial records will be kept.": "Xóa chương trình này? Phần thưởng đã cấp và bản ghi tài chính được giữ lại.",
+    "Choose activity": "Chọn chương trình",
+    "Your draw chances": "Lượt rút của bạn",
+    "Eligible to participate": "Đã đủ điều kiện tham gia",
+    "Top-up requirement not met": "Chưa đạt mức nạp yêu cầu",
+    "Latest winners": "Người trúng gần đây",
+    "No winners yet": "Chưa có lượt trúng",
+    "Pause winner scroll": "Tạm dừng cuộn",
+    "Resume winner scroll": "Tiếp tục cuộn"
   }
 }

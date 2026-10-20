@@ -7291,6 +7291,25 @@
     "Please use an Alipay receipt code URL": "Please use an Alipay receipt code URL",
     "Move up": "Move up",
     "Move down": "Move down",
-    "Time left to pay": "Time left to pay"
+    "Time left to pay": "Time left to pay",
+    "Top-up eligibility": "Top-up eligibility",
+    "Lifetime top-ups": "Lifetime top-ups",
+    "Top-ups within a period": "Top-ups within a period",
+    "Period top-up required": "Period top-up required",
+    "Your top-ups in this period": "Your top-ups in this period",
+    "Top-up start (Beijing)": "Top-up start (Beijing)",
+    "Top-up end (Beijing)": "Top-up end (Beijing)",
+    "Choose a valid top-up period": "Choose a valid top-up period",
+    "Beijing time": "Beijing time",
+    "Delete draw activity": "Delete draw activity",
+    "Delete this activity? Issued rewards and financial records will be kept.": "Delete this activity? Issued rewards and financial records will be kept.",
+    "Choose activity": "Choose activity",
+    "Your draw chances": "Your draw chances",
+    "Eligible to participate": "Eligible to participate",
+    "Top-up requirement not met": "Top-up requirement not met",
+    "Latest winners": "Latest winners",
+    "No winners yet": "No winners yet",
+    "Pause winner scroll": "Pause winner scroll",
+    "Resume winner scroll": "Resume winner scroll"
   }
 }

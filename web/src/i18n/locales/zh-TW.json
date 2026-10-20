@@ -7268,6 +7268,25 @@
     "Please use an Alipay receipt code URL": "請填寫支付寶收款碼中的 https://qr.alipay.com 位址",
     "Move up": "上移",
     "Move down": "下移",
-    "Time left to pay": "付款倒數計時"
+    "Time left to pay": "付款倒數計時",
+    "Top-up eligibility": "充值門檻",
+    "Lifetime top-ups": "累計充值",
+    "Top-ups within a period": "指定時間段充值",
+    "Period top-up required": "時段充值門檻",
+    "Your top-ups in this period": "我的時段充值",
+    "Top-up start (Beijing)": "充值開始時間（北京時間）",
+    "Top-up end (Beijing)": "充值結束時間（北京時間）",
+    "Choose a valid top-up period": "請選擇有效的充值起止時間",
+    "Beijing time": "北京時間",
+    "Delete draw activity": "刪除抽獎活動",
+    "Delete this activity? Issued rewards and financial records will be kept.": "確定刪除此活動？已發獎勵和財務流水會保留。",
+    "Choose activity": "切換活動",
+    "Your draw chances": "我的抽獎",
+    "Eligible to participate": "已滿足參與條件",
+    "Top-up requirement not met": "尚未達到充值門檻",
+    "Latest winners": "最新中獎",
+    "No winners yet": "暫無中獎記錄",
+    "Pause winner scroll": "暫停滾動",
+    "Resume winner scroll": "繼續滾動"
   }
 }

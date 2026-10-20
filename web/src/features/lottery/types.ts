@@ -18,6 +18,9 @@ export type LotteryRules = {
   mode: keyof typeof LOTTERY_MODES
   total_quota: number
   min_topup_quota: number
+  topup_scope: 'lifetime' | 'period'
+  topup_start: number
+  topup_end: number
   per_user_limit: number
   min_percent: number
   max_percent: number
@@ -32,6 +35,7 @@ export type LotteryActivity = LotteryRules & {
   remaining_shares: number
   draw_count: number
   used_draws: number
+  eligible_topup_quota: number
   created_at: number
   started_at: number
   ended_at: number
@@ -48,3 +52,5 @@ export type LotteryDraw = {
 }
 
 export type LotteryPage<T> = { items: T[]; total: number }
+
+export type LotteryWinner = { id: number; username: string; quota: number }

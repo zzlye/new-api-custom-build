@@ -7251,6 +7251,25 @@
     "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.": "Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.",
     "Move up": "Переместить вверх",
     "Move down": "Переместить вниз",
-    "Time left to pay": "Осталось времени для оплаты"
+    "Time left to pay": "Осталось времени для оплаты",
+    "Top-up eligibility": "Условие пополнения",
+    "Lifetime top-ups": "Все пополнения",
+    "Top-ups within a period": "Пополнения за период",
+    "Period top-up required": "Порог за период",
+    "Your top-ups in this period": "Ваши пополнения за период",
+    "Top-up start (Beijing)": "Начало периода (Пекин)",
+    "Top-up end (Beijing)": "Конец периода (Пекин)",
+    "Choose a valid top-up period": "Выберите корректный период пополнений",
+    "Beijing time": "Пекинское время",
+    "Delete draw activity": "Удалить розыгрыш",
+    "Delete this activity? Issued rewards and financial records will be kept.": "Удалить событие? Выданные награды и финансовые записи сохранятся.",
+    "Choose activity": "Выбрать событие",
+    "Your draw chances": "Ваши попытки",
+    "Eligible to participate": "Условия выполнены",
+    "Top-up requirement not met": "Порог пополнения не достигнут",
+    "Latest winners": "Последние выигрыши",
+    "No winners yet": "Выигрышей пока нет",
+    "Pause winner scroll": "Приостановить прокрутку",
+    "Resume winner scroll": "Продолжить прокрутку"
   }
 }

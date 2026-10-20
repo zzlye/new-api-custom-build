@@ -23,6 +23,8 @@ const (
 	LotteryRemainingPercent = "remaining_percent"
 	LotteryRandomShares     = "random_shares"
 	LotteryFixed            = "fixed"
+	LotteryTopUpLifetime    = "lifetime"
+	LotteryTopUpPeriod      = "period"
 )
 
 // 活动独立记账，开始后固定规则，暂停和恢复均不重置奖池或个人次数。
@@ -34,6 +36,10 @@ type LotteryActivity struct {
 	TotalQuota      int    `json:"total_quota" gorm:"type:bigint"`
 	RemainingQuota  int    `json:"remaining_quota" gorm:"type:bigint"`
 	MinTopUpQuota   int    `json:"min_topup_quota" gorm:"type:bigint"`
+	TopUpScope      string `json:"topup_scope" gorm:"size:16;default:lifetime"`
+	TopUpStart      int64  `json:"topup_start" gorm:"default:0"`
+	TopUpEnd        int64  `json:"topup_end" gorm:"default:0"`
+	DeletedAt       int64  `json:"-" gorm:"default:0;index"`
 	PerUserLimit    int    `json:"per_user_limit"`
 	MinPercent      int    `json:"min_percent"`
 	MaxPercent      int    `json:"max_percent"`
@@ -64,6 +70,9 @@ type LotteryRules struct {
 	Mode          string `json:"mode"`
 	TotalQuota    int    `json:"total_quota"`
 	MinTopUpQuota int    `json:"min_topup_quota"`
+	TopUpScope    string `json:"topup_scope"`
+	TopUpStart    int64  `json:"topup_start"`
+	TopUpEnd      int64  `json:"topup_end"`
 	PerUserLimit  int    `json:"per_user_limit"`
 	MinPercent    int    `json:"min_percent"`
 	MaxPercent    int    `json:"max_percent"`
@@ -77,6 +86,21 @@ func (rules LotteryRules) activity() (LotteryActivity, error) {
 		return LotteryActivity{}, errors.New("抽奖名称、奖池、充值门槛或每人次数无效")
 	}
 	a := LotteryActivity{Name: name, Mode: rules.Mode, TotalQuota: rules.TotalQuota, RemainingQuota: rules.TotalQuota, MinTopUpQuota: rules.MinTopUpQuota, PerUserLimit: rules.PerUserLimit}
+	// 未配置的新字段沿用累计充值，升级不能改变旧活动的资格规则。
+	a.TopUpScope = rules.TopUpScope
+	if a.TopUpScope == "" {
+		a.TopUpScope = LotteryTopUpLifetime
+	}
+	switch a.TopUpScope {
+	case LotteryTopUpLifetime:
+	case LotteryTopUpPeriod:
+		if rules.TopUpStart <= 0 || rules.TopUpEnd <= rules.TopUpStart || rules.TopUpEnd > 253402271999 {
+			return a, errors.New("请选择有效的充值起止时间")
+		}
+		a.TopUpStart, a.TopUpEnd = rules.TopUpStart, rules.TopUpEnd
+	default:
+		return a, errors.New("充值门槛类型无效")
+	}
 	switch rules.Mode {
 	case LotteryInitialPercent, LotteryRemainingPercent:
 		// 百分比用万分之一的整数存储，避免浮点误差改变抽奖边界。
@@ -114,7 +138,7 @@ func SaveLotteryActivity(id, operator int, rules LotteryRules) (*LotteryActivity
 		if err != nil {
 			return err
 		}
-		if old.Status != LotteryDraft {
+		if old.DeletedAt != 0 || old.Status != LotteryDraft {
 			return errors.New("已开始的活动不能修改规则，请新建活动")
 		}
 		a.ID, a.Status, a.CreatedBy, a.CreatedAt = old.ID, old.Status, old.CreatedBy, old.CreatedAt
@@ -144,6 +168,9 @@ func ChangeLotteryState(id int, action string) (*LotteryActivity, error) {
 		a, err = lockLotteryActivity(tx, id)
 		if err != nil {
 			return err
+		}
+		if a.DeletedAt != 0 {
+			return errors.New("活动已删除")
 		}
 		switch action {
 		case "start":
@@ -215,6 +242,31 @@ func LotteryPaidTopUpQuota(tx *gorm.DB, userID int) (int, error) {
 	return common.WalletQuotaFromDecimalStrict(total)
 }
 
+func (a *LotteryActivity) paidTopUpQuota(tx *gorm.DB, userID int) (int, error) {
+	if a.TopUpScope == LotteryTopUpPeriod {
+		// 以实际到账时间为准，起止秒均包含；没有到账时间的旧记录不猜测归属。
+		tx = tx.Where("complete_time >= ? AND complete_time <= ?", a.TopUpStart, a.TopUpEnd)
+	}
+	return LotteryPaidTopUpQuota(tx, userID)
+}
+
+// 删除只隐藏活动，保留已发赠金、财务流水和请求幂等凭据。
+func DeleteLotteryActivity(id int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		a, err := lockLotteryActivity(tx, id)
+		if err != nil {
+			return err
+		}
+		if a.DeletedAt != 0 {
+			return nil
+		}
+		if a.Status != LotteryDraft && a.Status != LotteryEnded && a.Status != LotteryExhausted {
+			return errors.New("请先结束活动再删除")
+		}
+		return tx.Model(a).Update("deleted_at", time.Now().Unix()).Error
+	})
+}
+
 func lotteryRandomBetween(low, high int) (int, error) {
 	value, err := rand.Int(rand.Reader, big.NewInt(int64(high-low)+1))
 	if err != nil {
@@ -276,7 +328,7 @@ func DrawLottery(activityID, userID int, requestID, ip string) (*LotteryDraw, er
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		if a.Status != LotteryActive || a.RemainingQuota <= 0 {
+		if a.DeletedAt != 0 || a.Status != LotteryActive || a.RemainingQuota <= 0 {
 			return errors.New("活动未开放或奖池已领完")
 		}
 		var user User
@@ -286,12 +338,12 @@ func DrawLottery(activityID, userID int, requestID, ip string) (*LotteryDraw, er
 		if user.Status != common.UserStatusEnabled {
 			return errors.New("账号不可参与抽奖")
 		}
-		paid, err := LotteryPaidTopUpQuota(tx, userID)
+		paid, err := a.paidTopUpQuota(tx, userID)
 		if err != nil {
 			return err
 		}
 		if paid < a.MinTopUpQuota {
-			return errors.New("累计充值未达到活动门槛")
+			return errors.New("充值未达到活动门槛")
 		}
 		var used int64
 		if err := tx.Model(&LotteryDraw{}).Where("activity_id = ? AND user_id = ?", activityID, userID).Count(&used).Error; err != nil {
@@ -341,11 +393,12 @@ func DrawLottery(activityID, userID int, requestID, ip string) (*LotteryDraw, er
 
 type LotteryUserActivity struct {
 	LotteryActivity
-	UsedDraws int64 `json:"used_draws"`
+	UsedDraws          int64 `json:"used_draws"`
+	EligibleTopUpQuota int   `json:"eligible_topup_quota"`
 }
 
 func ListLotteryActivities(userID, offset, limit int, root bool) ([]LotteryUserActivity, int64, error) {
-	query := DB.Model(&LotteryActivity{})
+	query := DB.Model(&LotteryActivity{}).Where("deleted_at = 0")
 	if !root {
 		query = query.Where("status <> ?", LotteryDraft)
 		query = query.Order("CASE WHEN status = 'active' THEN 0 WHEN status = 'paused' THEN 1 ELSE 2 END")
@@ -359,19 +412,38 @@ func ListLotteryActivities(userID, offset, limit int, root bool) ([]LotteryUserA
 		return nil, 0, err
 	}
 	items := make([]LotteryUserActivity, 0, len(activities))
+	paidByPeriod := make(map[[2]int64]int)
 	for _, a := range activities {
 		var used int64
+		var paid int
 		if !root {
 			if err := DB.Model(&LotteryDraw{}).Where("activity_id = ? AND user_id = ?", a.ID, userID).Count(&used).Error; err != nil {
 				return nil, 0, err
 			}
+			period := [2]int64{a.TopUpStart, a.TopUpEnd}
+			var ok bool
+			paid, ok = paidByPeriod[period]
+			if !ok {
+				var err error
+				paid, err = a.paidTopUpQuota(DB, userID)
+				if err != nil {
+					return nil, 0, err
+				}
+				paidByPeriod[period] = paid
+			}
 		}
-		items = append(items, LotteryUserActivity{LotteryActivity: a, UsedDraws: used})
+		items = append(items, LotteryUserActivity{LotteryActivity: a, UsedDraws: used, EligibleTopUpQuota: paid})
 	}
 	return items, total, nil
 }
 
 func ListLotteryDraws(activityID, userID, offset, limit int, root bool) ([]LotteryDraw, int64, error) {
+	if !root {
+		var activity LotteryActivity
+		if err := DB.Where("deleted_at = 0 AND status <> ?", LotteryDraft).First(&activity, activityID).Error; err != nil {
+			return nil, 0, err
+		}
+	}
 	query := DB.Model(&LotteryDraw{}).Where("activity_id = ?", activityID)
 	if !root {
 		query = query.Where("user_id = ?", userID)
@@ -406,4 +478,34 @@ func ListLotteryDraws(activityID, userID, offset, limit int, root bool) ([]Lotte
 		}
 	}
 	return items, total, nil
+}
+
+type LotteryWinner struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Quota    int    `json:"quota"`
+}
+
+// 中奖滚动栏只返回脱敏名称和奖励，不暴露用户编号、地址或请求凭据。
+func ListLotteryWinners(activityID int) ([]LotteryWinner, error) {
+	items := make([]LotteryWinner, 0)
+	err := DB.Table("lottery_draws AS d").
+		Joins("JOIN lottery_activities AS a ON a.id = d.activity_id").
+		Joins("LEFT JOIN users AS u ON u.id = d.user_id").
+		Where("a.id = ? AND a.deleted_at = 0 AND a.status <> ?", activityID, LotteryDraft).
+		Select("d.id, COALESCE(u.username, '') AS username, d.quota").Order("d.id DESC").Limit(30).Scan(&items).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		name := []rune(items[i].Username)
+		items[i].Username = "***"
+		if len(name) > 1 {
+			items[i].Username = string(name[0]) + "***"
+		}
+		if len(name) > 2 {
+			items[i].Username += string(name[len(name)-1])
+		}
+	}
+	return items, nil
 }
