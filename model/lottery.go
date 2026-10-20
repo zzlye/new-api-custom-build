@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"math/big"
@@ -53,16 +54,17 @@ type LotteryActivity struct {
 	EndedAt         int64  `json:"ended_at"`
 }
 
-// 抽奖流水同时作为次数与幂等凭据，不能随普通运行日志清理。
+// 清理只隐藏展示记录并清空 IP，流水继续作为次数、财务及幂等凭据。
 type LotteryDraw struct {
-	ID         int    `json:"id"`
-	ActivityID int    `json:"activity_id" gorm:"index;uniqueIndex:idx_lottery_request,priority:1;index:idx_lottery_user,priority:1"`
-	UserID     int    `json:"user_id" gorm:"uniqueIndex:idx_lottery_request,priority:2;index:idx_lottery_user,priority:2"`
-	RequestID  string `json:"-" gorm:"size:64;uniqueIndex:idx_lottery_request,priority:3"`
-	Quota      int    `json:"quota" gorm:"type:bigint"`
-	CreatedAt  int64  `json:"created_at"`
-	IP         string `json:"ip,omitempty" gorm:"size:64"`
-	Username   string `json:"username,omitempty" gorm:"-"`
+	ID           int    `json:"id"`
+	ActivityID   int    `json:"activity_id" gorm:"index;uniqueIndex:idx_lottery_request,priority:1;index:idx_lottery_user,priority:1"`
+	UserID       int    `json:"user_id" gorm:"uniqueIndex:idx_lottery_request,priority:2;index:idx_lottery_user,priority:2"`
+	RequestID    string `json:"-" gorm:"size:64;uniqueIndex:idx_lottery_request,priority:3"`
+	Quota        int    `json:"quota" gorm:"type:bigint"`
+	CreatedAt    int64  `json:"created_at"`
+	LogClearedAt int64  `json:"-" gorm:"default:0;index"`
+	IP           string `json:"ip,omitempty" gorm:"size:64"`
+	Username     string `json:"username,omitempty" gorm:"-"`
 }
 
 type LotteryRules struct {
@@ -444,7 +446,7 @@ func ListLotteryDraws(activityID, userID, offset, limit int, root bool) ([]Lotte
 			return nil, 0, err
 		}
 	}
-	query := DB.Model(&LotteryDraw{}).Where("activity_id = ?", activityID)
+	query := DB.Model(&LotteryDraw{}).Where("activity_id = ? AND log_cleared_at = 0", activityID)
 	if !root {
 		query = query.Where("user_id = ?", userID)
 	}
@@ -493,6 +495,7 @@ func ListLotteryWinners(activityID int) ([]LotteryWinner, error) {
 		Joins("JOIN lottery_activities AS a ON a.id = d.activity_id").
 		Joins("LEFT JOIN users AS u ON u.id = d.user_id").
 		Where("a.id = ? AND a.deleted_at = 0 AND a.status <> ?", activityID, LotteryDraft).
+		Where("d.log_cleared_at = 0").
 		Select("d.id, COALESCE(u.username, '') AS username, d.quota").Order("d.id DESC").Limit(30).Scan(&items).Error
 	if err != nil {
 		return nil, err
@@ -508,4 +511,27 @@ func ListLotteryWinners(activityID int) ([]LotteryWinner, error) {
 		}
 	}
 	return items, nil
+}
+
+// 只清理已结束或已领完活动中早于截止时间的记录；终态活动不能再恢复。
+func OldLotteryLogQuery(ctx context.Context, before int64) *gorm.DB {
+	finished := DB.WithContext(ctx).Model(&LotteryActivity{}).Select("id").
+		Where("status IN ?", []string{LotteryEnded, LotteryExhausted})
+	return DB.WithContext(ctx).Model(&LotteryDraw{}).
+		Where("created_at < ? AND log_cleared_at = 0", before).
+		Where("activity_id IN (?)", finished)
+}
+
+func DeleteOldLotteryLogs(ctx context.Context, before int64, limit int) (int64, error) {
+	var ids []int
+	if err := OldLotteryLogQuery(ctx, before).Order("id").Limit(min(1000, max(1, limit))).Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// 再次限定清理范围，重复执行不重复计数；不改动奖池、钱包和请求编号。
+	result := OldLotteryLogQuery(ctx, before).Where("id IN ?", ids).
+		Updates(map[string]any{"log_cleared_at": time.Now().Unix(), "ip": ""})
+	return result.RowsAffected, result.Error
 }

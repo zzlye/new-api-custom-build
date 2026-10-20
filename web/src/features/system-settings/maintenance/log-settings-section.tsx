@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { DateTimePicker } from '@/components/datetime-picker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -282,10 +283,11 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
     ) {
       return
     }
-    // 清理结束后同时刷新调用日志、任务列表和正在查看的任务详情。
+    // 清理结束后刷新各类记录与中奖滚动栏，避免继续展示已清理的数据。
     void queryClient.invalidateQueries({ queryKey: ['logs'] })
     void queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
     void queryClient.invalidateQueries({ queryKey: ['async-task-details'] })
+    void queryClient.invalidateQueries({ queryKey: ['lottery'] })
   }, [logCleanupTaskId, logCleanupTask?.status, queryClient])
 
   // 保存时长和日志选项共用保存按钮，避免合并页面后表单操作互相覆盖。
@@ -458,7 +460,7 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
               </h4>
               <p className='text-muted-foreground text-sm'>
                 {t(
-                  'Remove usage, completed task and closed payment order logs before the selected time. Active tasks, pending orders and payment deduplication records are kept.'
+                  'Clean logs before the selected time, including records from ended or exhausted draws. Active tasks, pending orders, ongoing draws and financial records are kept.'
                 )}
               </p>
             </div>
@@ -506,8 +508,12 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
                 logCleanupTask.result?.deleted_tasks !== undefined ? (
                   <p className='text-muted-foreground mt-2 text-xs'>
                     {t(
-                      'Removed {{logs}} usage logs, {{tasks}} task logs and {{orders}} order logs.',
+                      'Removed {{logs}} usage logs, {{tasks}} task logs, {{orders}} order logs and {{lottery}} draw records.',
                       {
+                        lottery:
+                          logCleanupTask.result?.deleted_lottery ??
+                          logCleanupTask.state?.deleted_lottery ??
+                          0,
                         orders:
                           logCleanupTask.result?.deleted_orders ??
                           logCleanupTask.state?.deleted_orders ??
@@ -707,34 +713,27 @@ export function LogSettingsSection(props: LogSettingsSectionProps) {
           ))}
       </div>
 
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('Confirm log cleanup')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                'This removes usage logs, completed task logs and their media, and closed payment order logs before {{date}}. Pending orders and payment deduplication records are kept.',
-                { date: formattedPurgeDate }
-              )}{' '}
-              {t('This action cannot be undone.')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isStartingLogCleanup}>
-              {t('Cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant='destructive'
-              onClick={handleCleanLogs}
-              disabled={!isRoot || isStartingLogCleanup}
-            >
-              {isStartingLogCleanup
-                ? t('Cleaning...')
-                : t('Delete logs and tasks')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        title={t('Confirm log cleanup')}
+        desc={
+          <>
+            {t(
+              'Remove usage logs, completed task logs and media, closed payment order logs, and records from ended or exhausted draws before {{date}}? Financial records and duplicate-reward protection are kept.',
+              { date: formattedPurgeDate }
+            )}{' '}
+            {t('This action cannot be undone.')}
+          </>
+        }
+        destructive
+        disabled={!isRoot}
+        isLoading={isStartingLogCleanup}
+        handleConfirm={handleCleanLogs}
+        confirmText={
+          isStartingLogCleanup ? t('Cleaning...') : t('Delete logs and tasks')
+        }
+      />
     </SettingsSection>
   )
 }

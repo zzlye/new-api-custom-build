@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -43,6 +44,23 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 				require.NoError(t, fresh.Create(&draw).Error)
 				draw.ID = 0
 				require.Error(t, fresh.Create(&draw).Error)
+			})
+			t.Run("旧抽奖流水升级保留记录和幂等唯一约束", func(t *testing.T) {
+				fresh, _ := newAuditTestDatabase(t, dialect, dsn)
+				require.NoError(t, fresh.AutoMigrate(&lotteryDrawBeforeCleanup{}))
+				old := lotteryDrawBeforeCleanup{ActivityID: 1, UserID: 1, RequestID: "upgrade-request-1", Quota: 10, CreatedAt: 100, IP: "192.0.2.1"}
+				require.NoError(t, fresh.Create(&old).Error)
+				for range 2 {
+					require.NoError(t, fresh.AutoMigrate(&model.LotteryDraw{}))
+				}
+				var migrated model.LotteryDraw
+				require.NoError(t, fresh.First(&migrated, old.ID).Error)
+				assert.Zero(t, migrated.LogClearedAt)
+				assert.Equal(t, old.Quota, migrated.Quota)
+				assert.Equal(t, old.IP, migrated.IP)
+				assert.True(t, fresh.Migrator().HasIndex(&model.LotteryDraw{}, "idx_lottery_user"))
+				migrated.ID = 0
+				require.Error(t, fresh.Create(&migrated).Error)
 			})
 			var version string
 			versionSQL := "SELECT VERSION()"
@@ -468,6 +486,158 @@ func TestLotteryDatabaseMatrix(t *testing.T) {
 				assert.Equal(t, count, a.DrawCount)
 				assert.Positive(t, a.DeletedAt)
 			})
+			t.Run("清理只隐藏终态历史记录并保留财务和防重", func(t *testing.T) {
+				cases := []struct {
+					name    string
+					status  string
+					created int64
+					deleted bool
+					clear   bool
+				}{
+					{"已结束", model.LotteryEnded, 100, false, true},
+					{"已领完", model.LotteryExhausted, 100, false, true},
+					{"已删除活动", model.LotteryEnded, 100, true, true},
+					{"进行中", model.LotteryActive, 100, false, false},
+					{"暂停中", model.LotteryPaused, 100, false, false},
+					{"截止边界", model.LotteryEnded, 200, false, false},
+					{"新记录", model.LotteryEnded, 201, false, false},
+				}
+				activities := make([]*model.LotteryActivity, 0, len(cases))
+				draws := make([]*model.LotteryDraw, 0, len(cases))
+				for i, tc := range cases {
+					total := 30
+					if tc.status == model.LotteryExhausted {
+						total = 10
+					}
+					a, err := model.SaveLotteryActivity(0, 100, model.LotteryRules{Name: tc.name, Mode: model.LotteryFixed, TotalQuota: total, FixedQuota: 10, PerUserLimit: 1})
+					require.NoError(t, err)
+					_, err = model.ChangeLotteryState(a.ID, "start")
+					require.NoError(t, err)
+					draw, err := model.DrawLottery(a.ID, 1, fmt.Sprintf("cleanup-matrix-%02d", i), "192.0.2.1")
+					require.NoError(t, err)
+					require.NoError(t, db.Model(draw).Update("created_at", tc.created).Error)
+					if tc.status == model.LotteryEnded {
+						_, err = model.ChangeLotteryState(a.ID, "end")
+						require.NoError(t, err)
+					} else if tc.status == model.LotteryPaused {
+						_, err = model.ChangeLotteryState(a.ID, "pause")
+						require.NoError(t, err)
+					}
+					if tc.deleted {
+						require.NoError(t, model.DeleteLotteryActivity(a.ID))
+					}
+					require.NoError(t, db.First(a, a.ID).Error)
+					activities, draws = append(activities, a), append(draws, draw)
+				}
+				var before model.User
+				require.NoError(t, db.First(&before, 1).Error)
+				var count int64
+				require.NoError(t, model.OldLotteryLogQuery(context.Background(), 200).Count(&count).Error)
+				assert.EqualValues(t, 3, count)
+				for _, expected := range []int64{2, 1, 0} {
+					n, err := model.DeleteOldLotteryLogs(context.Background(), 200, 2)
+					require.NoError(t, err)
+					assert.Equal(t, expected, n)
+				}
+				for i, tc := range cases {
+					a, draw := activities[i], draws[i]
+					var stored model.LotteryDraw
+					require.NoError(t, db.First(&stored, draw.ID).Error)
+					assert.Equal(t, draw.RequestID, stored.RequestID)
+					assert.Equal(t, draw.Quota, stored.Quota)
+					assert.Equal(t, tc.clear, stored.LogClearedAt > 0, tc.name)
+					if tc.clear {
+						assert.Empty(t, stored.IP)
+					} else {
+						assert.Equal(t, "192.0.2.1", stored.IP)
+					}
+					for _, root := range []bool{false, true} {
+						rows, total, err := model.ListLotteryDraws(a.ID, 1, 0, 20, root)
+						if tc.deleted && !root {
+							require.Error(t, err)
+							continue
+						}
+						require.NoError(t, err)
+						if tc.clear {
+							assert.Empty(t, rows)
+							assert.Zero(t, total)
+						} else {
+							assert.Len(t, rows, 1)
+							assert.EqualValues(t, 1, total)
+						}
+					}
+					winners, err := model.ListLotteryWinners(a.ID)
+					require.NoError(t, err)
+					if tc.clear {
+						assert.Empty(t, winners)
+					} else {
+						assert.Len(t, winners, 1)
+					}
+					replayed, err := model.DrawLottery(a.ID, 1, draw.RequestID, "")
+					require.NoError(t, err)
+					assert.Equal(t, draw.ID, replayed.ID)
+					if tc.status == model.LotteryPaused {
+						_, err = model.ChangeLotteryState(a.ID, "start")
+						require.NoError(t, err)
+					}
+					_, err = model.DrawLottery(a.ID, 1, "cleanup-new-request", "")
+					require.Error(t, err)
+					if tc.status == model.LotteryActive || tc.status == model.LotteryPaused {
+						assert.ErrorContains(t, err, "次数")
+					}
+					var afterActivity model.LotteryActivity
+					require.NoError(t, db.First(&afterActivity, a.ID).Error)
+					assert.Equal(t, a.RemainingQuota, afterActivity.RemainingQuota)
+					assert.Equal(t, a.DrawCount, afterActivity.DrawCount)
+				}
+				var after model.User
+				require.NoError(t, db.First(&after, 1).Error)
+				assert.Equal(t, before.Quota, after.Quota)
+				assert.Equal(t, before.GiftQuota, after.GiftQuota)
+				// 重启重复迁移不得恢复已清理记录，也不得移除幂等约束。
+				require.NoError(t, db.AutoMigrate(&model.LotteryDraw{}))
+				rows, total, err := model.ListLotteryDraws(activities[0].ID, 1, 0, 20, true)
+				require.NoError(t, err)
+				assert.Empty(t, rows)
+				assert.Zero(t, total)
+				duplicate := *draws[0]
+				duplicate.ID = 0
+				require.Error(t, db.Create(&duplicate).Error)
+			})
+			t.Run("抽奖清理仅接受根用户明确选择的范围", func(t *testing.T) {
+				gin.SetMode(gin.TestMode)
+				require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.SystemTaskLock{}))
+				for _, role := range []int{1, 10, 100} {
+					r := gin.New()
+					r.Use(func(c *gin.Context) { c.Set("role", role) })
+					r.POST("/", CreateLogCleanupSystemTask)
+					for _, query := range []string{"", "&include_lottery_logs=true", "&include_lottery_logs=invalid"} {
+						w := httptest.NewRecorder()
+						r.ServeHTTP(w, httptest.NewRequest("POST", "/?target_timestamp=200"+query, nil))
+						if role != 100 {
+							assert.Equal(t, 403, w.Code)
+							continue
+						}
+						if strings.Contains(query, "invalid") {
+							assert.Equal(t, 400, w.Code)
+							continue
+						}
+						require.Equal(t, 200, w.Code)
+						task, err := model.GetActiveSystemTask(model.SystemTaskTypeLogCleanup)
+						require.NoError(t, err)
+						require.NotNil(t, task)
+						var payload struct {
+							IncludeLotteryLogs bool `json:"include_lottery_logs"`
+						}
+						require.NoError(t, task.DecodePayload(&payload))
+						assert.Equal(t, query != "", payload.IncludeLotteryLogs)
+						_, won, err := model.ClaimSystemTask(task.ID, task.Type, "cleanup-scope", common.GetTimestamp()+60)
+						require.NoError(t, err)
+						require.True(t, won)
+						require.NoError(t, model.FinishSystemTask(task.TaskID, "cleanup-scope", model.SystemTaskStatusSucceeded, nil, ""))
+					}
+				}
+			})
 			t.Run("根权限及身份不可从请求伪造", func(t *testing.T) {
 				gin.SetMode(gin.TestMode)
 				for _, role := range []int{1, 10} {
@@ -530,3 +700,16 @@ type lotteryActivityBeforePeriod struct {
 }
 
 func (lotteryActivityBeforePeriod) TableName() string { return "lottery_activities" }
+
+// 固定清理功能上线前的流水结构，验证升级默认保留所有历史展示记录。
+type lotteryDrawBeforeCleanup struct {
+	ID         int
+	ActivityID int    `gorm:"index;uniqueIndex:idx_lottery_request,priority:1;index:idx_lottery_user,priority:1"`
+	UserID     int    `gorm:"uniqueIndex:idx_lottery_request,priority:2;index:idx_lottery_user,priority:2"`
+	RequestID  string `gorm:"size:64;uniqueIndex:idx_lottery_request,priority:3"`
+	Quota      int    `gorm:"type:bigint"`
+	CreatedAt  int64
+	IP         string `gorm:"size:64"`
+}
+
+func (lotteryDrawBeforeCleanup) TableName() string { return "lottery_draws" }

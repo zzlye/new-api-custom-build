@@ -79,11 +79,12 @@ export async function startLogCleanupTask(targetTimestamp: number) {
     '/api/system-task/log-cleanup',
     null,
     {
-      // 新版确认框明确包含任务日志；旧页面未带此标记时保持原清理范围。
+      // 清理范围与确认框一致；旧页面未带新标记时保持原清理范围。
       params: {
         target_timestamp: targetTimestamp,
         include_task_logs: true,
         include_order_logs: true,
+        include_lottery_logs: true,
       },
     }
   )

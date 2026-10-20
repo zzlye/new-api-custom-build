@@ -52,7 +52,7 @@ func TestLogCleanupClearsOrderDetailsButKeepsFinancialDeduplication(t *testing.T
 	require.NoError(t, model.DB.Create(&model.ReceiptOrder{TopUpID: top.Id, QRCode: "https://qr.alipay.com/old", CreditQuota: 100}).Error)
 	require.NoError(t, model.DB.Create(&model.ReceiptPayment{ID: "keep-hash", TradeKey: "keep-trade-hash", TopUpID: top.Id}).Error)
 	require.NoError(t, model.DB.Create(&model.OrderEvent{TopUpID: top.Id, Message: "旧详情"}).Error)
-	task, err := StartLogCleanupTask(200, false, true)
+	task, err := StartLogCleanupTask(200, false, true, false)
 	require.NoError(t, err)
 	finished := runLogCleanupFixture(t, task)
 	assert.Equal(t, model.SystemTaskStatusSucceeded, finished.Status)
@@ -95,7 +95,7 @@ func TestLogCleanupIncludesCompletedTasksAndTheirFiles(t *testing.T) {
 	}
 	task := &model.AsyncRelayTask{TaskID: parent.TaskID, LogID: parent.ID, NodeID: common.NodeName, Status: model.AsyncRelayTaskStatusSucceeded, FinishedAt: 100, ResultFilePath: path, RequestDetails: string(details)}
 	require.NoError(t, model.DB.Create(task).Error)
-	cleanup, err := StartLogCleanupTask(200, true)
+	cleanup, err := StartLogCleanupTask(200, true, false, false)
 	require.NoError(t, err)
 	result := runLogCleanupFixture(t, cleanup)
 	assert.Equal(t, model.SystemTaskStatusSucceeded, result.Status, result.Error)
@@ -119,7 +119,7 @@ func TestLogCleanupStillDeletesTasksWhenUsageLogsAreEmpty(t *testing.T) {
 	prepareLogCleanupDatabase(t)
 	oldTask := &model.Task{TaskID: "old-failed-task", Status: model.TaskStatusFailure, SubmitTime: 90, FinishTime: 100}
 	require.NoError(t, model.DB.Create(oldTask).Error)
-	cleanup, err := StartLogCleanupTask(200, true)
+	cleanup, err := StartLogCleanupTask(200, true, false, false)
 	require.NoError(t, err)
 	result := runLogCleanupFixture(t, cleanup)
 	assert.Equal(t, model.SystemTaskStatusSucceeded, result.Status, result.Error)
@@ -162,7 +162,7 @@ func TestLogCleanupFileFailureKeepsTaskAndReportsPartialProgress(t *testing.T) {
 	parent := &model.Task{TaskID: "unsafe-path-image", IsAsync: true, Status: model.TaskStatusSuccess, SubmitTime: 90, FinishTime: 100}
 	require.NoError(t, model.DB.Create(parent).Error)
 	require.NoError(t, model.DB.Create(&model.AsyncRelayTask{TaskID: parent.TaskID, LogID: parent.ID, NodeID: common.NodeName, Status: model.AsyncRelayTaskStatusSucceeded, FinishedAt: 100, ResultFilePath: t.TempDir() + "/outside-media.txt"}).Error)
-	cleanup, err := StartLogCleanupTask(200, true)
+	cleanup, err := StartLogCleanupTask(200, true, false, false)
 	require.NoError(t, err)
 	result := runLogCleanupFixture(t, cleanup)
 	assert.Equal(t, model.SystemTaskStatusFailed, result.Status)
@@ -204,7 +204,7 @@ func TestLogCleanupKeepsActiveChildrenAndCutoffBoundary(t *testing.T) {
 		require.NoError(t, model.DB.Create(task).Error)
 	}
 	require.NoError(t, model.DB.Create(&model.AsyncRelayTask{TaskID: parent.TaskID, LogID: parent.ID, Status: model.AsyncRelayTaskStatusSucceeded, FinishedAt: 100}).Error)
-	cleanup, err := StartLogCleanupTask(200, true)
+	cleanup, err := StartLogCleanupTask(200, true, false, false)
 	require.NoError(t, err)
 	result := runLogCleanupFixture(t, cleanup)
 	assert.Equal(t, model.SystemTaskStatusSucceeded, result.Status, result.Error)
@@ -214,4 +214,48 @@ func TestLogCleanupKeepsActiveChildrenAndCutoffBoundary(t *testing.T) {
 	assert.Equal(t, parent.TaskID, tasks[0].TaskID)
 	assert.Equal(t, child.TaskID, tasks[1].TaskID)
 	assert.Equal(t, exactCutoff.TaskID, tasks[2].TaskID)
+}
+
+func TestLogCleanupIncludesLotteryOnlyWhenRequested(t *testing.T) {
+	prepareLogCleanupDatabase(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.LotteryActivity{}, &model.LotteryDraw{}))
+	a := model.LotteryActivity{Status: model.LotteryEnded}
+	require.NoError(t, model.DB.Create(&a).Error)
+	for _, request := range []string{"cleanup-request-1", "cleanup-request-2"} {
+		require.NoError(t, model.DB.Create(&model.LotteryDraw{ActivityID: a.ID, UserID: 1, RequestID: request, Quota: 10, CreatedAt: 100, IP: "192.0.2.1"}).Error)
+	}
+	// 旧版排队任务没有新范围标记，升级后继续运行也不能清掉抽奖记录。
+	legacy, err := model.CreateSystemTask(model.SystemTaskTypeLogCleanup, map[string]any{"target_timestamp": 200, "batch_size": 1}, LogCleanupState{})
+	require.NoError(t, err)
+	assert.Equal(t, model.SystemTaskStatusSucceeded, runLogCleanupFixture(t, legacy).Status)
+	var remaining int64
+	require.NoError(t, model.OldLotteryLogQuery(context.Background(), 200).Count(&remaining).Error)
+	assert.EqualValues(t, 2, remaining)
+	// 验证没有其他日志时仍能分批完成，并保存准确的进度和结果。
+	task, err := StartLogCleanupTask(200, false, false, true)
+	require.NoError(t, err)
+	var payload LogCleanupPayload
+	require.NoError(t, task.DecodePayload(&payload))
+	require.True(t, payload.IncludeLotteryLogs)
+	payload.BatchSize = 1
+	encoded, err := common.Marshal(payload)
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(task).Update("payload", string(encoded)).Error)
+	finished := runLogCleanupFixture(t, task)
+	require.Equal(t, model.SystemTaskStatusSucceeded, finished.Status, finished.Error)
+	var result LogCleanupResult
+	require.NoError(t, common.UnmarshalJsonStr(finished.Result, &result))
+	assert.EqualValues(t, 2, result.DeletedLottery)
+	assert.EqualValues(t, 2, result.DeletedCount)
+	var state LogCleanupState
+	require.NoError(t, finished.DecodeState(&state))
+	assert.EqualValues(t, 2, state.Processed)
+	assert.Equal(t, 100, state.Progress)
+	assert.Zero(t, state.Remaining)
+	repeated, err := StartLogCleanupTask(200, false, false, true)
+	require.NoError(t, err)
+	finished = runLogCleanupFixture(t, repeated)
+	require.Equal(t, model.SystemTaskStatusSucceeded, finished.Status, finished.Error)
+	require.NoError(t, common.UnmarshalJsonStr(finished.Result, &result))
+	assert.Zero(t, result.DeletedCount)
 }

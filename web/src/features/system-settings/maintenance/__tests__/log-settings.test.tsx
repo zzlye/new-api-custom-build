@@ -111,9 +111,10 @@ beforeEach(async () => {
           status: 'succeeded',
           state: { total: 2, processed: 2, progress: 100, remaining: 0 },
           result: {
-            deleted_count: 2,
+            deleted_count: 5,
             deleted_logs: 1,
             deleted_tasks: 1,
+            deleted_lottery: 3,
             skipped_tasks: 0,
           },
         },
@@ -195,7 +196,9 @@ test('根用户在日志清理页面设置生成文件保留时长', async () =>
   )
 })
 
-test('联合清理需要确认并说明任务日志和媒体都会删除', async () => {
+test('联合清理经确认包含终态抽奖记录并刷新记录缓存', async () => {
+  queryClient.setQueryData(['lottery', 'draws', true, 1, 1], { items: [] })
+  queryClient.setQueryData(['lottery', 'winners', 1], [])
   await renderSettings()
   const clear = button('Clean logs and tasks')
   assert.ok(clear)
@@ -205,6 +208,8 @@ test('联合清理需要确认并说明任务日志和媒体都会删除', async
   assert.match(dialog.textContent ?? '', /task logs/)
   assert.match(dialog.textContent ?? '', /media/)
   assert.match(dialog.textContent ?? '', /payment order logs/)
+  assert.match(dialog.textContent ?? '', /ended or exhausted draws/)
+  assert.match(dialog.textContent ?? '', /financial records/i)
   assert.equal(cleared.length, 0)
   await act(async () => button('Cancel', dialog)?.click())
   assert.equal(cleared.length, 0)
@@ -223,9 +228,22 @@ test('联合清理需要确认并说明任务日志和媒体都会删除', async
       .include_order_logs,
     true
   )
+  assert.equal(
+    (cleared[0].options as { params: { include_lottery_logs: boolean } }).params
+      .include_lottery_logs,
+    true
+  )
   assert.match(
     container.textContent ?? '',
-    /1 usage logs, 1 task logs and 0 order logs/
+    /1 usage logs, 1 task logs, 0 order logs and 3 draw records/
+  )
+  assert.equal(
+    queryClient.getQueryState(['lottery', 'draws', true, 1, 1])?.isInvalidated,
+    true
+  )
+  assert.equal(
+    queryClient.getQueryState(['lottery', 'winners', 1])?.isInvalidated,
+    true
   )
 })
 
@@ -240,6 +258,7 @@ test('中文页面的联合清理及文件时长文案加载正确', async () =>
   await renderSettings()
   assert.ok(button('清理日志和任务'))
   assert.match(container.textContent ?? '', /文件保存时长|保存时长|保留时长/)
+  assert.match(container.textContent ?? '', /抽奖记录/)
   assert.doesNotMatch(
     container.textContent ?? '',
     /Clean logs and tasks|Completed task logs|Retention period/
