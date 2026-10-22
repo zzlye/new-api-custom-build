@@ -7,7 +7,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -78,6 +78,77 @@ afterEach(() => {
 })
 
 describe('注册邀请码规则', () => {
+  it.each([true, false])(
+    '邀请码必填为 %s 时，逐字输入、中文组合输入和清空重输保留输入框与焦点',
+    async (required) => {
+      await renderRegistration({ register_invite_code_required: required })
+      const user = userEvent.setup()
+      const fields = [
+        screen.getByLabelText('Username'),
+        screen.getByLabelText('Password'),
+        screen.getByLabelText('Confirm password'),
+        screen.getByLabelText(/^Invitation Code/),
+      ]
+      for (const input of fields) {
+        await user.type(input, 'a')
+        expect(input).toBeVisible()
+        expect(input).toHaveFocus()
+        expect(input).toHaveValue('a')
+        await user.clear(input)
+        // 中文输入法提交组合文本时，字段不能被重新挂载或丢失输入内容。
+        fireEvent.compositionStart(input)
+        fireEvent.change(input, { target: { value: '注册测试' } })
+        fireEvent.compositionEnd(input, { data: '注册测试' })
+        expect(input).toHaveValue('注册测试')
+        expect(input).toHaveFocus()
+        await user.clear(input)
+        await user.paste('registration-input')
+        expect(input).toHaveValue('registration-input')
+        expect(input).toBeVisible()
+      }
+      expect(
+        screen.getByRole('button', { name: 'Create account' })
+      ).toBeVisible()
+      expect(api.post).not.toHaveBeenCalled()
+    }
+  )
+
+  it('开启邮箱验证时，邮箱逐字输入触发表单刷新仍保留已填字段和焦点', async () => {
+    await renderRegistration({ email_verification: true })
+    const user = await fillAccount()
+    const email = screen.getByLabelText('Email (required for verification)')
+    const send = screen.getByRole('button', { name: 'Send code' })
+    expect(send).toBeDisabled()
+    await user.type(email, 'test@example.com')
+    expect(email).toHaveFocus()
+    expect(email).toHaveValue('test@example.com')
+    expect(screen.getByLabelText('Username')).toHaveValue('new-user')
+    expect(screen.getByLabelText('Password')).toHaveValue('secure-password123')
+    expect(send).toBeEnabled()
+    await user.clear(email)
+    expect(email).toHaveFocus()
+    expect(send).toBeDisabled()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('空表单提交显示字段错误，随后输入可以清除错误且不会替换注册页面', async () => {
+    await renderRegistration({ register_invite_code_required: false })
+    const user = userEvent.setup()
+    const username = screen.getByLabelText('Username')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+    await waitFor(() =>
+      expect(username).toHaveAttribute('aria-invalid', 'true')
+    )
+    await user.type(username, 'registration-check')
+    await waitFor(() =>
+      expect(username).toHaveAttribute('aria-invalid', 'false')
+    )
+    expect(username).toHaveFocus()
+    expect(screen.getByLabelText('Username')).toBe(username)
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeVisible()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
   it.each([{}, { register_invite_code_required: true }])(
     '缺省或开启必填时，空邀请码不能提交：%j',
     async (status) => {
