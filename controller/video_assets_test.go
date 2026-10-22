@@ -6,12 +6,15 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/task/configured"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/setting/video_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -137,5 +140,74 @@ func TestVideoAssetDetectsAudioAndVideoContent(t *testing.T) {
 		asset, err := service.SaveVideoAsset(11, bytes.NewReader(tc.data))
 		require.NoError(t, err)
 		assert.Equal(t, tc.kind, asset.Kind)
+	}
+}
+
+// 覆盖六图加本地音频的实际转换链，确保池畔收到可读取的地址而不是 Data URI。
+func TestChipanVideoTemplateResolvesInlineReferences(t *testing.T) {
+	prepareAsyncMediaController(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.VideoAsset{}, &model.VideoAssetUse{}))
+	raw, err := os.ReadFile("../setting/video_setting/templates/chipan-sd25-720p.json")
+	require.NoError(t, err)
+	var registry video_setting.Registry
+	require.NoError(t, common.Unmarshal(raw, &registry))
+	require.NoError(t, registry.Validate())
+	missing, err := registry.Resolve(133, "sd-2.5-720p-plus")
+	require.NoError(t, err)
+	require.Nil(t, missing)
+	p, err := registry.Resolve(166, "sd-2.5-720p-plus")
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	wav := append([]byte("RIFF\x00\x00\x00\x00WAVEfmt "), make([]byte, 32)...)
+	images := make([]string, 6)
+	for i := range images {
+		images[i] = "data:image/png;base64," + asyncFixturePNG
+	}
+	body, err := common.Marshal(map[string]any{
+		"model": "sd2.5-720p", "prompt": "六图音频适配验证", "duration": "5", "resolution": "720p",
+		"aspect_ratio": "16:9", "image_urls": images,
+		"audio_urls": []string{"data:audio/wav;base64," + base64.StdEncoding.EncodeToString(wav)}, "generate_audio": false,
+	})
+	require.NoError(t, err)
+	info := &relaycommon.RelayInfo{VideoProtocol: p,
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task-chip-test"},
+		ChannelMeta:   &relaycommon.ChannelMeta{UpstreamModelName: "sd-2.5-720p-plus"}}
+	a := &configured.TaskAdaptor{}
+	a.Init(info)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("id", 11)
+	c.Request = httptest.NewRequest("POST", "/v1/videos", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	defer common.CleanupBodyStorage(c)
+	require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+	reader, err := a.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	data, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	var output map[string]any
+	require.NoError(t, common.Unmarshal(data, &output))
+	assert.EqualValues(t, 5, output["duration"])
+	assert.NotContains(t, output, "seconds")
+	assert.Equal(t, false, output["generateAudio"])
+	assert.Equal(t, "sd-2.5-720p-plus", output["model"])
+	require.Len(t, output["images"], 6)
+	require.Len(t, output["audios"], 1)
+	// 经素材读取处理器验证签名和文件内容，不调用真实视频生成接口。
+	for _, field := range []string{"images", "audios"} {
+		for _, item := range output[field].([]any) {
+			u, err := url.Parse(item.(string))
+			require.NoError(t, err)
+			require.Contains(t, []string{"http", "https"}, u.Scheme)
+			require.NotEmpty(t, u.Host)
+			rec := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(rec)
+			ctx.Params = gin.Params{{Key: "asset_id", Value: strings.Split(u.Path, "/")[4]}}
+			ctx.Request = httptest.NewRequest("GET", u.RequestURI(), nil)
+			GetVideoAssetContent(ctx)
+			require.Equal(t, 200, rec.Code, rec.Body.String())
+			if field == "audios" {
+				assert.Equal(t, wav, rec.Body.Bytes())
+			}
+		}
 	}
 }
