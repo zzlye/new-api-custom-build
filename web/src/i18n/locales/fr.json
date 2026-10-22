@@ -7273,13 +7273,6 @@
     "Latest winners": "Derniers gagnants",
     "No winners yet": "Aucun gagnant pour le moment",
     "Pause winner scroll": "Suspendre le défilement",
-    "Resume winner scroll": "Reprendre le défilement",
-    "Local parameter validation": "Validation locale des paramètres",
-    "Enable local parameter validation": "Activer la validation locale des paramètres",
-    "Local error HTTP status": "Code HTTP des erreurs locales",
-    "Search groups": "Rechercher des groupes",
-    "Select search results": "Sélectionner les résultats",
-    "Select at least one group.": "Sélectionnez au moins un groupe.",
-    "Enter an integer HTTP status from 400 to 599.": "Saisissez un code HTTP entier de 400 à 599."
+    "Resume winner scroll": "Reprendre le défilement"
   }
 }

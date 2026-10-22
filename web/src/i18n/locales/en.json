@@ -7313,13 +7313,6 @@
     "Latest winners": "Latest winners",
     "No winners yet": "No winners yet",
     "Pause winner scroll": "Pause winner scroll",
-    "Resume winner scroll": "Resume winner scroll",
-    "Local parameter validation": "Local parameter validation",
-    "Enable local parameter validation": "Enable local parameter validation",
-    "Local error HTTP status": "Local error HTTP status",
-    "Search groups": "Search groups",
-    "Select search results": "Select search results",
-    "Select at least one group.": "Select at least one group.",
-    "Enter an integer HTTP status from 400 to 599.": "Enter an integer HTTP status from 400 to 599."
+    "Resume winner scroll": "Resume winner scroll"
   }
 }

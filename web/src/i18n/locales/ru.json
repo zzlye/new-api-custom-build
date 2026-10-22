@@ -7273,13 +7273,6 @@
     "Latest winners": "Последние выигрыши",
     "No winners yet": "Выигрышей пока нет",
     "Pause winner scroll": "Приостановить прокрутку",
-    "Resume winner scroll": "Продолжить прокрутку",
-    "Local parameter validation": "Локальная проверка параметров",
-    "Enable local parameter validation": "Включить локальную проверку параметров",
-    "Local error HTTP status": "HTTP-код локальной ошибки",
-    "Search groups": "Поиск групп",
-    "Select search results": "Выбрать результаты поиска",
-    "Select at least one group.": "Выберите хотя бы одну группу.",
-    "Enter an integer HTTP status from 400 to 599.": "Введите целый HTTP-код от 400 до 599."
+    "Resume winner scroll": "Продолжить прокрутку"
   }
 }

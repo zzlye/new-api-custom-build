@@ -40,7 +40,6 @@ func InitOptionMap() {
 	common.OptionMap[common.AsyncMediaRetentionOption] = "2"
 	common.OptionMap[common.AsyncMediaConcurrencyOption] = "4"
 	common.OptionMap[operation_setting.AsyncMediaRetryOption] = operation_setting.DefaultAsyncMediaRetryJSON
-	common.OptionMap[operation_setting.LocalRequestValidationOption] = operation_setting.DefaultLocalRequestValidationJSON
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -239,10 +238,6 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
-	if key == operation_setting.LocalRequestValidationOption {
-		_, err := operation_setting.ParseLocalRequestValidationPolicy(value)
-		return err
-	}
 	if key == "RegisterInviteCodeRequired" && value != "true" && value != "false" {
 		return fmt.Errorf("注册邀请码必填设置必须为 true 或 false")
 	}
@@ -362,7 +357,7 @@ func validateAppearanceFloatRange(value string, min, max float64, label string) 
 
 func UpdateOption(key string, value string) error {
 	// 重试策略和注册限制只有数据库完整提交后才更新内存，写入失败不能返回保存成功。
-	if key == operation_setting.AsyncMediaRetryOption || key == operation_setting.LocalRequestValidationOption || key == "RegisterInviteCodeRequired" {
+	if key == operation_setting.AsyncMediaRetryOption || key == "RegisterInviteCodeRequired" {
 		return UpdateOptionsBulk(map[string]string{key: value})
 	}
 	if IsUserModelPricingOption(key) {

@@ -226,10 +226,6 @@ func UpdateOption(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改媒体换渠道重试设置"})
 		return
 	}
-	if option.Key == operation_setting.LocalRequestValidationOption && c.GetInt("role") != common.RoleRootUser {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改本地参数校验设置"})
-		return
-	}
 	if option.Key == common.AsyncMediaRetentionOption && c.GetInt("role") != common.RoleRootUser {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "仅根用户可以修改生成文件保存时长"})
 		return
