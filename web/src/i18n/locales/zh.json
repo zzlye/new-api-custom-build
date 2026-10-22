@@ -7313,6 +7313,13 @@
     "Latest winners": "最新中奖",
     "No winners yet": "暂无中奖记录",
     "Pause winner scroll": "暂停滚动",
-    "Resume winner scroll": "继续滚动"
+    "Resume winner scroll": "继续滚动",
+    "Local parameter validation": "本地参数校验",
+    "Enable local parameter validation": "启用本地参数校验",
+    "Local error HTTP status": "本地返回状态码",
+    "Search groups": "搜索分组",
+    "Select search results": "全选搜索结果",
+    "Select at least one group.": "请至少选择一个分组。",
+    "Enter an integer HTTP status from 400 to 599.": "请输入 400 到 599 的整数状态码。"
   }
 }

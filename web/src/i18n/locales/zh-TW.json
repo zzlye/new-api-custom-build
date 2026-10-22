@@ -7290,6 +7290,13 @@
     "Latest winners": "最新中獎",
     "No winners yet": "暫無中獎記錄",
     "Pause winner scroll": "暫停滾動",
-    "Resume winner scroll": "繼續滾動"
+    "Resume winner scroll": "繼續滾動",
+    "Local parameter validation": "本機參數驗證",
+    "Enable local parameter validation": "啟用本機參數驗證",
+    "Local error HTTP status": "本機回傳狀態碼",
+    "Search groups": "搜尋分組",
+    "Select search results": "全選搜尋結果",
+    "Select at least one group.": "請至少選擇一個分組。",
+    "Enter an integer HTTP status from 400 to 599.": "請輸入 400 到 599 的整數狀態碼。"
   }
 }

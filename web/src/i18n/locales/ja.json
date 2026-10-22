@@ -7273,6 +7273,13 @@
     "Latest winners": "最新の当選",
     "No winners yet": "当選記録はまだありません",
     "Pause winner scroll": "スクロールを停止",
-    "Resume winner scroll": "スクロールを再開"
+    "Resume winner scroll": "スクロールを再開",
+    "Local parameter validation": "ローカルパラメータ検証",
+    "Enable local parameter validation": "ローカルパラメータ検証を有効にする",
+    "Local error HTTP status": "ローカルエラーのHTTPステータス",
+    "Search groups": "グループを検索",
+    "Select search results": "検索結果をすべて選択",
+    "Select at least one group.": "少なくとも1つのグループを選択してください。",
+    "Enter an integer HTTP status from 400 to 599.": "400～599の整数ステータスを入力してください。"
   }
 }

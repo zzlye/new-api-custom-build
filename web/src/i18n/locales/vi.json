@@ -7273,6 +7273,13 @@
     "Latest winners": "Người trúng gần đây",
     "No winners yet": "Chưa có lượt trúng",
     "Pause winner scroll": "Tạm dừng cuộn",
-    "Resume winner scroll": "Tiếp tục cuộn"
+    "Resume winner scroll": "Tiếp tục cuộn",
+    "Local parameter validation": "Kiểm tra tham số cục bộ",
+    "Enable local parameter validation": "Bật kiểm tra tham số cục bộ",
+    "Local error HTTP status": "Mã HTTP lỗi cục bộ",
+    "Search groups": "Tìm nhóm",
+    "Select search results": "Chọn kết quả tìm kiếm",
+    "Select at least one group.": "Vui lòng chọn ít nhất một nhóm.",
+    "Enter an integer HTTP status from 400 to 599.": "Nhập mã HTTP nguyên từ 400 đến 599."
   }
 }
