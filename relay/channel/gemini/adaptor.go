@@ -29,9 +29,15 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 	}
 	if len(request.Contents) > 0 {
 		for i, content := range request.Contents {
-			if i == 0 {
-				if request.Contents[0].Role == "" {
-					request.Contents[0].Role = "user"
+			// 将客户端传入的常见角色别名统一归一化为 Gemini 支持的 user 或 model。
+			switch strings.ToLower(strings.TrimSpace(content.Role)) {
+			case "model", "assistant":
+				request.Contents[i].Role = "model"
+			case "user", "human", "function", "tool", "system", "developer":
+				request.Contents[i].Role = "user"
+			case "":
+				if i == 0 {
+					request.Contents[i].Role = "user"
 				}
 			}
 			for _, part := range content.Parts {

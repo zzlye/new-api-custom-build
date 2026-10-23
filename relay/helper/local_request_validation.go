@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -17,6 +20,123 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
+
+// ErrInvalidGeminiThoughtSignature 标识 Gemini 思考签名不合法或被测活脚本篡改。
+var ErrInvalidGeminiThoughtSignature = errors.New("Invalid thought signature.")
+
+type geminiSignatureCacheEntry struct {
+	signature string
+	expiresAt time.Time
+}
+
+var (
+	geminiSigMu        sync.RWMutex
+	geminiCallIDToSig  = make(map[string]geminiSignatureCacheEntry)
+	geminiEdgeKeyToSig = make(map[string]geminiSignatureCacheEntry)
+)
+
+// ClearGeminiThoughtSignatureCache 清空思考签名缓存，供测试重置使用。
+func ClearGeminiThoughtSignatureCache() {
+	geminiSigMu.Lock()
+	defer geminiSigMu.Unlock()
+	clear(geminiCallIDToSig)
+	clear(geminiEdgeKeyToSig)
+}
+
+// geminiSignatureEdgeKey 提取长签名的长度与首尾各 16 字节作为索引，用于识别中间字节被篡改的探测请求。
+func geminiSignatureEdgeKey(sig string) string {
+	if len(sig) < 48 {
+		return ""
+	}
+	return fmt.Sprintf("%d:%s:%s", len(sig), sig[:16], sig[len(sig)-16:])
+}
+
+// RecordGeminiThoughtSignature 记录上游签发的合法 functionCall 思考签名，用于本地拦截篡改签名的探测请求。
+func RecordGeminiThoughtSignature(callID, rawSig string) {
+	sig := strings.Trim(strings.TrimSpace(rawSig), `"`)
+	if sig == "" || sig == "skip_thought_signature_validator" || sig == "context_engineering_is_the_way_to_go" {
+		return
+	}
+	now := time.Now()
+	expiresAt := now.Add(15 * time.Minute)
+	edgeKey := geminiSignatureEdgeKey(sig)
+	geminiSigMu.Lock()
+	defer geminiSigMu.Unlock()
+	if len(geminiCallIDToSig) >= 10000 {
+		for k, v := range geminiCallIDToSig {
+			if !now.Before(v.expiresAt) {
+				delete(geminiCallIDToSig, k)
+			}
+		}
+	}
+	if len(geminiEdgeKeyToSig) >= 10000 {
+		for k, v := range geminiEdgeKeyToSig {
+			if !now.Before(v.expiresAt) {
+				delete(geminiEdgeKeyToSig, k)
+			}
+		}
+	}
+	if callID != "" && len(geminiCallIDToSig) < 10000 {
+		geminiCallIDToSig[callID] = geminiSignatureCacheEntry{signature: sig, expiresAt: expiresAt}
+	}
+	if edgeKey != "" && len(geminiEdgeKeyToSig) < 10000 {
+		geminiEdgeKeyToSig[edgeKey] = geminiSignatureCacheEntry{signature: sig, expiresAt: expiresAt}
+	}
+}
+
+// validateGeminiThoughtSignature 检查请求中的思考签名是否合法或是否被篡改。
+func validateGeminiThoughtSignature(callID, sig string, hasFunctionCall bool) error {
+	sig = strings.TrimSpace(sig)
+	if sig == "" || sig == "skip_thought_signature_validator" || sig == "context_engineering_is_the_way_to_go" {
+		return nil
+	}
+	now := time.Now()
+	edgeKey := geminiSignatureEdgeKey(sig)
+	geminiSigMu.RLock()
+	callEntry, hasCall := geminiCallIDToSig[callID]
+	edgeEntry, hasEdge := geminiEdgeKeyToSig[edgeKey]
+	geminiSigMu.RUnlock()
+
+	if callID != "" && hasCall && now.Before(callEntry.expiresAt) && callEntry.signature != sig {
+		return ErrInvalidGeminiThoughtSignature
+	}
+	if edgeKey != "" && hasEdge && now.Before(edgeEntry.expiresAt) && edgeEntry.signature != sig {
+		return ErrInvalidGeminiThoughtSignature
+	}
+	if hasFunctionCall {
+		if err := validateBase64Payload(sig, "", "thoughtSignature"); err != nil {
+			return ErrInvalidGeminiThoughtSignature
+		}
+		if len(sig) >= 48 {
+			RecordGeminiThoughtSignature(callID, sig)
+		}
+	}
+	return nil
+}
+
+// extractGeminiModelFromPath 从 Gemini 请求路径中提取模型名称。
+func extractGeminiModelFromPath(path string) string {
+	_, rest, ok := strings.Cut(path, "/models/")
+	if !ok {
+		return ""
+	}
+	model, _, _ := strings.Cut(rest, ":")
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
+// isPre37GeminiModel 判断是否为 3.7 之前的旧版 Gemini 模型（旧模型允许在转换层自动修正非标准 role）。
+func isPre37GeminiModel(model string) bool {
+	for _, prefix := range []string{
+		"gemini-1.", "gemini-1-",
+		"gemini-2.", "gemini-2-",
+		"gemini-3-flash", "gemini-3.0", "gemini-3.1", "gemini-3.2", "gemini-3.3", "gemini-3.4", "gemini-3.5", "gemini-3.6",
+	} {
+		if strings.HasPrefix(model, prefix) {
+			return true
+		}
+	}
+	return false
+}
 
 // ValidateLocalRequest 使用默认全量规则执行本地参数校验，不请求外部素材或探测上游。
 func ValidateLocalRequest(c *gin.Context) error {
@@ -82,7 +202,7 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 		return err
 	}
 	if format == types.RelayFormatGemini {
-		return validateLocalGemini(root, policy)
+		return validateLocalGemini(root, extractGeminiModelFromPath(path), policy)
 	}
 	// 复用原有必填字段和数量边界，额外检查不会改写提交给上游的参数。
 	if policy.StructureCheckEnabled() || policy.GenerationConfigCheckEnabled() {
@@ -90,12 +210,42 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 			return fmt.Errorf("请求参数无效：%w", err)
 		}
 	}
-	if (format == types.RelayFormatOpenAI || format == types.RelayFormatClaude) && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled()) {
+	if (format == types.RelayFormatOpenAI || format == types.RelayFormatClaude) && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled() || policy.GenerationConfigCheckEnabled()) {
+		if policy.GenerationConfigCheckEnabled() && format == types.RelayFormatOpenAI {
+			if tools := root.Get("tools"); tools.IsArray() {
+				for i, tool := range tools.Array() {
+					if !tool.IsObject() {
+						return fmt.Errorf("tools[%d] 必须是对象", i)
+					}
+					if tool.Get("type").Str == "function" {
+						fn := tool.Get("function")
+						if !fn.IsObject() || fn.Get("name").Type != gjson.String || strings.TrimSpace(fn.Get("name").Str) == "" {
+							return fmt.Errorf("tools[%d].function.name 必须是非空字符串", i)
+						}
+					}
+				}
+			}
+		}
 		if messages := root.Get("messages"); messages.IsArray() {
+			hasNonSystemMessage := false
+			knownToolCallIDs := make(map[string]bool)
 			for i, message := range messages.Array() {
 				field := fmt.Sprintf("messages[%d]", i)
+				roleStr := strings.TrimSpace(message.Get("role").Str)
+				if roleStr != "" && roleStr != "system" && roleStr != "developer" {
+					hasNonSystemMessage = true
+				}
+				if toolCalls := message.Get("tool_calls"); toolCalls.IsArray() {
+					for _, tc := range toolCalls.Array() {
+						if id := strings.TrimSpace(tc.Get("id").Str); id != "" {
+							if name := strings.TrimSpace(tc.Get("function.name").Str); name != "" {
+								knownToolCallIDs[id] = true
+							}
+						}
+					}
+				}
 				if policy.StructureCheckEnabled() {
-					if !message.IsObject() || message.Get("role").Type != gjson.String || strings.TrimSpace(message.Get("role").Str) == "" {
+					if !message.IsObject() || message.Get("role").Type != gjson.String || roleStr == "" {
 						return fmt.Errorf("%s.role 必须是非空字符串", field)
 					}
 					content := message.Get("content")
@@ -106,12 +256,22 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 					if content.Type != gjson.Null && content.Type != gjson.String && !content.IsArray() {
 						return fmt.Errorf("%s.content 必须是字符串或数组", field)
 					}
+					if (roleStr == "tool" || roleStr == "function") && strings.TrimSpace(message.Get("name").Str) == "" {
+						callID := strings.TrimSpace(message.Get("tool_call_id").Str)
+						if callID == "" || !knownToolCallIDs[callID] {
+							return fmt.Errorf("%s 缺少关联的工具函数名称", field)
+						}
+					}
 				}
 				if policy.MediaCheckEnabled() {
 					if err := validateOpenAIMessageMedia(message.Get("content"), field+".content"); err != nil {
 						return err
 					}
 				}
+			}
+			// 防止只传 system 消息导致转换为 Gemini 后 contents 为空而打向上游报 400。
+			if policy.StructureCheckEnabled() && len(messages.Array()) > 0 && !hasNonSystemMessage {
+				return errors.New("messages 必须至少包含一条非 system 消息")
 			}
 		}
 	}
@@ -167,7 +327,7 @@ func validateOpenAIMessageMedia(content gjson.Result, field string) error {
 			if err != nil || !strings.Contains(parsed, "/") {
 				return fmt.Errorf("%s.url 媒体类型无效", partField)
 			}
-			if err := validateBase64Payload(encoded, partField+".url"); err != nil {
+			if err := validateBase64Payload(encoded, parsed, partField+".url"); err != nil {
 				return err
 			}
 		}
@@ -175,8 +335,8 @@ func validateOpenAIMessageMedia(content gjson.Result, field string) error {
 	return nil
 }
 
-// validateBase64Payload 流式校验 Base64 数据合法性，不分配完整缓冲区且不将敏感素材写入报错文本。
-func validateBase64Payload(encoded, field string) error {
+// validateBase64Payload 流式校验 Base64 数据合法性及伪装错误页，不分配完整缓冲区且不将敏感素材写入报错文本。
+func validateBase64Payload(encoded, mediaType, field string) error {
 	if encoded == "" || strings.HasPrefix(strings.ToLower(encoded), "http://") || strings.HasPrefix(strings.ToLower(encoded), "https://") || strings.HasPrefix(strings.ToLower(encoded), "data:") {
 		return fmt.Errorf("%s 不是有效的 Base64", field)
 	}
@@ -187,20 +347,53 @@ func validateBase64Payload(encoded, field string) error {
 	if !strings.Contains(encoded, "=") {
 		encoding = encoding.WithPadding(base64.NoPadding)
 	}
-	if n, err := io.Copy(io.Discard, base64.NewDecoder(encoding, strings.NewReader(encoded))); err != nil || n == 0 {
+	decoder := base64.NewDecoder(encoding, strings.NewReader(encoded))
+	var head [64]byte
+	headN, headErr := io.ReadFull(decoder, head[:])
+	if headErr != nil && !errors.Is(headErr, io.EOF) && !errors.Is(headErr, io.ErrUnexpectedEOF) {
 		return fmt.Errorf("%s 不是有效的 Base64", field)
+	}
+	restN, err := io.Copy(io.Discard, decoder)
+	if err != nil || int64(headN)+restN == 0 {
+		return fmt.Errorf("%s 不是有效的 Base64", field)
+	}
+	// 拦截客户端将 HTML/XML/JSON 错误响应页伪装成图片或 PDF 的损坏媒体数据。
+	if strings.HasPrefix(mediaType, "image/") || mediaType == "application/pdf" {
+		sample := bytes.ToLower(bytes.TrimSpace(head[:headN]))
+		for _, badPrefix := range [][]byte{
+			[]byte("<!doctype"),
+			[]byte("<html"),
+			[]byte("<?xml"),
+			[]byte("<error"),
+			[]byte(`{"error"`),
+		} {
+			if bytes.HasPrefix(sample, badPrefix) {
+				return fmt.Errorf("%s 媒体文件内容已损坏", field)
+			}
+		}
 	}
 	return nil
 }
 
-// validateLocalGemini 针对 Gemini 原生请求执行结构、多模态素材及生成参数范围校验。
-func validateLocalGemini(root gjson.Result, policy operation_setting.LocalRequestValidationPolicy) error {
+// isGeminiPartMetadataKey 判断字段是否仅为 Part 元数据（不属于 Protobuf oneof data 内容字段）。
+func isGeminiPartMetadataKey(key string) bool {
+	switch key {
+	case "thought", "thoughtSignature", "thought_signature", "mediaResolution", "media_resolution", "videoMetadata", "video_metadata":
+		return true
+	default:
+		return false
+	}
+}
+
+// validateLocalGemini 针对 Gemini 原生请求执行结构、思考签名、多模态素材及生成参数范围校验。
+func validateLocalGemini(root gjson.Result, modelName string, policy operation_setting.LocalRequestValidationPolicy) error {
 	contents := root.Get("contents")
 	if policy.StructureCheckEnabled() {
 		if !contents.IsArray() || len(contents.Array()) == 0 {
 			return errors.New("contents 必须是非空数组")
 		}
 	}
+	allowLegacyRoleAliases := isPre37GeminiModel(modelName)
 	if contents.IsArray() && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled()) {
 		for i, content := range contents.Array() {
 			field := fmt.Sprintf("contents[%d]", i)
@@ -208,8 +401,20 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 				if !content.IsObject() {
 					return fmt.Errorf("%s 必须是对象", field)
 				}
-				if role := content.Get("role"); role.Exists() && role.Type != gjson.Null && (role.Type != gjson.String || (role.Str != "" && role.Str != "user" && role.Str != "model")) {
-					return fmt.Errorf("%s.role 必须是 user 或 model", field)
+				if role := content.Get("role"); role.Exists() && role.Type != gjson.Null {
+					if role.Type != gjson.String {
+						return fmt.Errorf("%s.role 必须是 user 或 model", field)
+					}
+					roleVal := strings.TrimSpace(role.Str)
+					if allowLegacyRoleAliases {
+						switch strings.ToLower(roleVal) {
+						case "", "user", "model", "system", "assistant", "function", "tool", "developer", "human":
+						default:
+							return fmt.Errorf("%s.role 必须是 user 或 model", field)
+						}
+					} else if roleVal != "" && roleVal != "user" && roleVal != "model" {
+						return fmt.Errorf("%s.role 必须是 user 或 model", field)
+					}
 				}
 			}
 			parts := content.Get("parts")
@@ -222,18 +427,54 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 			for j, part := range parts.Array() {
 				partField := fmt.Sprintf("%s.parts[%d]", field, j)
 				if policy.StructureCheckEnabled() {
-					if !part.IsObject() || len(part.Map()) == 0 {
+					partMap := part.Map()
+					if !part.IsObject() || len(partMap) == 0 {
 						return fmt.Errorf("%s 必须是非空对象", partField)
 					}
 					if text := part.Get("text"); text.Exists() && text.Type != gjson.Null && text.Type != gjson.String {
 						return fmt.Errorf("%s.text 必须是字符串", partField)
 					}
+					// 检查 Part 是否包含至少一个有效的 oneof data 字段，拦截会被序列化为空对象的空文本 Part。
+					hasDataField := false
+					for k, v := range partMap {
+						if isGeminiPartMetadataKey(k) || v.Type == gjson.Null {
+							continue
+						}
+						if k == "text" {
+							if v.Str != "" {
+								hasDataField = true
+							}
+							continue
+						}
+						hasDataField = true
+					}
+					if !hasDataField {
+						return fmt.Errorf("%s.data 必须包含非空内容", partField)
+					}
+					var callID string
+					hasFunctionCall := false
 					for _, fnKey := range []string{"functionCall", "function_call", "functionResponse", "function_response"} {
 						fnVal := part.Get(fnKey)
 						if fnVal.Exists() && fnVal.Type != gjson.Null {
 							if !fnVal.IsObject() || fnVal.Get("name").Type != gjson.String || strings.TrimSpace(fnVal.Get("name").Str) == "" {
 								return fmt.Errorf("%s.%s.name 必须是非空字符串", partField, fnKey)
 							}
+							if strings.Contains(strings.ToLower(fnKey), "call") {
+								hasFunctionCall = true
+								callID = strings.TrimSpace(fnVal.Get("id").Str)
+							}
+						}
+					}
+					sig := part.Get("thoughtSignature")
+					if !sig.Exists() {
+						sig = part.Get("thought_signature")
+					}
+					if sig.Exists() && sig.Type != gjson.Null {
+						if sig.Type != gjson.String {
+							return ErrInvalidGeminiThoughtSignature
+						}
+						if err := validateGeminiThoughtSignature(callID, sig.Str, hasFunctionCall); err != nil {
+							return err
 						}
 					}
 				}
@@ -252,9 +493,11 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 						}
 						// fileData 的 MIME 可由上游推断；inlineData 必须显式给出。
 						inline := strings.HasPrefix(name, "inline")
+						var parsedMime string
 						if inline || mimeType.Exists() {
-							parsed, _, err := mime.ParseMediaType(mimeType.Str)
-							if err != nil || !strings.Contains(parsed, "/") {
+							var err error
+							parsedMime, _, err = mime.ParseMediaType(mimeType.Str)
+							if err != nil || !strings.Contains(parsedMime, "/") {
 								return fmt.Errorf("%s.%s.mimeType 必须是有效的媒体类型", partField, name)
 							}
 						}
@@ -263,7 +506,7 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 							if encoded.Type != gjson.String || encoded.Str == "" {
 								return fmt.Errorf("%s.%s.data 必须是非空 Base64 字符串", partField, name)
 							}
-							if err := validateBase64Payload(encoded.Str, fmt.Sprintf("%s.%s.data", partField, name)); err != nil {
+							if err := validateBase64Payload(encoded.Str, parsedMime, fmt.Sprintf("%s.%s.data", partField, name)); err != nil {
 								return err
 							}
 						} else {
@@ -282,6 +525,31 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 	}
 	if !policy.GenerationConfigCheckEnabled() {
 		return nil
+	}
+	if tools := root.Get("tools"); tools.Exists() && tools.Type != gjson.Null {
+		if tools.IsArray() {
+			for i, tool := range tools.Array() {
+				if !tool.IsObject() {
+					return fmt.Errorf("tools[%d] 必须是对象", i)
+				}
+				for _, declKey := range []string{"functionDeclarations", "function_declarations"} {
+					decls := tool.Get(declKey)
+					if !decls.Exists() || decls.Type == gjson.Null {
+						continue
+					}
+					if !decls.IsArray() || len(decls.Array()) == 0 {
+						return fmt.Errorf("tools[%d].%s 必须是非空数组", i, declKey)
+					}
+					for j, decl := range decls.Array() {
+						if !decl.IsObject() || decl.Get("name").Type != gjson.String || strings.TrimSpace(decl.Get("name").Str) == "" {
+							return fmt.Errorf("tools[%d].%s[%d].name 必须是非空字符串", i, declKey, j)
+						}
+					}
+				}
+			}
+		} else if !tools.IsObject() {
+			return errors.New("tools 必须是数组或对象")
+		}
 	}
 	for _, name := range []string{"generationConfig", "generation_config"} {
 		config := root.Get(name)
@@ -311,9 +579,9 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 			integer  bool
 		}{
 			{"temperature", 0, 2, false}, {"topP", 0, 1, false}, {"top_p", 0, 1, false},
-			{"topK", 1, maxTokensLimit, true}, {"top_k", 1, maxTokensLimit, true},
-			{"maxOutputTokens", 1, maxTokensLimit, true}, {"max_output_tokens", 1, maxTokensLimit, true},
-			{"candidateCount", 1, maxTokensLimit, true}, {"candidate_count", 1, maxTokensLimit, true},
+			{"topK", 1, 64, true}, {"top_k", 1, 64, true},
+			{"maxOutputTokens", 1, 65536, true}, {"max_output_tokens", 1, 65536, true},
+			{"candidateCount", 1, 8, true}, {"candidate_count", 1, 8, true},
 		} {
 			value := config.Get(rule.key)
 			if !value.Exists() || value.Type == gjson.Null {
@@ -336,8 +604,22 @@ func validateLocalGemini(root gjson.Result, policy operation_setting.LocalReques
 				if !budget.Exists() || budget.Type == gjson.Null {
 					continue
 				}
-				if budget.Type != gjson.Number || budget.Num < -1 || budget.Num > maxTokensLimit || math.Trunc(budget.Num) != budget.Num {
+				if budget.Type != gjson.Number || budget.Num < -1 || budget.Num > 65536 || math.Trunc(budget.Num) != budget.Num {
 					return fmt.Errorf("%s.%s.%s 数值或类型无效", name, thinkKey, budgetKey)
+				}
+			}
+			for _, levelKey := range []string{"thinkingLevel", "thinking_level"} {
+				level := thinking.Get(levelKey)
+				if !level.Exists() || level.Type == gjson.Null {
+					continue
+				}
+				if level.Type != gjson.String {
+					return fmt.Errorf("%s.%s.%s 必须是字符串", name, thinkKey, levelKey)
+				}
+				switch strings.ToLower(strings.TrimSpace(level.Str)) {
+				case "", "low", "medium", "high", "thinking_level_low", "thinking_level_medium", "thinking_level_high":
+				default:
+					return fmt.Errorf("%s.%s.%s 取值不受支持：%s", name, thinkKey, levelKey, level.Str)
 				}
 			}
 		}
