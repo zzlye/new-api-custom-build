@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -48,7 +49,7 @@ func resolveValidationGroup(c *gin.Context) string {
 	return group
 }
 
-// computeLocalRequestFingerprint 计算分组、请求路径与请求体内容的 SHA-256 指纹，用于短期拦截重复错误请求。
+// computeLocalRequestFingerprint 按用户、分组、请求路径与请求体计算 SHA-256 指纹，确保不同用户的冷却拦截完全隔离。
 func computeLocalRequestFingerprint(c *gin.Context, group string) string {
 	if c == nil || c.Request == nil || c.Request.Method != http.MethodPost || group == "" {
 		return ""
@@ -61,11 +62,19 @@ func computeLocalRequestFingerprint(c *gin.Context, group string) string {
 	if err != nil || len(body) == 0 {
 		return ""
 	}
+	userID := c.GetInt("id")
+	if userID == 0 {
+		userID = common.GetContextKeyInt(c, constant.ContextKeyUserId)
+	}
 	common.OptionMapRWMutex.RLock()
 	policyRaw := common.OptionMap[operation_setting.LocalRequestValidationOption]
 	common.OptionMapRWMutex.RUnlock()
 	hasher := sha256.New()
 	_, _ = hasher.Write([]byte(policyRaw))
+	_, _ = hasher.Write([]byte{0})
+	_, _ = hasher.Write([]byte(strconv.Itoa(userID)))
+	_, _ = hasher.Write([]byte{0})
+	_, _ = hasher.Write([]byte(strconv.Itoa(c.GetInt("token_id"))))
 	_, _ = hasher.Write([]byte{0})
 	_, _ = hasher.Write([]byte(group))
 	_, _ = hasher.Write([]byte{0})

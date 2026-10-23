@@ -257,12 +257,13 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 					assert.Equal(t, before+1, upstreamCalls.Load())
 				}
 			}
-			// 验证上游返回 524 (openai_error) 后记录请求指纹冷却，后续重复请求直接在本地拦截不打上游。
+			// 验证上游返回 524 (openai_error) 后记录请求指纹冷却，同一用户重复请求在本地拦截，不同用户互不影响。
 			var timeoutCalls atomic.Int32
+			currentUserID := user.Id
 			timeoutBody := `{"contents":[{"parts":[{"text":"trigger-524-timeout"}]}]}`
 			timeoutRouter := gin.New()
 			timeoutRouter.Use(middleware.BodyStorageCleanup(), func(c *gin.Context) {
-				c.Set("id", user.Id)
+				c.Set("id", currentUserID)
 				c.Set("username", user.Username)
 				common.SetContextKey(c, constant.ContextKeyUsingGroup, "gemini")
 				if middleware.CheckLocalRequestParameters(c) {
@@ -286,7 +287,14 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 			timeoutRouter.ServeHTTP(secondResp, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini:generateContent", strings.NewReader(timeoutBody)))
 			assert.Equal(t, 422, secondResp.Code)
 			assert.Contains(t, secondResp.Body.String(), "local_error_cooldown_intercepted")
-			assert.Equal(t, int32(1), timeoutCalls.Load(), "冷却期内相同 524 请求不得再次发往上游")
+			assert.Equal(t, int32(1), timeoutCalls.Load(), "冷却期内同一用户的相同 524 请求不得再次发往上游")
+
+			// 切换到另一个用户发送相同请求，不受前一个用户的冷却记录影响。
+			currentUserID = user.Id + 100
+			otherUserResp := httptest.NewRecorder()
+			timeoutRouter.ServeHTTP(otherUserResp, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini:generateContent", strings.NewReader(timeoutBody)))
+			assert.Equal(t, 524, otherUserResp.Code)
+			assert.Equal(t, int32(2), timeoutCalls.Load(), "不同用户的请求冷却状态相互独立")
 
 			// 实际分配入口的拒绝请求不进入 Relay，因此即使图片请求也不会创建任务或预扣费。
 			router := gin.New()
