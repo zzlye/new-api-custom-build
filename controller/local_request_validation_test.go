@@ -33,8 +33,8 @@ func TestLocalParameterValidationPayloads(t *testing.T) {
 		{"JSON空值", "/v1beta/models/gemini:generateContent", `null`, "对象"},
 		{"空parts", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[]}]}`, "contents[0].parts"},
 		{"无效角色", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"assistant","parts":[{"text":"hi"}]}]}`, "role"},
-		{"3.7以下兼容角色别名", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"role":"assistant","parts":[{"text":"hi"}]},{"role":"user","parts":[{"text":"ok"}]}]}`, ""},
-		{"3.7及以上严格校验角色", "/v1beta/models/gemini-3.8-flash:generateContent", `{"contents":[{"role":"assistant","parts":[{"text":"hi"}]}]}`, "role"},
+		{"具体模型兼容角色别名", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"role":"assistant","parts":[{"text":"hi"}]},{"role":"user","parts":[{"text":"ok"}]}]}`, ""},
+		{"具体模型未知角色拦截", "/v1beta/models/gemini-3.8-flash:generateContent", `{"contents":[{"role":"unknown_role","parts":[{"text":"hi"}]}]}`, "role"},
 		{"仅含空文本Part拦截", "/v1beta/models/gemini-4-argon:generateContent", `{"contents":[{"role":"user","parts":[{"text":""}]}]}`, "parts[0].data"},
 		{"仅含签名无内容Part拦截", "/v1beta/models/gemini-4-argon:generateContent", `{"contents":[{"role":"model","parts":[{"thoughtSignature":"skip_thought_signature_validator"}]}]}`, "parts[0].data"},
 		{"文本类型错误", "/v1beta/models/gemini:streamGenerateContent", `{"contents":[{"parts":[{"text":123}]}]}`, "text"},
@@ -47,8 +47,7 @@ func TestLocalParameterValidationPayloads(t *testing.T) {
 		{"素材URI为空", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"fileData":{"fileUri":""}}]}]}`, "fileUri"},
 		{"参数超出范围", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"temperature":3}}`, "temperature"},
 		{"输出Token超出65536上限", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":128000}}`, "maxOutputTokens"},
-		{"TopK超出64上限", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"topK":1000}}`, "topK"},
-		{"不支持的思考级别", "/v1beta/models/gemini-3.8-flash:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"THINKING_LEVEL_MINIMAL"}}}`, "thinkingLevel"},
+		{"TopK超出上限", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"topK":1000}}`, "topK"},
 		{"参数类型错误", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":"100"}}`, "maxOutputTokens"},
 		{"思考预算越界", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingBudget":-5}}}`, "thinkingBudget"},
 		{"原生生图合法", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"},{"inlineData":{"mimeType":"image/png","data":"YWJj"}}]}],"generationConfig":{"responseModalities":["IMAGE"],"temperature":0,"imageConfig":{"imageSize":"4K"}}}`, ""},
@@ -111,31 +110,6 @@ func TestLocalParameterValidationRuleTogglesAndKeywords(t *testing.T) {
 		CheckMedia:      &disabled,
 		BlockedKeywords: "invalid-b64!",
 	}), "invalid-b64!")
-}
-
-func TestLocalThoughtSignatureProbeInterception(t *testing.T) {
-	// 验证下游测活脚本篡改 thoughtSignature 中间字节时直接在本地返回 400 Invalid thought signature.，不打向上游。
-	helper.ClearGeminiThoughtSignatureCache()
-	t.Cleanup(helper.ClearGeminiThoughtSignatureCache)
-
-	validSig := "AY89a19PjPHIPXBDIXWfxrpz++mKOOqpwDu70T6ASSXHShKWp+xFNDTfBWPO6CRuBmd6gtqg1i95V1KXVj5gryrmkNLC1wZ2lzDuLNKnDeFl7fRYrA=="
-	tamperedSig := "AY89a19PjPHIPXBDIXWfxrpz++mKOOqpwDwgLP6ASSXHShKWp+xFNDTfBWPO6CRuBmd6gtqg1i95V1KXVj5gryrmkNLC1wZ2lzDuLNKnDeFl7fRYrA=="
-	helper.RecordGeminiThoughtSignature("call_1470234", validSig)
-
-	validBody := fmt.Sprintf(`{"contents":[{"role":"user","parts":[{"text":"weather"}]},{"role":"model","parts":[{"functionCall":{"id":"call_1470234","name":"fetch_city_weather","args":{"city":"武汉"}},"thoughtSignature":%q}]},{"role":"user","parts":[{"functionResponse":{"name":"fetch_city_weather","response":{"ok":true},"id":"call_1470234"}}]}]}`, validSig)
-	cValid, _ := gin.CreateTestContext(httptest.NewRecorder())
-	cValid.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-4-argon:generateContent", strings.NewReader(validBody))
-	cValid.Request.Header.Set("Content-Type", "application/json")
-	defer common.CleanupBodyStorage(cValid)
-	require.NoError(t, helper.ValidateLocalRequest(cValid))
-
-	tamperedBody := strings.Replace(validBody, validSig, tamperedSig, 1)
-	cTampered, _ := gin.CreateTestContext(httptest.NewRecorder())
-	cTampered.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-4-argon:generateContent", strings.NewReader(tamperedBody))
-	cTampered.Request.Header.Set("Content-Type", "application/json")
-	defer common.CleanupBodyStorage(cTampered)
-	err := helper.ValidateLocalRequest(cTampered)
-	require.ErrorIs(t, err, helper.ErrInvalidGeminiThoughtSignature)
 }
 
 func TestLocalParameterValidationMultipart(t *testing.T) {

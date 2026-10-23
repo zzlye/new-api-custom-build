@@ -10,8 +10,6 @@ import (
 	"mime"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -21,99 +19,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// ErrInvalidGeminiThoughtSignature 标识 Gemini 思考签名不合法或被测活脚本篡改。
-var ErrInvalidGeminiThoughtSignature = errors.New("Invalid thought signature.")
-
-type geminiSignatureCacheEntry struct {
-	signature string
-	expiresAt time.Time
-}
-
-var (
-	geminiSigMu        sync.RWMutex
-	geminiCallIDToSig  = make(map[string]geminiSignatureCacheEntry)
-	geminiEdgeKeyToSig = make(map[string]geminiSignatureCacheEntry)
-)
-
-// ClearGeminiThoughtSignatureCache 清空思考签名缓存，供测试重置使用。
-func ClearGeminiThoughtSignatureCache() {
-	geminiSigMu.Lock()
-	defer geminiSigMu.Unlock()
-	clear(geminiCallIDToSig)
-	clear(geminiEdgeKeyToSig)
-}
-
-// geminiSignatureEdgeKey 提取长签名的长度与首尾各 16 字节作为索引，用于识别中间字节被篡改的探测请求。
-func geminiSignatureEdgeKey(sig string) string {
-	if len(sig) < 48 {
-		return ""
-	}
-	return fmt.Sprintf("%d:%s:%s", len(sig), sig[:16], sig[len(sig)-16:])
-}
-
-// RecordGeminiThoughtSignature 记录上游签发的合法 functionCall 思考签名，用于本地拦截篡改签名的探测请求。
-func RecordGeminiThoughtSignature(callID, rawSig string) {
-	sig := strings.Trim(strings.TrimSpace(rawSig), `"`)
-	if sig == "" || sig == "skip_thought_signature_validator" || sig == "context_engineering_is_the_way_to_go" {
-		return
-	}
-	now := time.Now()
-	expiresAt := now.Add(15 * time.Minute)
-	edgeKey := geminiSignatureEdgeKey(sig)
-	geminiSigMu.Lock()
-	defer geminiSigMu.Unlock()
-	if len(geminiCallIDToSig) >= 10000 {
-		for k, v := range geminiCallIDToSig {
-			if !now.Before(v.expiresAt) {
-				delete(geminiCallIDToSig, k)
-			}
-		}
-	}
-	if len(geminiEdgeKeyToSig) >= 10000 {
-		for k, v := range geminiEdgeKeyToSig {
-			if !now.Before(v.expiresAt) {
-				delete(geminiEdgeKeyToSig, k)
-			}
-		}
-	}
-	if callID != "" && len(geminiCallIDToSig) < 10000 {
-		geminiCallIDToSig[callID] = geminiSignatureCacheEntry{signature: sig, expiresAt: expiresAt}
-	}
-	if edgeKey != "" && len(geminiEdgeKeyToSig) < 10000 {
-		geminiEdgeKeyToSig[edgeKey] = geminiSignatureCacheEntry{signature: sig, expiresAt: expiresAt}
-	}
-}
-
-// validateGeminiThoughtSignature 检查请求中的思考签名是否合法或是否被篡改。
-func validateGeminiThoughtSignature(callID, sig string, hasFunctionCall bool) error {
-	sig = strings.TrimSpace(sig)
-	if sig == "" || sig == "skip_thought_signature_validator" || sig == "context_engineering_is_the_way_to_go" {
-		return nil
-	}
-	now := time.Now()
-	edgeKey := geminiSignatureEdgeKey(sig)
-	geminiSigMu.RLock()
-	callEntry, hasCall := geminiCallIDToSig[callID]
-	edgeEntry, hasEdge := geminiEdgeKeyToSig[edgeKey]
-	geminiSigMu.RUnlock()
-
-	if callID != "" && hasCall && now.Before(callEntry.expiresAt) && callEntry.signature != sig {
-		return ErrInvalidGeminiThoughtSignature
-	}
-	if edgeKey != "" && hasEdge && now.Before(edgeEntry.expiresAt) && edgeEntry.signature != sig {
-		return ErrInvalidGeminiThoughtSignature
-	}
-	if hasFunctionCall {
-		if err := validateBase64Payload(sig, "", "thoughtSignature"); err != nil {
-			return ErrInvalidGeminiThoughtSignature
-		}
-		if len(sig) >= 48 {
-			RecordGeminiThoughtSignature(callID, sig)
-		}
-	}
-	return nil
-}
-
 // extractGeminiModelFromPath 从 Gemini 请求路径中提取模型名称。
 func extractGeminiModelFromPath(path string) string {
 	_, rest, ok := strings.Cut(path, "/models/")
@@ -122,20 +27,6 @@ func extractGeminiModelFromPath(path string) string {
 	}
 	model, _, _ := strings.Cut(rest, ":")
 	return strings.ToLower(strings.TrimSpace(model))
-}
-
-// isPre37GeminiModel 判断是否为 3.7 之前的旧版 Gemini 模型（旧模型允许在转换层自动修正非标准 role）。
-func isPre37GeminiModel(model string) bool {
-	for _, prefix := range []string{
-		"gemini-1.", "gemini-1-",
-		"gemini-2.", "gemini-2-",
-		"gemini-3-flash", "gemini-3.0", "gemini-3.1", "gemini-3.2", "gemini-3.3", "gemini-3.4", "gemini-3.5", "gemini-3.6",
-	} {
-		if strings.HasPrefix(model, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // ValidateLocalRequest 使用默认全量规则执行本地参数校验，不请求外部素材或探测上游。
@@ -210,39 +101,14 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 			return fmt.Errorf("请求参数无效：%w", err)
 		}
 	}
-	if (format == types.RelayFormatOpenAI || format == types.RelayFormatClaude) && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled() || policy.GenerationConfigCheckEnabled()) {
-		if policy.GenerationConfigCheckEnabled() && format == types.RelayFormatOpenAI {
-			if tools := root.Get("tools"); tools.IsArray() {
-				for i, tool := range tools.Array() {
-					if !tool.IsObject() {
-						return fmt.Errorf("tools[%d] 必须是对象", i)
-					}
-					if tool.Get("type").Str == "function" {
-						fn := tool.Get("function")
-						if !fn.IsObject() || fn.Get("name").Type != gjson.String || strings.TrimSpace(fn.Get("name").Str) == "" {
-							return fmt.Errorf("tools[%d].function.name 必须是非空字符串", i)
-						}
-					}
-				}
-			}
-		}
+	if (format == types.RelayFormatOpenAI || format == types.RelayFormatClaude) && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled()) {
 		if messages := root.Get("messages"); messages.IsArray() {
 			hasNonSystemMessage := false
-			knownToolCallIDs := make(map[string]bool)
 			for i, message := range messages.Array() {
 				field := fmt.Sprintf("messages[%d]", i)
 				roleStr := strings.TrimSpace(message.Get("role").Str)
 				if roleStr != "" && roleStr != "system" && roleStr != "developer" {
 					hasNonSystemMessage = true
-				}
-				if toolCalls := message.Get("tool_calls"); toolCalls.IsArray() {
-					for _, tc := range toolCalls.Array() {
-						if id := strings.TrimSpace(tc.Get("id").Str); id != "" {
-							if name := strings.TrimSpace(tc.Get("function.name").Str); name != "" {
-								knownToolCallIDs[id] = true
-							}
-						}
-					}
 				}
 				if policy.StructureCheckEnabled() {
 					if !message.IsObject() || message.Get("role").Type != gjson.String || roleStr == "" {
@@ -255,12 +121,6 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 					}
 					if content.Type != gjson.Null && content.Type != gjson.String && !content.IsArray() {
 						return fmt.Errorf("%s.content 必须是字符串或数组", field)
-					}
-					if (roleStr == "tool" || roleStr == "function") && strings.TrimSpace(message.Get("name").Str) == "" {
-						callID := strings.TrimSpace(message.Get("tool_call_id").Str)
-						if callID == "" || !knownToolCallIDs[callID] {
-							return fmt.Errorf("%s 缺少关联的工具函数名称", field)
-						}
 					}
 				}
 				if policy.MediaCheckEnabled() {
@@ -385,7 +245,7 @@ func isGeminiPartMetadataKey(key string) bool {
 	}
 }
 
-// validateLocalGemini 针对 Gemini 原生请求执行结构、思考签名、多模态素材及生成参数范围校验。
+// validateLocalGemini 针对 Gemini 原生请求执行结构、多模态素材及生成参数范围校验。
 func validateLocalGemini(root gjson.Result, modelName string, policy operation_setting.LocalRequestValidationPolicy) error {
 	contents := root.Get("contents")
 	if policy.StructureCheckEnabled() {
@@ -393,7 +253,8 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			return errors.New("contents 必须是非空数组")
 		}
 	}
-	allowLegacyRoleAliases := isPre37GeminiModel(modelName)
+	// 具体 Gemini 模型名称由 Adaptor.ConvertGeminiRequest 自动将常见角色别名（assistant/system/function 等）归一化为 user/model。
+	allowRoleAliases := strings.HasPrefix(modelName, "gemini-")
 	if contents.IsArray() && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled()) {
 		for i, content := range contents.Array() {
 			field := fmt.Sprintf("contents[%d]", i)
@@ -406,7 +267,7 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 						return fmt.Errorf("%s.role 必须是 user 或 model", field)
 					}
 					roleVal := strings.TrimSpace(role.Str)
-					if allowLegacyRoleAliases {
+					if allowRoleAliases {
 						switch strings.ToLower(roleVal) {
 						case "", "user", "model", "system", "assistant", "function", "tool", "developer", "human":
 						default:
@@ -451,30 +312,12 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 					if !hasDataField {
 						return fmt.Errorf("%s.data 必须包含非空内容", partField)
 					}
-					var callID string
-					hasFunctionCall := false
 					for _, fnKey := range []string{"functionCall", "function_call", "functionResponse", "function_response"} {
 						fnVal := part.Get(fnKey)
 						if fnVal.Exists() && fnVal.Type != gjson.Null {
 							if !fnVal.IsObject() || fnVal.Get("name").Type != gjson.String || strings.TrimSpace(fnVal.Get("name").Str) == "" {
 								return fmt.Errorf("%s.%s.name 必须是非空字符串", partField, fnKey)
 							}
-							if strings.Contains(strings.ToLower(fnKey), "call") {
-								hasFunctionCall = true
-								callID = strings.TrimSpace(fnVal.Get("id").Str)
-							}
-						}
-					}
-					sig := part.Get("thoughtSignature")
-					if !sig.Exists() {
-						sig = part.Get("thought_signature")
-					}
-					if sig.Exists() && sig.Type != gjson.Null {
-						if sig.Type != gjson.String {
-							return ErrInvalidGeminiThoughtSignature
-						}
-						if err := validateGeminiThoughtSignature(callID, sig.Str, hasFunctionCall); err != nil {
-							return err
 						}
 					}
 				}
@@ -551,6 +394,10 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			return errors.New("tools 必须是数组或对象")
 		}
 	}
+	maxOutputLimit := float64(maxTokensLimit)
+	if strings.HasPrefix(modelName, "gemini-3.1") || strings.HasPrefix(modelName, "gemini-2.5") {
+		maxOutputLimit = 65536
+	}
 	for _, name := range []string{"generationConfig", "generation_config"} {
 		config := root.Get(name)
 		if !config.Exists() || config.Type == gjson.Null {
@@ -579,9 +426,9 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			integer  bool
 		}{
 			{"temperature", 0, 2, false}, {"topP", 0, 1, false}, {"top_p", 0, 1, false},
-			{"topK", 1, 64, true}, {"top_k", 1, 64, true},
-			{"maxOutputTokens", 1, 65536, true}, {"max_output_tokens", 1, 65536, true},
-			{"candidateCount", 1, 8, true}, {"candidate_count", 1, 8, true},
+			{"topK", 1, 500, true}, {"top_k", 1, 500, true},
+			{"maxOutputTokens", 1, maxOutputLimit, true}, {"max_output_tokens", 1, maxOutputLimit, true},
+			{"candidateCount", 1, maxTokensLimit, true}, {"candidate_count", 1, maxTokensLimit, true},
 		} {
 			value := config.Get(rule.key)
 			if !value.Exists() || value.Type == gjson.Null {
@@ -604,22 +451,8 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 				if !budget.Exists() || budget.Type == gjson.Null {
 					continue
 				}
-				if budget.Type != gjson.Number || budget.Num < -1 || budget.Num > 65536 || math.Trunc(budget.Num) != budget.Num {
+				if budget.Type != gjson.Number || budget.Num < -1 || budget.Num > maxTokensLimit || math.Trunc(budget.Num) != budget.Num {
 					return fmt.Errorf("%s.%s.%s 数值或类型无效", name, thinkKey, budgetKey)
-				}
-			}
-			for _, levelKey := range []string{"thinkingLevel", "thinking_level"} {
-				level := thinking.Get(levelKey)
-				if !level.Exists() || level.Type == gjson.Null {
-					continue
-				}
-				if level.Type != gjson.String {
-					return fmt.Errorf("%s.%s.%s 必须是字符串", name, thinkKey, levelKey)
-				}
-				switch strings.ToLower(strings.TrimSpace(level.Str)) {
-				case "", "low", "medium", "high", "thinking_level_low", "thinking_level_medium", "thinking_level_high":
-				default:
-					return fmt.Errorf("%s.%s.%s 取值不受支持：%s", name, thinkKey, levelKey, level.Str)
 				}
 			}
 		}

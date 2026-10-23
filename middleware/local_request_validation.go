@@ -44,7 +44,6 @@ func ClearUpstreamErrorCooldownCache() {
 	defer upstreamErrorCooldownMu.Unlock()
 	clear(upstreamErrorCooldownCache)
 	clear(upstreamRateLimitCache)
-	helper.ClearGeminiThoughtSignatureCache()
 }
 
 // resolveValidationGroup 解析当前请求实际命中的分组名称（兼容 auto 自动分组）。
@@ -125,21 +124,18 @@ func computeLocalRequestFingerprint(c *gin.Context, group string) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-// extractUpstreamRetrySeconds 从上游 429 错误消息中提取需要等待的秒数；未包含明确秒数时使用默认短期保护秒数。
-func extractUpstreamRetrySeconds(message string, fallbackSeconds int) int {
+// extractUpstreamRetrySeconds 从上游 429 错误消息中提取明确的重试等待秒数。
+func extractUpstreamRetrySeconds(message string) int {
 	matches := retrySecondsPattern.FindStringSubmatch(strings.ToLower(message))
 	for i := 1; i < len(matches); i++ {
 		if matches[i] == "" {
 			continue
 		}
 		if secs, err := strconv.Atoi(matches[i]); err == nil && secs > 0 {
-			return min(secs, 600)
+			return min(secs, 300)
 		}
 	}
-	if fallbackSeconds > 0 {
-		return min(fallbackSeconds, 30)
-	}
-	return 15
+	return 0
 }
 
 // lookupUpstreamRateLimit 查询当前用户的目标模型是否处于 429 自动开启的冷却保护期内，到期自动失效关闭。
@@ -189,7 +185,7 @@ func lookupUpstreamErrorCooldown(fingerprint string) (upstreamErrorCooldownEntry
 	return entry, true
 }
 
-// ObserveGroupUpstreamError 在上游返回 429 熔断或匹配的 400/524 错误时自动开启定时拦截，到期后自动恢复。
+// ObserveGroupUpstreamError 在上游返回 429 明确熔断倒计时或匹配的 400/524 错误时记录冷却拦截，到期后自动恢复。
 func ObserveGroupUpstreamError(c *gin.Context, apiErr *types.NewAPIError) {
 	if c == nil || apiErr == nil || apiErr.GetErrorType() == types.ErrorTypeNewAPIError {
 		return
@@ -200,10 +196,10 @@ func ObserveGroupUpstreamError(c *gin.Context, apiErr *types.NewAPIError) {
 		return
 	}
 	now := time.Now()
-	// 当上游返回 429 时，自动检测错误中的重试等待秒数并开启本地定时拦截，到点后自动关闭恢复。
+	// 当上游返回带有明确等待秒数的 429 熔断提示时，自动开启对应时长的本地拦截，到点后自动关闭恢复。
 	if apiErr.StatusCode == http.StatusTooManyRequests && policy.CooldownSeconds() > 0 {
 		types.ErrOptionWithSkipRetry()(apiErr)
-		waitSeconds := extractUpstreamRetrySeconds(apiErr.Error(), policy.CooldownSeconds())
+		waitSeconds := extractUpstreamRetrySeconds(apiErr.Error())
 		rlKey := computeUserModelRateLimitKey(c, group, resolveValidationModelName(c))
 		if rlKey != "" && waitSeconds > 0 {
 			upstreamErrorCooldownMu.Lock()
@@ -288,26 +284,6 @@ func CheckLocalRequestParameters(c *gin.Context) bool {
 	if err == nil {
 		c.Set("local_request_parameters_validated", true)
 		return false
-	}
-	// 思考签名被篡改时直接按上游原样返回 400 Invalid thought signature.，保证下游测活脚本通过且不触发上游熔断。
-	if errors.Is(err, helper.ErrInvalidGeminiThoughtSignature) {
-		state := service.RequestPolicy(c)
-		state.AddEvent(service.PolicyEvent{Status: http.StatusBadRequest, ErrorCode: "400", Decision: service.PolicyDecision{Action: "stop", Reason: "invalid_thought_signature", Source: "local_validation"}, Health: "unchanged"})
-		state.FinalLogged = true
-		other := model.NewLogOther()
-		other.SetPublic("status_code", http.StatusBadRequest)
-		other.SetPublic("error_code", "local_parameter_error")
-		other.SetPublic("local_validation", true)
-		model.RecordErrorLog(c, c.GetInt("id"), 0, modelName, c.GetString("token_name"), "本地参数校验失败：Invalid thought signature.", c.GetInt("token_id"), 0, false, group, other)
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-			"error": gin.H{
-				"message": "Invalid thought signature.",
-				"type":    "upstream_error",
-				"param":   "",
-				"code":    http.StatusBadRequest,
-			},
-		})
-		return true
 	}
 	// 请求体大小限制仍保留 413，不能被分组自定义状态码覆盖。
 	if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {

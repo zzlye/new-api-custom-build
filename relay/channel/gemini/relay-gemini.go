@@ -98,13 +98,6 @@ func countGeminiBillableFunctionCalls(info *relaycommon.RelayInfo, response *dto
 	}
 	for _, candidate := range response.Candidates {
 		for _, part := range candidate.Content.Parts {
-			if len(part.ThoughtSignature) > 0 {
-				callID := ""
-				if part.FunctionCall != nil {
-					callID = part.FunctionCall.ID
-				}
-				helper.RecordGeminiThoughtSignature(callID, string(part.ThoughtSignature))
-			}
 			if part.FunctionCall == nil {
 				continue
 			}
