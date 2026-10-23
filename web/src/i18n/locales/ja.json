@@ -7273,6 +7273,24 @@
     "Latest winners": "最新の当選",
     "No winners yet": "当選記録はまだありません",
     "Pause winner scroll": "スクロールを停止",
-    "Resume winner scroll": "スクロールを再開"
+    "Resume winner scroll": "スクロールを再開",
+    "Local parameter validation": "ローカルパラメータ検証",
+    "Enable local parameter validation": "ローカルパラメータ検証を有効化",
+    "Validate request structure": "リクエスト構造を検証",
+    "Validate media payloads": "メディアデータを検証",
+    "Validate generation parameters": "生成パラメータを検証",
+    "Upstream error cooldown (seconds)": "上流エラーのクールダウン（秒）",
+    "Intercepted upstream status codes": "遮断する上流ステータスコード",
+    "Intercepted upstream error keywords": "遮断する上流エラーキーワード",
+    "Blocked request keywords": "リクエスト遮断キーワード",
+    "Select Gemini groups": "Geminiグループを選択",
+    "Local error HTTP status": "ローカル返却ステータスコード",
+    "Search groups": "グループを検索",
+    "Select search results": "検索結果をすべて選択",
+    "Select at least one group.": "少なくとも 1 つのグループを選択してください。",
+    "Enable at least one interception rule.": "少なくとも 1 つの遮断ルールを有効にしてください。",
+    "Enter an integer HTTP status from 400 to 599.": "400 から 599 の整数ステータスコードを入力してください。",
+    "Enter HTTP status codes from 400 to 599.": "400 から 599 のステータスコードを入力してください。",
+    "Enter an integer cooldown from 0 to 86400.": "0 から 86400 の整数秒を入力してください。"
   }
 }

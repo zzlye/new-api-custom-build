@@ -7290,6 +7290,24 @@
     "Latest winners": "最新中獎",
     "No winners yet": "暫無中獎記錄",
     "Pause winner scroll": "暫停滾動",
-    "Resume winner scroll": "繼續滾動"
+    "Resume winner scroll": "繼續滾動",
+    "Local parameter validation": "本地參數校驗",
+    "Enable local parameter validation": "啟用本地參數校驗",
+    "Validate request structure": "校驗請求結構",
+    "Validate media payloads": "校驗多媒體素材",
+    "Validate generation parameters": "校驗生成與思考參數",
+    "Upstream error cooldown (seconds)": "重複錯誤冷卻時間（秒）",
+    "Intercepted upstream status codes": "攔截上游狀態碼",
+    "Intercepted upstream error keywords": "攔截上游錯誤特徵",
+    "Blocked request keywords": "請求體攔截關鍵詞",
+    "Select Gemini groups": "勾選 Gemini 分組",
+    "Local error HTTP status": "本地返回狀態碼",
+    "Search groups": "搜尋分組",
+    "Select search results": "全選搜尋結果",
+    "Select at least one group.": "請至少選擇一個分組。",
+    "Enable at least one interception rule.": "請至少啟用一項攔截規則。",
+    "Enter an integer HTTP status from 400 to 599.": "請輸入 400 到 599 的整數狀態碼。",
+    "Enter HTTP status codes from 400 to 599.": "請輸入 400 到 599 的狀態碼或區間。",
+    "Enter an integer cooldown from 0 to 86400.": "請輸入 0 到 86400 的整數冷卻時間。"
   }
 }

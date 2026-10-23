@@ -7313,6 +7313,24 @@
     "Latest winners": "Latest winners",
     "No winners yet": "No winners yet",
     "Pause winner scroll": "Pause winner scroll",
-    "Resume winner scroll": "Resume winner scroll"
+    "Resume winner scroll": "Resume winner scroll",
+    "Local parameter validation": "Local parameter validation",
+    "Enable local parameter validation": "Enable local parameter validation",
+    "Validate request structure": "Validate request structure",
+    "Validate media payloads": "Validate media payloads",
+    "Validate generation parameters": "Validate generation parameters",
+    "Upstream error cooldown (seconds)": "Upstream error cooldown (seconds)",
+    "Intercepted upstream status codes": "Intercepted upstream status codes",
+    "Intercepted upstream error keywords": "Intercepted upstream error keywords",
+    "Blocked request keywords": "Blocked request keywords",
+    "Select Gemini groups": "Select Gemini groups",
+    "Local error HTTP status": "Local error HTTP status",
+    "Search groups": "Search groups",
+    "Select search results": "Select search results",
+    "Select at least one group.": "Select at least one group.",
+    "Enable at least one interception rule.": "Enable at least one interception rule.",
+    "Enter an integer HTTP status from 400 to 599.": "Enter an integer HTTP status from 400 to 599.",
+    "Enter HTTP status codes from 400 to 599.": "Enter HTTP status codes from 400 to 599.",
+    "Enter an integer cooldown from 0 to 86400.": "Enter an integer cooldown from 0 to 86400."
   }
 }

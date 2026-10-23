@@ -20,10 +20,20 @@ import { createSectionRegistry } from '../utils/section-registry'
 import { AsyncMediaRetrySection } from './async-media-retry-section'
 import { ChannelHealthSection } from './channel-health-section'
 import type { RequestPolicySettings } from './defaults'
+import { LocalRequestValidationSection } from './local-request-validation-section'
 import { RequestChecksSection } from './request-checks-section'
 import { RoutingPolicySection } from './routing-section'
 
 const POLICY_SECTIONS = [
+  {
+    id: 'parameters',
+    titleKey: 'Local parameter validation',
+    build: (settings: RequestPolicySettings) => (
+      <LocalRequestValidationSection
+        value={settings.LocalRequestValidationPolicy}
+      />
+    ),
+  },
   {
     id: 'media-retry',
     titleKey: 'Media task retries',

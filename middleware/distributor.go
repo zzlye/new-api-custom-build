@@ -45,6 +45,10 @@ func Distribute() func(c *gin.Context) {
 			RequestPath: c.Request.URL.Path,
 		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
+		// 普通请求在解析模型和选择渠道之前拦截；操练场先验证用户所选分组权限。
+		if !strings.HasPrefix(c.Request.URL.Path, "/pg/") && CheckLocalRequestParameters(c) {
+			return
+		}
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
@@ -127,6 +131,10 @@ func Distribute() func(c *gin.Context) {
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		// 自动分组已在此解析为实际分组；仍早于任何入队、预扣费或上游请求。
+		if CheckLocalRequestParameters(c) {
+			return
+		}
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)

@@ -7273,6 +7273,24 @@
     "Latest winners": "Derniers gagnants",
     "No winners yet": "Aucun gagnant pour le moment",
     "Pause winner scroll": "Suspendre le défilement",
-    "Resume winner scroll": "Reprendre le défilement"
+    "Resume winner scroll": "Reprendre le défilement",
+    "Local parameter validation": "Validation locale des paramètres",
+    "Enable local parameter validation": "Activer la validation locale des paramètres",
+    "Validate request structure": "Valider la structure de la requête",
+    "Validate media payloads": "Valider les contenus multimédias",
+    "Validate generation parameters": "Valider les paramètres de génération",
+    "Upstream error cooldown (seconds)": "Refroidissement des erreurs amont (secondes)",
+    "Intercepted upstream status codes": "Codes d'état amont interceptés",
+    "Intercepted upstream error keywords": "Mots-clés d'erreur amont interceptés",
+    "Blocked request keywords": "Mots-clés de requête bloqués",
+    "Select Gemini groups": "Sélectionner les groupes Gemini",
+    "Local error HTTP status": "Code HTTP d'erreur locale",
+    "Search groups": "Rechercher des groupes",
+    "Select search results": "Sélectionner les résultats",
+    "Select at least one group.": "Sélectionnez au moins un groupe.",
+    "Enable at least one interception rule.": "Activez au moins une règle d'interception.",
+    "Enter an integer HTTP status from 400 to 599.": "Entrez un code HTTP entier entre 400 et 599.",
+    "Enter HTTP status codes from 400 to 599.": "Entrez des codes HTTP entre 400 et 599.",
+    "Enter an integer cooldown from 0 to 86400.": "Entrez un délai entier entre 0 et 86400."
   }
 }

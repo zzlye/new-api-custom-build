@@ -20,6 +20,7 @@ import type { ChannelAffinitySettings } from '../general/channel-affinity/types'
 import type { SecuritySettings } from '../types'
 
 export type RetrySettings = {
+  LocalRequestValidationPolicy: string
   AsyncMediaRetryPolicy: string
   RetryTimes: number
   AutomaticRetryStatusCodes: string
@@ -48,6 +49,7 @@ export type RequestPolicySettings = RetrySettings &
   Pick<ChannelAffinitySettings, keyof ChannelAffinitySettings>
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
+  LocalRequestValidationPolicy: '{"enabled":false,"rules":[]}',
   AsyncMediaRetryPolicy:
     '{"enabled":false,"max_retries":2,"same_channel_retries":1,"channel_status_codes":{},"channel_ids":[],"selected_channels_only":true}',
   RetryTimes: 0,

@@ -7273,6 +7273,24 @@
     "Latest winners": "Последние выигрыши",
     "No winners yet": "Выигрышей пока нет",
     "Pause winner scroll": "Приостановить прокрутку",
-    "Resume winner scroll": "Продолжить прокрутку"
+    "Resume winner scroll": "Продолжить прокрутку",
+    "Local parameter validation": "Локальная проверка параметров",
+    "Enable local parameter validation": "Включить локальную проверку параметров",
+    "Validate request structure": "Проверять структуру запроса",
+    "Validate media payloads": "Проверять медиаданные",
+    "Validate generation parameters": "Проверять параметры генерации",
+    "Upstream error cooldown (seconds)": "Охлаждение при ошибках апстрима (сек.)",
+    "Intercepted upstream status codes": "Перехватываемые коды ответа апстрима",
+    "Intercepted upstream error keywords": "Ключевые слова ошибок апстрима",
+    "Blocked request keywords": "Блокируемые ключевые слова запроса",
+    "Select Gemini groups": "Выбрать группы Gemini",
+    "Local error HTTP status": "Локальный HTTP-код ошибки",
+    "Search groups": "Поиск групп",
+    "Select search results": "Выбрать найденные",
+    "Select at least one group.": "Выберите хотя бы одну группу.",
+    "Enable at least one interception rule.": "Включите хотя бы одно правило перехвата.",
+    "Enter an integer HTTP status from 400 to 599.": "Введите целый HTTP-код от 400 до 599.",
+    "Enter HTTP status codes from 400 to 599.": "Введите HTTP-коды от 400 до 599.",
+    "Enter an integer cooldown from 0 to 86400.": "Введите целое время от 0 до 86400."
   }
 }

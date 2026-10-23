@@ -246,6 +246,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
+		// 针对已开启错误拦截的分组，命中上游 400/524 等错误时停止内部重试并写入冷却缓存。
+		middleware.ObserveGroupUpstreamError(c, newAPIError)
 		relayInfo.LastError = newAPIError
 
 		decision := service.DecideRelayRetry(c, newAPIError, retryLimit-retryParam.GetRetry())
