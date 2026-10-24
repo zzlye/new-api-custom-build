@@ -105,7 +105,8 @@ const policySchema = z.object({
     .refine(isValidUpstreamStatusCodes, {
       message: 'Enter HTTP status codes from 400 to 599.',
     }),
-  upstream_error_keywords: z.string().default('status_code=524,openai_error'),
+  // 缺失字段保持为空，避免保存其他设置时意外启用错误特征拦截。
+  upstream_error_keywords: z.string().default(''),
   rules: z.array(
     z.object({
       group: z.string().min(1),
@@ -332,7 +333,9 @@ function LocalRequestValidationEditor(props: { defaults: Policy }) {
               name='upstream_status_codes'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Intercepted upstream status codes')}</FormLabel>
+                  <FormLabel>
+                    {t('Intercepted upstream status codes')}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       placeholder='400,524'
@@ -358,7 +361,6 @@ function LocalRequestValidationEditor(props: { defaults: Policy }) {
                   <FormControl>
                     <Textarea
                       rows={3}
-                      placeholder='status_code=524,openai_error'
                       value={field.value ?? ''}
                       onChange={field.onChange}
                     />

@@ -101,7 +101,7 @@ describe('分组本地参数校验与错误拦截设置', () => {
     expect(saved.check_generation_config).toBe(true)
     expect(saved.upstream_cooldown_seconds).toBe(60)
     expect(saved.upstream_status_codes).toBe('400,524')
-    expect(saved.upstream_error_keywords).toBe('status_code=524,openai_error')
+    expect(saved.upstream_error_keywords).toBe('')
     expect(saved.rules).toEqual(
       expect.arrayContaining([
         { group: 'gemini', enabled: true, status_code: 422 },
@@ -109,6 +109,39 @@ describe('分组本地参数校验与错误拦截设置', () => {
         { group: 'default', enabled: false, status_code: 400 },
       ])
     )
+  })
+
+  it('缺省不填入错误特征，已配置的规则清空保存并重载后仍为空', async () => {
+    const rerender = mount()
+    const input = await screen.findByRole('textbox', {
+      name: 'Intercepted upstream error keywords',
+    })
+    expect(input).toHaveValue('')
+    expect(input).not.toHaveAttribute('placeholder')
+    rerender(
+      JSON.stringify({
+        enabled: false,
+        rules: [],
+        upstream_error_keywords: 'status_code=524,openai_error',
+      })
+    )
+    await waitFor(() =>
+      expect(input).toHaveValue('status_code=524,openai_error')
+    )
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    const saved = (vi.mocked(api.put).mock.calls[0][1] as { value: string })
+      .value
+    expect(JSON.parse(saved).upstream_error_keywords).toBe('')
+    // 卸载后重新读取保存结果，避免未保存草稿掩盖默认值回填。
+    cleanup()
+    mount(saved)
+    expect(
+      await screen.findByRole('textbox', {
+        name: 'Intercepted upstream error keywords',
+      })
+    ).toHaveValue('')
   })
 
   it.each(['200', '600', '422.5'])(
