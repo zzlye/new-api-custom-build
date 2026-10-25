@@ -1,0 +1,23 @@
+{
+  "commit": "dd2a1c997b6939b476711606ba1ef0defd67ff02",
+  "github_run": 40172092016,
+  "image": "ghcr.io/zzlye/new-api-custom-build@sha256:70a56052eb00899865158ff0c7caa41198739b0fffb6960533904379d717b803",
+  "version": "",
+  "backup": "/opt/new-api/backups/thought-signature-dd2a1c997-20261025",
+  "database_backup": "/mnt/data200/new-api/backups/thought-signature-dd2a1c997-20261025/database.before.dump",
+  "new_port": 3005,
+  "previous_port": 3004,
+  "previous_container": "new-api-previous-baa390d9a",
+  "frontend_unchanged": true,
+  "options_changed_at_verification": [],
+  "switch_health_samples": 9,
+  "switch_health_failures": 0,
+  "isolated_image_validation": {
+    "passed": true,
+    "group_isolation": true,
+    "quota_unchanged": true,
+    "task_count": 0,
+    "signature_error_logs": 4
+  },
+  "completed_at": 1792913597
+}
