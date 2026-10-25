@@ -1,0 +1,15 @@
+{
+  "commit": "baa390d9aba39291c43bed4e04f08e0a47c9c30b",
+  "github_run": 40157811339,
+  "image": "ghcr.io/zzlye/new-api-custom-build@sha256:8656f143dd9c424fb6e8f1d6c25139b6d73218aa86272fff51edcfce2b67026f",
+  "version": "",
+  "frontend_main": "/static/js/index.parameters-477101abcccf.js",
+  "frontend_sha256": "477101abcccf85f8279d74813c9821d5300f8db572d2182c91389874af53d890",
+  "backup": "/opt/new-api/backups/parameters-baa390d9a-20261025",
+  "database_backup": "/mnt/data200/new-api/backups/parameters-baa390d9a-20261025/database.before.dump",
+  "candidate_port": 3004,
+  "previous_port": 3002,
+  "previous_container": "new-api-previous-ad8c4fc98",
+  "options_changed_at_verification": [],
+  "completed_at": 1792899349
+}
