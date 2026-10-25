@@ -58,12 +58,12 @@ func TestLocalParameterValidationPayloads(t *testing.T) {
 		{"原生生图合法", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"},{"inlineData":{"mimeType":"image/png","data":"YWJj"}}]}],"generationConfig":{"responseModalities":["IMAGE"],"temperature":0,"imageConfig":{"imageSize":"4K"}}}`, ""},
 		{"兼容别名和未知扩展", "/v1/models/gemini:generateContent", `{"contents":[{"parts":[{"file_data":{"file_uri":"gs://bucket/item"}},{"futurePart":{"id":1}}]}],"generation_config":{"temperature":0}}`, ""},
 		{"URL安全Base64", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"inlineData":{"mimeType":"image/png","data":"-_8"}}]}]}`, ""},
-		{"工具响应无文本", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"get_weather","response":{"ok":true}}}]}]}`, ""},
+		{"工具响应无文本", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"get_weather"}}]},{"role":"user","parts":[{"functionResponse":{"name":"get_weather","response":{"ok":true}}}]}]}`, ""},
 		{"空对话", "/v1/chat/completions", `{"model":"gemini","messages":[]}`, "messages"},
 		{"仅有system消息无user消息", "/v1/chat/completions", `{"model":"gemini-4-argon","messages":[{"role":"system","content":"only system"}]}`, "非 system"},
 		{"对话内容错误", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"user","content":123}]}`, "content"},
 		{"对话内联图片损坏", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,not-valid-base64!"}}]}]}`, "Base64"},
-		{"工具调用合法", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"x","type":"function","function":{"name":"f","arguments":"{}"}}]}]}`, ""},
+		{"工具调用合法", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","content":null,"tool_calls":[{"id":"x","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"tool","tool_call_id":"x","content":"ok"}]}`, ""},
 		{"音频回复上下文", "/v1/chat/completions", `{"model":"audio-model","messages":[{"role":"assistant","content":null,"audio":{"id":"audio_reply"}}]}`, ""},
 		{"生图缺提示词", "/v1/images/generations", `{"model":"gemini-image"}`, "prompt"},
 		{"生图数量越界", "/v1/images/generations", `{"model":"gemini-image","prompt":"hi","n":2147483647}`, "n"},
@@ -144,6 +144,9 @@ func TestLocalParameterValidationThoughtSignature(t *testing.T) {
 			for _, action := range []string{"generateContent", "streamGenerateContent"} {
 				c, _ := gin.CreateTestContext(httptest.NewRecorder())
 				body := `{"contents":[{"role":"model","parts":[` + tc.part + `]}]}`
+				if strings.Contains(tc.part, "functionCall") {
+					body = `{"contents":[{"role":"model","parts":[` + tc.part + `]},{"role":"user","parts":[{"functionResponse":{"name":"f","response":{}}}]}]}`
+				}
 				c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-pro-preview:"+action, strings.NewReader(body))
 				c.Request.Header.Set("Content-Type", "application/json")
 				defer common.CleanupBodyStorage(c)
@@ -172,6 +175,54 @@ func TestLocalParameterValidationThoughtSignature(t *testing.T) {
 	require.ErrorContains(t, helper.ValidateLocalRequestWithPolicy(c, operation_setting.LocalRequestValidationPolicy{
 		CheckStructure: &disabled, CheckMedia: &disabled, CheckGenerationConfig: &enabled,
 	}), "Invalid thought signature.")
+}
+
+func TestLocalParameterValidationToolPairing(t *testing.T) {
+	// 使用真实消息形状覆盖并行、跨轮及兼容协议，不把合法乱序结果误判为缺失。
+	for _, tc := range []struct {
+		name, path, body string
+		blocked          bool
+	}{
+		{"原生缺结果", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"f"}}]}]}`, true},
+		{"原生孤立结果", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"user","parts":[{"functionResponse":{"name":"f","response":{}}}]}]}`, true},
+		{"原生并行少一个", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"f"}},{"functionCall":{"name":"g"}}]},{"role":"user","parts":[{"functionResponse":{"name":"f","response":{}}}]}]}`, true},
+		{"原生普通消息打断", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"f"}}]},{"role":"user","parts":[{"text":"secret-prompt"}]}]}`, true},
+		{"原生同名无ID并行", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"f"}},{"functionCall":{"name":"f"}}]},{"role":"user","parts":[{"functionResponse":{"name":"f","response":{}}},{"functionResponse":{"name":"f","response":{}}}]}]}`, false},
+		{"原生按ID乱序", "/v1beta/models/gemini:streamGenerateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"f"}},{"functionCall":{"id":"b","name":"f"}}]},{"role":"user","parts":[{"functionResponse":{"id":"b","name":"f","response":{}}},{"functionResponse":{"id":"a","name":"f","response":{}}}]}]}`, false},
+		{"原生重复调用ID", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"f"}},{"functionCall":{"id":"a","name":"f"}}]}]}`, true},
+		{"原生同数量重复结果", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"f"}},{"functionCall":{"id":"b","name":"f"}}]},{"role":"user","parts":[{"functionResponse":{"id":"a","name":"f","response":{}}},{"functionResponse":{"id":"a","name":"f","response":{}}}]}]}`, true},
+		{"原生工具名不符", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"f"}}]},{"role":"user","parts":[{"functionResponse":{"id":"a","name":"g","response":{}}}]}]}`, true},
+		{"原生调用ID未回传", "/v1beta/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"functionCall":{"id":"a","name":"f"}}]},{"role":"user","parts":[{"functionResponse":{"name":"f","response":{}}}]}]}`, true},
+		{"原生蛇形字段多轮", "/v1/models/gemini:generateContent", `{"contents":[{"role":"model","parts":[{"function_call":{"name":"f"}}]},{"role":"user","parts":[{"function_response":{"name":"f","response":{}}}]},{"role":"model","parts":[{"functionCall":{"name":"g"}}]},{"role":"user","parts":[{"functionResponse":{"name":"g","response":{}}}]}]}`, false},
+		{"聊天连续tool乱序", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}},{"id":"b","type":"function","function":{"name":"g","arguments":"{}"}}]},{"role":"tool","tool_call_id":"b","content":"secret-result"},{"role":"tool","tool_call_id":"a","content":"ok"}]}`, false},
+		{"聊天漏结果", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"user","content":"next"}]}`, true},
+		{"聊天孤立tool", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"tool","tool_call_id":"a","content":"secret-result"}]}`, true},
+		{"聊天未知ID", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"tool","tool_call_id":"b","content":"ok"}]}`, true},
+		{"聊天重复结果", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"tool","tool_call_id":"a","content":"ok"},{"role":"tool","tool_call_id":"a","content":"ok"}]}`, true},
+		{"聊天旧function格式", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"assistant","function_call":{"name":"f","arguments":"{}"}},{"role":"function","name":"f","content":"ok"}]}`, false},
+		{"仅声明工具", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"user","content":"hello"}],"tools":[{"type":"function","function":{"name":"f"}}]}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, enabled := range []bool{true, false} {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+				c.Request.Header.Set("Content-Type", "application/json")
+				defer common.CleanupBodyStorage(c)
+				err := helper.ValidateLocalRequestWithPolicy(c, operation_setting.LocalRequestValidationPolicy{CheckGenerationConfig: &enabled})
+				if tc.blocked && enabled {
+					require.ErrorContains(t, err, "function response parts")
+					assert.NotContains(t, err.Error(), "secret-")
+				} else {
+					require.NoError(t, err)
+				}
+				storage, err := common.GetBodyStorage(c)
+				require.NoError(t, err)
+				actual, err := storage.Bytes()
+				require.NoError(t, err)
+				assert.Equal(t, tc.body, string(actual))
+			}
+		})
+	}
 }
 
 func TestLocalParameterValidationRules(t *testing.T) {
@@ -375,6 +426,14 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 				{"auto", "gemini", `{"contents":[{"parts":[{"text":"hi","thought_signature":123}]}]}`, true},
 				{"default", "", `{"contents":[{"parts":[{"text":"hi","thoughtSignature":"secret-invalid-signature!"}]}]}`, false},
 				{"gemini", "", `{"contents":[{"parts":[{"text":"hi","thoughtSignature":"YWJjZA=="}]}]}`, false},
+				{"gemini", "", `{"contents":[{"parts":[{"functionCall":{"name":"f"}}]}]}`, true},
+				{"auto", "gemini", `{"contents":[{"parts":[{"functionResponse":{"name":"f","response":{}}}]}]}`, true},
+				{"default", "", `{"contents":[{"parts":[{"functionCall":{"name":"f"}}]}]}`, false},
+				{"gemini", "", `{"contents":[{"parts":[{"functionCall":{"name":"f"}}]},{"parts":[{"functionResponse":{"name":"f","response":{}}}]}]}`, false},
+				{"gemini", "", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}}]}]}`, true},
+				{"auto", "gemini", `{"model":"gemini","messages":[{"role":"tool","tool_call_id":"a","content":"secret-result"}]}`, true},
+				{"default", "", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}}]}]}`, false},
+				{"gemini", "", `{"model":"gemini","messages":[{"role":"assistant","tool_calls":[{"id":"a","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"tool","tool_call_id":"a","content":"ok"}]}`, false},
 			} {
 				before := upstreamCalls.Load()
 				router := gin.New()
@@ -388,20 +447,30 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 					}
 					c.Next()
 				})
-				router.POST("/v1beta/models/*path", func(c *gin.Context) {
+				forward := func(c *gin.Context) {
 					res, err := http.Post(upstream.URL, "application/json", strings.NewReader(tc.body))
 					require.NoError(t, err)
 					defer res.Body.Close()
 					body, err := io.ReadAll(res.Body)
 					require.NoError(t, err)
 					c.Data(res.StatusCode, "application/json", body)
-				})
+				}
+				router.POST("/v1beta/models/*path", forward)
+				router.POST("/v1/chat/completions", forward)
 				response := httptest.NewRecorder()
-				router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini:generateContent", strings.NewReader(tc.body)))
+				requestPath := "/v1beta/models/gemini:generateContent"
+				if strings.Contains(tc.body, `"messages"`) {
+					requestPath = "/v1/chat/completions"
+				}
+				request := httptest.NewRequest(http.MethodPost, requestPath, strings.NewReader(tc.body))
+				request.Header.Set("Content-Type", "application/json")
+				router.ServeHTTP(response, request)
 				if tc.blocked {
 					assert.Equal(t, 422, response.Code)
 					if strings.Contains(tc.body, "MINIMAL") {
 						assert.Contains(t, response.Body.String(), "generationConfig.thinkingConfig.thinkingLevel")
+					} else if requestPath == "/v1/chat/completions" {
+						assert.Contains(t, response.Body.String(), "messages[0]")
 					} else {
 						assert.Contains(t, response.Body.String(), "contents[0].parts")
 					}
@@ -472,12 +541,13 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 			assert.Zero(t, tasks)
 			var logs []model.Log
 			require.NoError(t, db.Order("id").Find(&logs).Error)
-			require.Len(t, logs, 7)
+			require.Len(t, logs, 11)
 			for _, entry := range logs {
 				assert.Equal(t, model.LogTypeError, entry.Type)
 				assert.Equal(t, "gemini", entry.Group)
 				assert.Zero(t, entry.Quota)
 				assert.NotContains(t, entry.Content, "secret-invalid-signature")
+				assert.NotContains(t, entry.Content, "secret-result")
 				assert.Contains(t, entry.Other, `"status_code":422`)
 			}
 			require.NoError(t, db.First(user, user.Id).Error)

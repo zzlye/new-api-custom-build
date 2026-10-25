@@ -164,6 +164,9 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 	if policy.StructureCheckEnabled() && format == types.RelayFormatOpenAIImage && (root.Get("prompt").Type != gjson.String || strings.TrimSpace(root.Get("prompt").Str) == "") {
 		return errors.New("prompt is required (prompt 必须是非空字符串)")
 	}
+	if policy.GenerationConfigCheckEnabled() && format == types.RelayFormatOpenAI && path != "/v1/completions" {
+		return validateLocalToolPairing(root, false)
+	}
 	return nil
 }
 
@@ -464,6 +467,9 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 	}
 	if !policy.GenerationConfigCheckEnabled() {
 		return nil
+	}
+	if err := validateLocalToolPairing(root, true); err != nil {
+		return err
 	}
 	var missingSchemaItems []string
 	if tools := root.Get("tools"); tools.Exists() && tools.Type != gjson.Null {
