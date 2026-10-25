@@ -117,6 +117,63 @@ func TestLocalParameterValidationRuleTogglesAndKeywords(t *testing.T) {
 	}), "invalid-b64!")
 }
 
+func TestLocalParameterValidationThoughtSignature(t *testing.T) {
+	// 覆盖签名格式、原样透传和开关边界；编码合法不等于签名经上游验证有效。
+	for _, tc := range []struct {
+		name, part        string
+		disabled, blocked bool
+	}{
+		{"签名类型错误", `{"text":"hi","thoughtSignature":123}`, false, true},
+		{"签名对象错误", `{"text":"hi","thoughtSignature":{"value":"YWJj"}}`, false, true},
+		{"签名编码损坏", `{"text":"hi","thoughtSignature":"secret-invalid-signature!"}`, false, true},
+		{"下划线签名编码损坏", `{"text":"hi","thought_signature":"secret-invalid-signature!"}`, false, true},
+		{"签名中间截断", `{"text":"hi","thoughtSignature":"Y"}`, false, true},
+		{"标准Base64签名", `{"text":"hi","thoughtSignature":"YWJjZA=="}`, false, false},
+		{"无填充签名", `{"text":"hi","thoughtSignature":"YWJjZA"}`, false, false},
+		{"URL安全签名", `{"text":"hi","thought_signature":"-_8="}`, false, false},
+		{"现有兼容签名", `{"functionCall":{"name":"f","args":{}},"thoughtSignature":"context_engineering_is_the_way_to_go"}`, false, false},
+		{"现有跳过标记", `{"text":"hi","thoughtSignature":"skip_thought_signature_validator"}`, false, false},
+		{"未携带可选签名", `{"text":"hi"}`, false, false},
+		{"空签名视为未设置", `{"text":"hi","thoughtSignature":""}`, false, false},
+		{"空值签名视为未设置", `{"text":"hi","thoughtSignature":null}`, false, false},
+		{"提示词提到签名不拦截", `{"text":"Invalid thought signature."}`, false, false},
+		{"流式尾块空文本携带签名", `{"text":"","thoughtSignature":"YWJjZA=="}`, false, false},
+		{"关闭生成校验保持透传", `{"text":"hi","thoughtSignature":"secret-invalid-signature!"}`, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, action := range []string{"generateContent", "streamGenerateContent"} {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				body := `{"contents":[{"role":"model","parts":[` + tc.part + `]}]}`
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.1-pro-preview:"+action, strings.NewReader(body))
+				c.Request.Header.Set("Content-Type", "application/json")
+				defer common.CleanupBodyStorage(c)
+				enabled := !tc.disabled
+				err := helper.ValidateLocalRequestWithPolicy(c, operation_setting.LocalRequestValidationPolicy{CheckGenerationConfig: &enabled})
+				if tc.blocked {
+					require.ErrorContains(t, err, "Invalid thought signature.")
+					assert.Contains(t, err.Error(), "contents[0].parts[0]")
+					assert.NotContains(t, err.Error(), "secret-invalid-signature")
+				} else {
+					require.NoError(t, err)
+				}
+				storage, err := common.GetBodyStorage(c)
+				require.NoError(t, err)
+				actual, err := storage.Bytes()
+				require.NoError(t, err)
+				assert.Equal(t, body, string(actual), "签名校验不得清洗或改写请求")
+			}
+		})
+	}
+	// 单独开启生成参数校验时仍检查签名，不依赖结构和媒体两个开关。
+	disabled, enabled := false, true
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/models/gemini:generateContent", strings.NewReader(`{"contents":[{"parts":[{"text":"hi","thoughtSignature":false}]}]}`))
+	defer common.CleanupBodyStorage(c)
+	require.ErrorContains(t, helper.ValidateLocalRequestWithPolicy(c, operation_setting.LocalRequestValidationPolicy{
+		CheckStructure: &disabled, CheckMedia: &disabled, CheckGenerationConfig: &enabled,
+	}), "Invalid thought signature.")
+}
+
 func TestLocalParameterValidationRules(t *testing.T) {
 	disabled := false
 	for _, tc := range []struct {
@@ -314,6 +371,10 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 				{"gemini", "", `{"contents":[{"parts":[{"text":"hi"}]}]}`, false},
 				{"gemini", "", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`, true},
 				{"default", "", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`, false},
+				{"gemini", "", `{"contents":[{"parts":[{"text":"hi","thoughtSignature":"secret-invalid-signature!"}]}]}`, true},
+				{"auto", "gemini", `{"contents":[{"parts":[{"text":"hi","thought_signature":123}]}]}`, true},
+				{"default", "", `{"contents":[{"parts":[{"text":"hi","thoughtSignature":"secret-invalid-signature!"}]}]}`, false},
+				{"gemini", "", `{"contents":[{"parts":[{"text":"hi","thoughtSignature":"YWJjZA=="}]}]}`, false},
 			} {
 				before := upstreamCalls.Load()
 				router := gin.New()
@@ -345,6 +406,10 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 						assert.Contains(t, response.Body.String(), "contents[0].parts")
 					}
 					assert.Contains(t, response.Body.String(), "local_parameter_error")
+					if strings.Contains(tc.body, "thoughtSignature") || strings.Contains(tc.body, "thought_signature") {
+						assert.Contains(t, response.Body.String(), "Invalid thought signature.")
+						assert.NotContains(t, response.Body.String(), "secret-invalid-signature")
+					}
 					assert.Equal(t, before, upstreamCalls.Load())
 				} else {
 					assert.Equal(t, 503, response.Code)
@@ -407,11 +472,12 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 			assert.Zero(t, tasks)
 			var logs []model.Log
 			require.NoError(t, db.Order("id").Find(&logs).Error)
-			require.Len(t, logs, 5)
+			require.Len(t, logs, 7)
 			for _, entry := range logs {
 				assert.Equal(t, model.LogTypeError, entry.Type)
 				assert.Equal(t, "gemini", entry.Group)
 				assert.Zero(t, entry.Quota)
+				assert.NotContains(t, entry.Content, "secret-invalid-signature")
 				assert.Contains(t, entry.Other, `"status_code":422`)
 			}
 			require.NoError(t, db.First(user, user.Id).Error)

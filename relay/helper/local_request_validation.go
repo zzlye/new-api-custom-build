@@ -317,7 +317,7 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 	}
 	// 具体 Gemini 模型名称由 Adaptor.ConvertGeminiRequest 自动将常见角色别名（assistant/system/function 等）归一化为 user/model。
 	allowRoleAliases := strings.HasPrefix(modelName, "gemini-")
-	if contents.IsArray() && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled()) {
+	if contents.IsArray() && (policy.StructureCheckEnabled() || policy.MediaCheckEnabled() || policy.GenerationConfigCheckEnabled()) {
 		for i, content := range contents.Array() {
 			field := fmt.Sprintf("contents[%d]", i)
 			if policy.StructureCheckEnabled() {
@@ -349,6 +349,34 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			}
 			for j, part := range parts.Array() {
 				partField := fmt.Sprintf("%s.parts[%d]", field, j)
+				if policy.GenerationConfigCheckEnabled() {
+					// 签名是上游生成的不透明字节，只能预检类型与编码，不能本地验证真伪或改写内容。
+					for _, key := range []string{"thoughtSignature", "thought_signature"} {
+						signature := part.Get(key)
+						if !signature.Exists() || signature.Type == gjson.Null {
+							continue
+						}
+						if signature.Type != gjson.String {
+							return fmt.Errorf("Invalid thought signature. (%s.%s 必须是字符串)", partField, key)
+						}
+						// 保留空的可选字段和既有兼容标记，不自动补签名或跳过上游验签。
+						switch signature.Str {
+						case "", "context_engineering_is_the_way_to_go", "skip_thought_signature_validator":
+							continue
+						}
+						valid := false
+						for _, encoding := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+							// 流式检查避免为长签名额外分配一份完整解码结果。
+							if _, err := io.Copy(io.Discard, base64.NewDecoder(encoding, strings.NewReader(signature.Str))); err == nil {
+								valid = true
+								break
+							}
+						}
+						if !valid {
+							return fmt.Errorf("Invalid thought signature. (%s.%s 不是有效的 Base64 编码)", partField, key)
+						}
+					}
+				}
 				if policy.StructureCheckEnabled() {
 					partMap := part.Map()
 					if !part.IsObject() || len(partMap) == 0 {
@@ -366,6 +394,12 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 						if k == "text" {
 							if v.Str != "" {
 								hasDataField = true
+							}
+							// Gemini 流式尾块允许空文本携带签名，不能当作无内容片段丢弃。
+							for _, key := range []string{"thoughtSignature", "thought_signature"} {
+								if signature := part.Get(key); signature.Type == gjson.String && signature.Str != "" {
+									hasDataField = true
+								}
 							}
 							continue
 						}
