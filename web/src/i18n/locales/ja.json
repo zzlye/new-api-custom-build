@@ -7283,6 +7283,8 @@
     "Intercepted upstream status codes": "遮断する上流ステータスコード",
     "Intercepted upstream error keywords": "遮断する上流エラーキーワード",
     "Blocked request keywords": "リクエスト遮断キーワード",
+    "Local parameter rules": "ローカルパラメータルール",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "各行にパラメータパスまたはパス=値を入力してください（最大1000行、64 KB）。",
     "Select Gemini groups": "Geminiグループを選択",
     "Local error HTTP status": "ローカル返却ステータスコード",
     "Search groups": "グループを検索",

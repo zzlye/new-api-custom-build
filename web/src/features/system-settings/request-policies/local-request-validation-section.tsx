@@ -86,6 +86,23 @@ function isValidUpstreamStatusCodes(value: string): boolean {
   return true
 }
 
+// 与服务端使用相同的路径限制，防止将上游错误原文误存成参数路径。
+function isValidLocalParameterRules(value: string): boolean {
+  if (new TextEncoder().encode(value).length > 65536) return false
+  const lines = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  if (lines.length > 1000) return false
+  return lines.every((line) => {
+    const path = line.split('=', 1)[0].trim()
+    return (
+      path.length <= 256 &&
+      /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$/.test(path)
+    )
+  })
+}
+
 // 本地参数校验与错误拦截策略表单结构定义
 const policySchema = z.object({
   enabled: z.boolean(),
@@ -93,6 +110,13 @@ const policySchema = z.object({
   check_media: z.boolean().default(true),
   check_generation_config: z.boolean().default(true),
   blocked_keywords: z.string().default(''),
+  local_parameter_rules: z
+    .string()
+    .default('')
+    .refine(isValidLocalParameterRules, {
+      message:
+        'Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).',
+    }),
   upstream_cooldown_seconds: z
     .number({ error: 'Enter an integer cooldown from 0 to 86400.' })
     .int({ error: 'Enter an integer cooldown from 0 to 86400.' })
@@ -203,6 +227,7 @@ function LocalRequestValidationEditor(props: { defaults: Policy }) {
       !policy.check_media &&
       !policy.check_generation_config &&
       !policy.blocked_keywords.trim() &&
+      !policy.local_parameter_rules.trim() &&
       policy.upstream_cooldown_seconds <= 0
     ) {
       form.setError('enabled', {
@@ -387,6 +412,25 @@ function LocalRequestValidationEditor(props: { defaults: Policy }) {
               )}
             />
           </div>
+
+          <FormField
+            control={form.control}
+            name='local_parameter_rules'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Local parameter rules')}</FormLabel>
+                <FormControl>
+                  <Textarea
+                    rows={3}
+                    placeholder='generationConfig.thinkingConfig.thinkingLevel=MINIMAL'
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
           <Input
             aria-label={t('Search groups')}

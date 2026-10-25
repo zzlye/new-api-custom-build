@@ -102,6 +102,7 @@ describe('分组本地参数校验与错误拦截设置', () => {
     expect(saved.upstream_cooldown_seconds).toBe(60)
     expect(saved.upstream_status_codes).toBe('400,524')
     expect(saved.upstream_error_keywords).toBe('')
+    expect(saved.local_parameter_rules).toBe('')
     expect(saved.rules).toEqual(
       expect.arrayContaining([
         { group: 'gemini', enabled: true, status_code: 422 },
@@ -142,6 +143,78 @@ describe('分组本地参数校验与错误拦截设置', () => {
         name: 'Intercepted upstream error keywords',
       })
     ).toHaveValue('')
+  })
+
+  it('保存本地字段路径与参数值规则', async () => {
+    mount()
+    const input = await screen.findByRole('textbox', {
+      name: 'Local parameter rules',
+    })
+    fireEvent.change(input, {
+      target: {
+        value: 'generationConfig.thinkingConfig.thinkingLevel=MINIMAL',
+      },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    const saved = JSON.parse(
+      (vi.mocked(api.put).mock.calls[0][1] as { value: string }).value
+    )
+    expect(saved.local_parameter_rules).toBe(
+      'generationConfig.thinkingConfig.thinkingLevel=MINIMAL'
+    )
+    cleanup()
+    mount(JSON.stringify(saved))
+    const restored = await screen.findByRole('textbox', {
+      name: 'Local parameter rules',
+    })
+    expect(restored).toHaveValue(saved.local_parameter_rules)
+    fireEvent.change(restored, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2))
+    const cleared = (vi.mocked(api.put).mock.calls[1][1] as { value: string })
+      .value
+    cleanup()
+    mount(cleared)
+    expect(
+      await screen.findByRole('textbox', { name: 'Local parameter rules' })
+    ).toHaveValue('')
+  })
+
+  it.each([
+    'Thinking level is unsupported: THINKING_LEVEL_MINIMAL',
+    '=MINIMAL',
+    'generationConfig..candidateCount=2',
+  ])('参数规则 %s 格式无效时阻止保存并提示', async (value) => {
+    mount()
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'Local parameter rules' }),
+      { target: { value } }
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(
+      await screen.findByText(
+        'Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).'
+      )
+    ).toBeVisible()
+    expect(api.put).not.toHaveBeenCalled()
+  })
+
+  it('关闭其他校验和冷却后仍可单独启用参数规则', async () => {
+    mount(
+      JSON.stringify({
+        enabled: true,
+        rules: [{ group: 'gemini', enabled: true, status_code: 400 }],
+        check_structure: false,
+        check_media: false,
+        check_generation_config: false,
+        upstream_cooldown_seconds: 0,
+        local_parameter_rules: 'reasoning_effort=minimal',
+      })
+    )
+    await screen.findByRole('checkbox', { name: 'gemini' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
   })
 
   it.each(['200', '600', '422.5'])(
@@ -247,6 +320,7 @@ describe('分组本地参数校验与错误拦截设置', () => {
     expect(input).toBeVisible()
     expect(input).not.toHaveFocus()
     expect(screen.getByRole('textbox', { name: '搜索分组' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: '本地参数规则' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '保存更改' }))
     await waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith('设置更新成功')

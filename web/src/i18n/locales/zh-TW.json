@@ -7300,6 +7300,8 @@
     "Intercepted upstream status codes": "攔截上游狀態碼",
     "Intercepted upstream error keywords": "攔截上游錯誤特徵",
     "Blocked request keywords": "請求體攔截關鍵詞",
+    "Local parameter rules": "本地參數規則",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "每行填寫參數路徑或路徑=值，最多 1000 行、64 KB。",
     "Select Gemini groups": "勾選 Gemini 分組",
     "Local error HTTP status": "本地返回狀態碼",
     "Search groups": "搜尋分組",

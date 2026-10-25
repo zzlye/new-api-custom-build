@@ -90,6 +90,9 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 	if !root.IsObject() {
 		return errors.New("Invalid JSON payload: root must be a JSON object (请求体必须是 JSON 对象)")
 	}
+	if path, matched := policy.MatchLocalParameter(body); matched {
+		return fmt.Errorf("本地参数规则命中：%s", path)
+	}
 	if err := matchBlockedRequestKeywords(string(body), policy.BlockedKeywords); err != nil {
 		return err
 	}

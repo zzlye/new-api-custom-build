@@ -117,6 +117,72 @@ func TestLocalParameterValidationRuleTogglesAndKeywords(t *testing.T) {
 	}), "invalid-b64!")
 }
 
+func TestLocalParameterValidationRules(t *testing.T) {
+	disabled := false
+	for _, tc := range []struct {
+		name, path, body, rules, want string
+	}{
+		{
+			name:  "Gemini 思考级别精确匹配",
+			path:  "/v1beta/models/gemini:generateContent",
+			body:  `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			rules: "generationConfig.thinkingConfig.thinkingLevel=MINIMAL",
+			want:  "generationConfig.thinkingConfig.thinkingLevel",
+		},
+		{
+			name:  "不匹配正文中的相同词语",
+			path:  "/v1beta/models/gemini:generateContent",
+			body:  `{"contents":[{"parts":[{"text":"MINIMAL"}]}]}`,
+			rules: "generationConfig.thinkingConfig.thinkingLevel=MINIMAL",
+		},
+		{
+			name:  "兼容接口精确匹配",
+			path:  "/v1/chat/completions",
+			body:  `{"model":"gemini","reasoning_effort":"minimal"}`,
+			rules: "reasoning_effort=minimal",
+			want:  "reasoning_effort",
+		},
+		{
+			name:  "无值规则匹配字段存在",
+			path:  "/v1/chat/completions",
+			body:  `{"logprobs":false}`,
+			rules: "logprobs",
+			want:  "logprobs",
+		},
+		{
+			name: "多行规则匹配数量参数", path: "/v1beta/models/gemini:generateContent",
+			body:  `{"generationConfig":{"candidateCount":2}}`,
+			rules: "\nlogprobs=true\r\ngenerationConfig.candidateCount=2\n", want: "generationConfig.candidateCount",
+		},
+		{
+			name: "合法参数值不拦截", path: "/v1beta/models/gemini:generateContent",
+			body:  `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"HIGH"},"candidateCount":1}}`,
+			rules: "generationConfig.thinkingConfig.thinkingLevel=MINIMAL\ngenerationConfig.candidateCount=2",
+		},
+		{
+			name: "清空规则不拦截", path: "/v1/chat/completions", body: `{"reasoning_effort":"minimal"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			defer common.CleanupBodyStorage(c)
+			err := helper.ValidateLocalRequestWithPolicy(c, operation_setting.LocalRequestValidationPolicy{
+				CheckStructure:        &disabled,
+				CheckMedia:            &disabled,
+				CheckGenerationConfig: &disabled,
+				LocalParameterRules:   tc.rules,
+			})
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}
+
 func TestLocalParameterValidationMultipart(t *testing.T) {
 	// 校验后继续读取同一上传素材，防止提前解析耗尽编辑图片请求的文件流。
 	var body bytes.Buffer
@@ -149,6 +215,12 @@ func TestLocalParameterValidationPolicy(t *testing.T) {
 		`{"rules":[{"group":"gemini","status_code":200}]}`,
 		`{"rules":[{"group":"gemini","status_code":600}]}`,
 		`{"rules":[{"group":"gemini","status_code":422.5}]}`,
+		`{"local_parameter_rules":"=MINIMAL"}`,
+		`{"local_parameter_rules":"Thinking level is unsupported: THINKING_LEVEL_MINIMAL"}`,
+		`{"local_parameter_rules":"generationConfig..candidateCount=2"}`,
+		`{"local_parameter_rules":"candidateCount>1"}`,
+		`{"local_parameter_rules":"` + strings.Repeat("x\\n", 1001) + `"}`,
+		`{"local_parameter_rules":"` + strings.Repeat("x", 65537) + `"}`,
 		`{"rules":[{"group":"gemini","status_code":400},{"group":"gemini","status_code":422}]}`,
 		`{"enabled":true,"rules":[{"group":"gemini","enabled":true,"status_code":400}],"upstream_cooldown_seconds":-1}`,
 		`{"enabled":true,"rules":[{"group":"gemini","enabled":true,"status_code":400}],"upstream_status_codes":"200"}`,
@@ -167,6 +239,9 @@ func TestLocalParameterValidationPolicy(t *testing.T) {
 	assert.True(t, parsed.MatchesUpstreamError(524, "openai_error", "bad_response_status_code", "bad response status code 524"))
 	assert.True(t, parsed.MatchesUpstreamError(422, "gemini_error", "bad_response_status_code", "INVALID_ARGUMENT: bad value"))
 	assert.False(t, parsed.MatchesUpstreamError(503, "openai_error", "bad_response_status_code", "service unavailable"))
+	// 单独启用参数规则不依赖结构校验或上游冷却。
+	_, err = operation_setting.ParseLocalRequestValidationPolicy(`{"enabled":true,"rules":[{"group":"gemini","enabled":true,"status_code":400}],"check_structure":false,"check_media":false,"check_generation_config":false,"upstream_cooldown_seconds":0,"local_parameter_rules":"reasoning_effort=minimal"}`)
+	require.NoError(t, err)
 }
 
 func TestLocalParameterValidationDatabase(t *testing.T) {
@@ -201,7 +276,7 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 			require.NoError(t, db.AutoMigrate(&model.Option{}, &model.User{}, &model.Log{}, &model.AsyncRelayTask{}, &model.AuditLog{}))
 			user := &model.User{Username: "local-validator", Quota: 123456, Group: "gemini", Status: common.UserStatusEnabled}
 			require.NoError(t, db.Create(user).Error)
-			policy := `{"enabled":true,"rules":[{"group":"gemini","enabled":true,"status_code":422}]}`
+			policy := `{"enabled":true,"rules":[{"group":"gemini","enabled":true,"status_code":422}],"local_parameter_rules":"generationConfig.thinkingConfig.thinkingLevel=MINIMAL"}`
 			for _, role := range []int{common.RoleAdminUser, common.RoleRootUser} {
 				response := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(response)
@@ -237,6 +312,8 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 				{"auto", "gemini", `{"contents":[{"parts":[]}]}`, true},
 				{"default", "", `{"contents":[{"parts":[]}]}`, false},
 				{"gemini", "", `{"contents":[{"parts":[{"text":"hi"}]}]}`, false},
+				{"gemini", "", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`, true},
+				{"default", "", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`, false},
 			} {
 				before := upstreamCalls.Load()
 				router := gin.New()
@@ -262,7 +339,11 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 				router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini:generateContent", strings.NewReader(tc.body)))
 				if tc.blocked {
 					assert.Equal(t, 422, response.Code)
-					assert.Contains(t, response.Body.String(), "contents[0].parts")
+					if strings.Contains(tc.body, "MINIMAL") {
+						assert.Contains(t, response.Body.String(), "generationConfig.thinkingConfig.thinkingLevel")
+					} else {
+						assert.Contains(t, response.Body.String(), "contents[0].parts")
+					}
 					assert.Contains(t, response.Body.String(), "local_parameter_error")
 					assert.Equal(t, before, upstreamCalls.Load())
 				} else {
@@ -326,7 +407,7 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 			assert.Zero(t, tasks)
 			var logs []model.Log
 			require.NoError(t, db.Order("id").Find(&logs).Error)
-			require.Len(t, logs, 4)
+			require.Len(t, logs, 5)
 			for _, entry := range logs {
 				assert.Equal(t, model.LogTypeError, entry.Type)
 				assert.Equal(t, "gemini", entry.Group)

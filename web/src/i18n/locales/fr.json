@@ -7283,6 +7283,8 @@
     "Intercepted upstream status codes": "Codes d'état amont interceptés",
     "Intercepted upstream error keywords": "Mots-clés d'erreur amont interceptés",
     "Blocked request keywords": "Mots-clés de requête bloqués",
+    "Local parameter rules": "Règles de paramètres locales",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "Saisissez un chemin ou chemin=valeur par ligne (1000 lignes et 64 Ko maximum).",
     "Select Gemini groups": "Sélectionner les groupes Gemini",
     "Local error HTTP status": "Code HTTP d'erreur locale",
     "Search groups": "Rechercher des groupes",

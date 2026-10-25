@@ -7323,6 +7323,8 @@
     "Intercepted upstream status codes": "拦截上游状态码",
     "Intercepted upstream error keywords": "拦截上游错误特征",
     "Blocked request keywords": "请求体拦截关键词",
+    "Local parameter rules": "本地参数规则",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "每行填写参数路径或路径=值，最多 1000 行、64 KB。",
     "Select Gemini groups": "勾选 Gemini 分组",
     "Local error HTTP status": "本地返回状态码",
     "Search groups": "搜索分组",

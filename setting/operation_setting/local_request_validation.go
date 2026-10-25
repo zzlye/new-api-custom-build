@@ -2,9 +2,11 @@ package operation_setting
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/tidwall/gjson"
 )
 
 // LocalRequestValidationOption 保存按分组生效的本地请求校验与错误拦截策略配置键名。
@@ -34,6 +36,7 @@ type LocalRequestValidationPolicy struct {
 	CheckMedia              *bool                        `json:"check_media,omitempty"`
 	CheckGenerationConfig   *bool                        `json:"check_generation_config,omitempty"`
 	BlockedKeywords         string                       `json:"blocked_keywords,omitempty"`
+	LocalParameterRules     string                       `json:"local_parameter_rules,omitempty"`
 	UpstreamCooldownSeconds *int                         `json:"upstream_cooldown_seconds,omitempty"`
 	UpstreamStatusCodes     string                       `json:"upstream_status_codes,omitempty"`
 	UpstreamErrorKeywords   string                       `json:"upstream_error_keywords,omitempty"`
@@ -114,6 +117,68 @@ func (p LocalRequestValidationPolicy) MatchesUpstreamError(statusCode int, error
 	return false
 }
 
+type localParameterRule struct {
+	path     string
+	value    string
+	hasValue bool
+}
+
+// 仅允许字段名和数组下标，避免误把错误消息或查询表达式保存成永远不命中的路径。
+var localParameterPathPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$`)
+
+// parseLocalParameterRules 解析逐行的字段路径或字段路径=值，不允许执行表达式或脚本。
+func parseLocalParameterRules(value string) ([]localParameterRule, error) {
+	if len(value) > 65536 {
+		return nil, fmt.Errorf("本地参数规则内容过长")
+	}
+	var rules []localParameterRule
+	for lineNumber, line := range strings.Split(value, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		path, expected, hasValue := strings.Cut(line, "=")
+		path = strings.TrimSpace(path)
+		if len(path) > 256 || !localParameterPathPattern.MatchString(path) {
+			return nil, fmt.Errorf("本地参数规则第 %d 行的 JSON 路径无效", lineNumber+1)
+		}
+		if len(rules) >= 1000 {
+			return nil, fmt.Errorf("本地参数规则最多支持 1000 行")
+		}
+		rules = append(rules, localParameterRule{
+			path:     path,
+			value:    strings.TrimSpace(expected),
+			hasValue: hasValue,
+		})
+	}
+	return rules, nil
+}
+
+// MatchLocalParameter 检查请求 JSON 是否命中管理员配置的字段存在或字段值规则。
+func (p LocalRequestValidationPolicy) MatchLocalParameter(body []byte) (string, bool) {
+	rules, err := parseLocalParameterRules(p.LocalParameterRules)
+	if err != nil {
+		return "", false
+	}
+	for _, rule := range rules {
+		value := gjson.GetBytes(body, rule.path)
+		if !value.Exists() {
+			continue
+		}
+		if rule.hasValue {
+			actual := value.Raw
+			if value.Type == gjson.String {
+				actual = value.Str
+			}
+			if !strings.EqualFold(strings.TrimSpace(actual), rule.value) {
+				continue
+			}
+		}
+		return rule.path, true
+	}
+	return "", false
+}
+
 // ParseLocalRequestValidationPolicy 解析并校验本地参数校验与错误拦截策略 JSON。
 func ParseLocalRequestValidationPolicy(value string) (LocalRequestValidationPolicy, error) {
 	var policy LocalRequestValidationPolicy
@@ -122,6 +187,9 @@ func ParseLocalRequestValidationPolicy(value string) (LocalRequestValidationPoli
 	}
 	if len(policy.Rules) > 10000 {
 		return policy, fmt.Errorf("分组配置过多")
+	}
+	if _, err := parseLocalParameterRules(policy.LocalParameterRules); err != nil {
+		return policy, err
 	}
 	seen := make(map[string]bool, len(policy.Rules))
 	selected := false
@@ -162,6 +230,7 @@ func ParseLocalRequestValidationPolicy(value string) (LocalRequestValidationPoli
 		!policy.MediaCheckEnabled() &&
 		!policy.GenerationConfigCheckEnabled() &&
 		strings.TrimSpace(policy.BlockedKeywords) == "" &&
+		strings.TrimSpace(policy.LocalParameterRules) == "" &&
 		policy.CooldownSeconds() <= 0 {
 		return policy, fmt.Errorf("请至少启用一项拦截规则")
 	}

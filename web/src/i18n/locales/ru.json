@@ -7283,6 +7283,8 @@
     "Intercepted upstream status codes": "Перехватываемые коды ответа апстрима",
     "Intercepted upstream error keywords": "Ключевые слова ошибок апстрима",
     "Blocked request keywords": "Блокируемые ключевые слова запроса",
+    "Local parameter rules": "Локальные правила параметров",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "Введите путь или путь=значение в каждой строке (до 1000 строк, 64 КБ).",
     "Select Gemini groups": "Выбрать группы Gemini",
     "Local error HTTP status": "Локальный HTTP-код ошибки",
     "Search groups": "Поиск групп",

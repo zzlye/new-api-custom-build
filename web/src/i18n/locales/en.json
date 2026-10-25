@@ -7323,6 +7323,8 @@
     "Intercepted upstream status codes": "Intercepted upstream status codes",
     "Intercepted upstream error keywords": "Intercepted upstream error keywords",
     "Blocked request keywords": "Blocked request keywords",
+    "Local parameter rules": "Local parameter rules",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).",
     "Select Gemini groups": "Select Gemini groups",
     "Local error HTTP status": "Local error HTTP status",
     "Search groups": "Search groups",

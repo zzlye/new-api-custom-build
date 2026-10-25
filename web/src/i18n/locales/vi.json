@@ -7283,6 +7283,8 @@
     "Intercepted upstream status codes": "Mã trạng thái nguồn bị chặn",
     "Intercepted upstream error keywords": "Từ khóa lỗi nguồn bị chặn",
     "Blocked request keywords": "Từ khóa yêu cầu bị chặn",
+    "Local parameter rules": "Quy tắc tham số cục bộ",
+    "Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).": "Nhập một đường dẫn hoặc đường dẫn=giá trị mỗi dòng (tối đa 1000 dòng, 64 KB).",
     "Select Gemini groups": "Chọn nhóm Gemini",
     "Local error HTTP status": "Mã HTTP lỗi cục bộ",
     "Search groups": "Tìm kiếm nhóm",
