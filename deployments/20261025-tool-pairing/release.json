@@ -1,0 +1,24 @@
+{
+  "commit": "ffec8e619503e5be72b3d852c58d2a2fb4eba959",
+  "github_run": 40174452116,
+  "image": "ghcr.io/zzlye/new-api-custom-build@sha256:9f05924d5f6161db24f98669705812170fe9088fe63ca23132f49dfc76518b85",
+  "version": "",
+  "backup": "/opt/new-api/backups/tool-pairing-ffec8e619-20261025",
+  "database_backup": "/mnt/data200/new-api/backups/tool-pairing-ffec8e619-20261025/database.before.dump",
+  "new_port": 3006,
+  "previous_port": 3005,
+  "previous_container": "new-api-previous-dd2a1c997",
+  "frontend_unchanged": true,
+  "options_changed_at_verification": [],
+  "switch_health_samples": 5,
+  "switch_health_failures": 0,
+  "isolated_image_validation": {
+    "passed": true,
+    "group_isolation": true,
+    "quota_unchanged": true,
+    "task_count": 0,
+    "signature_error_logs": 4,
+    "pairing_error_logs": 14
+  },
+  "completed_at": 1792915582
+}
