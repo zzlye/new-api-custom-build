@@ -7333,6 +7333,10 @@
     "Enable at least one interception rule.": "Enable at least one interception rule.",
     "Enter an integer HTTP status from 400 to 599.": "Enter an integer HTTP status from 400 to 599.",
     "Enter HTTP status codes from 400 to 599.": "Enter HTTP status codes from 400 to 599.",
-    "Enter an integer cooldown from 0 to 86400.": "Enter an integer cooldown from 0 to 86400."
+    "Enter an integer cooldown from 0 to 86400.": "Enter an integer cooldown from 0 to 86400.",
+    "Image and video keys": "Image and video keys",
+    "Managed by root": "Managed by root",
+    "No available groups": "No available groups",
+    "Available groups": "Available groups"
   }
 }

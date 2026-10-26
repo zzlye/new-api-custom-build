@@ -107,7 +107,14 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         accessorKey: 'name',
         header: t('Name'),
         cell: ({ row }) => (
-          <span className='font-medium'>{row.getValue('name')}</span>
+          <span className='font-medium'>
+            {row.getValue('name')}
+            {row.original.is_default && (
+              <span className='text-muted-foreground ml-2 text-xs'>
+                {t('Default')}
+              </span>
+            )}
+          </span>
         ),
         size: 180,
         meta: { mobileTitle: true },
@@ -153,6 +160,9 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         header: t('Group'),
         cell: ({ row }) => {
           const apiKey = row.original
+          if (apiKey.purpose === 'media') {
+            return <span>{t('Managed by root')}</span>
+          }
           const group = row.getValue('group') as string
           return (
             <ApiKeyGroupCell

@@ -34,6 +34,8 @@ import {
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import {
@@ -75,6 +77,7 @@ import {
   updateApiKey,
   getApiKey,
   getTokenAutoGroups,
+  getMediaKeyConfig,
 } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -106,7 +109,14 @@ export function ApiKeysMutateDrawer({
   const { t } = useTranslation()
   const isUpdate = !!currentRow
   const currentRowId = currentRow?.id
-  const { triggerRefresh } = useApiKeys()
+  const { triggerRefresh, purpose } = useApiKeys()
+  const isMedia = purpose === 'media'
+  const mediaConfig = useQuery({
+    queryKey: ['media-key-config'],
+    queryFn: async () => requireServerSuccess(await getMediaKeyConfig()),
+    enabled: open && isMedia,
+    staleTime: 0,
+  })
   const { status, loading: statusLoading } = useStatus()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -119,7 +129,7 @@ export function ApiKeysMutateDrawer({
   const { data: modelsData } = useQuery({
     queryKey: ['user-models'],
     queryFn: async () => requireServerSuccess(await getUserModels()),
-    enabled: open,
+    enabled: open && !isMedia,
     staleTime: 0,
   })
 
@@ -131,7 +141,7 @@ export function ApiKeysMutateDrawer({
   } = useQuery({
     queryKey: ['user-groups'],
     queryFn: async () => requireServerSuccess(await getUserGroups()),
-    enabled: open,
+    enabled: open && !isMedia,
     staleTime: 0,
   })
 
@@ -154,11 +164,13 @@ export function ApiKeysMutateDrawer({
   } = useQuery({
     queryKey: ['token-auto-groups'],
     queryFn: async () => requireServerSuccess(await getTokenAutoGroups()),
-    enabled: open,
+    enabled: open && !isMedia,
     staleTime: 0,
   })
 
-  const models = modelsData?.data || []
+  const models = isMedia
+    ? (mediaConfig.data?.data?.models ?? [])
+    : modelsData?.data || []
   const groups = useMemo<ApiKeyGroupOption[]>(
     () =>
       Object.entries(groupsData?.data || {}).map(([key, info]) => ({
@@ -209,10 +221,11 @@ export function ApiKeysMutateDrawer({
       return
     }
     if (
-      !groupsFetched ||
-      groupsFetching ||
-      !autoGroupsFetched ||
-      autoGroupsFetching
+      !isMedia &&
+      (!groupsFetched ||
+        groupsFetching ||
+        !autoGroupsFetched ||
+        autoGroupsFetching)
     ) {
       return
     }
@@ -240,6 +253,7 @@ export function ApiKeysMutateDrawer({
     }
   }, [
     open,
+    isMedia,
     isUpdate,
     currentRow,
     form,
@@ -260,7 +274,8 @@ export function ApiKeysMutateDrawer({
 
   const formTarget =
     isUpdate && currentRow ? `update:${currentRow.id}` : 'create'
-  const isFormInitialized = initializedTarget === formTarget
+  const isFormInitialized =
+    initializedTarget === formTarget && (!isMedia || mediaConfig.isSuccess)
   const selectedGroup = form.watch('group')
 
   // Correct group after groups load: if the form value is not in available groups, fall back
@@ -285,6 +300,12 @@ export function ApiKeysMutateDrawer({
     setIsSubmitting(true)
     try {
       const basePayload = transformFormDataToPayload(data)
+      if (isMedia) {
+        basePayload.purpose = 'media'
+        basePayload.group = 'auto'
+        basePayload.auto_groups = []
+        basePayload.cross_group_retry = true
+      }
 
       if (isUpdate && currentRow) {
         const result = await updateApiKey({
@@ -387,6 +408,14 @@ export function ApiKeysMutateDrawer({
               : t('Add a new API key by providing necessary info.')}
           </SheetDescription>
         </SheetHeader>
+        {isMedia && mediaConfig.isPending && <LoadingState />}
+        {isMedia && mediaConfig.isError && (
+          <ErrorState
+            onRetry={() => {
+              void mediaConfig.refetch()
+            }}
+          />
+        )}
         <Form {...form}>
           <form
             id='api-key-form'
@@ -416,37 +445,50 @@ export function ApiKeysMutateDrawer({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name='group'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Group')}</FormLabel>
-                    <FormControl>
-                      <ApiKeyGroupCombobox
-                        options={groups}
-                        value={field.value}
-                        onValueChange={(group) => {
-                          field.onChange(group)
-                          if (group === 'auto') {
-                            form.setValue('cross_group_retry', true, {
+              {isMedia && mediaConfig.isSuccess && (
+                <div className='space-y-2'>
+                  <div className='text-sm font-medium'>
+                    {t('Available groups')}
+                  </div>
+                  <div className='text-muted-foreground text-sm'>
+                    {(mediaConfig.data?.data?.groups ?? []).join(' / ') ||
+                      t('No available groups')}
+                  </div>
+                </div>
+              )}
+              {!isMedia && (
+                <FormField
+                  control={form.control}
+                  name='group'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Group')}</FormLabel>
+                      <FormControl>
+                        <ApiKeyGroupCombobox
+                          options={groups}
+                          value={field.value}
+                          onValueChange={(group) => {
+                            field.onChange(group)
+                            if (group === 'auto') {
+                              form.setValue('cross_group_retry', true, {
+                                shouldDirty: true,
+                              })
+                              return
+                            }
+                            form.setValue('cross_group_retry', false, {
                               shouldDirty: true,
                             })
-                            return
-                          }
-                          form.setValue('cross_group_retry', false, {
-                            shouldDirty: true,
-                          })
-                        }}
-                        placeholder={t('Select a group')}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                          }}
+                          placeholder={t('Select a group')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
-              {selectedGroup === 'auto' && (
+              {!isMedia && selectedGroup === 'auto' && (
                 <FormField
                   control={form.control}
                   name='auto_groups'
@@ -487,7 +529,7 @@ export function ApiKeysMutateDrawer({
                 />
               )}
 
-              {selectedGroup === 'auto' && (
+              {!isMedia && selectedGroup === 'auto' && (
                 <FormField
                   control={form.control}
                   name='cross_group_retry'
@@ -764,7 +806,11 @@ export function ApiKeysMutateDrawer({
           <Button
             type='button'
             onClick={form.handleSubmit(onSubmit, onInvalid)}
-            disabled={!isFormInitialized || isSubmitting}
+            disabled={
+              !isFormInitialized ||
+              isSubmitting ||
+              (isMedia && !isUpdate && !mediaConfig.data?.data?.groups.length)
+            }
             className='w-full sm:w-auto'
           >
             {isSubmitting ? t('Saving...') : t('Save changes')}

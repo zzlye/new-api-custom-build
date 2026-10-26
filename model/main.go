@@ -85,7 +85,12 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		return DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(&rootUser).Error; err != nil {
+				return err
+			}
+			return EnsureDefaultMediaToken(tx, rootUser.Id)
+		})
 	}
 	return nil
 }
@@ -397,6 +402,9 @@ func migrateDB() error {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
 		}
+	}
+	if err := BackfillDefaultMediaTokens(DB); err != nil {
+		return err
 	}
 	return reconcileAffiliateData(DB)
 }

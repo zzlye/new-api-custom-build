@@ -27,6 +27,7 @@ import { ERROR_MESSAGES } from '../constants'
 import type { ApiKey, ApiKeysDialogType } from '../types'
 
 type ApiKeysContextType = {
+  purpose: string
   open: ApiKeysDialogType | null
   setOpen: (str: ApiKeysDialogType | null) => void
   currentRow: ApiKey | null
@@ -45,7 +46,13 @@ type ApiKeysContextType = {
 
 const ApiKeysContext = React.createContext<ApiKeysContextType | null>(null)
 
-export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
+export function ApiKeysProvider({
+  children,
+  purpose = '',
+}: {
+  children: React.ReactNode
+  purpose?: string
+}) {
   const { t } = useTranslation()
   const [open, setOpen] = useDialogState<ApiKeysDialogType>(null)
   const [currentRow, setCurrentRow] = useState<ApiKey | null>(null)
@@ -157,6 +164,7 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
   return (
     <ApiKeysContext
       value={{
+        purpose,
         open,
         setOpen,
         currentRow,

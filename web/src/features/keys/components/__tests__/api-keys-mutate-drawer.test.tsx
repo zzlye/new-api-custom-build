@@ -65,6 +65,13 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
             },
           },
         }
+      case '/api/token/media-groups':
+        return {
+          data: {
+            success: true,
+            data: { groups: ['vip', 'default'], models: ['image-model'] },
+          },
+        }
       case '/api/token/auto-groups':
         return {
           data: {
@@ -84,7 +91,7 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
   }
 }
 
-async function renderCreateDrawer(): Promise<void> {
+async function renderCreateDrawer(purpose = ''): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -124,7 +131,7 @@ async function renderCreateDrawer(): Promise<void> {
   render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>
-        <ApiKeysProvider>
+        <ApiKeysProvider purpose={purpose}>
           <ApiKeysMutateDrawer open onOpenChange={() => undefined} />
         </ApiKeysProvider>
       </I18nextProvider>
@@ -276,5 +283,24 @@ describe('API keys mutate drawer Auto group integration', () => {
     fireEvent.click(findButton('Save changes', true))
     await waitFor(() => expect(createdPayloads).toHaveLength(1))
     expect(createdPayloads[0]?.auto_groups).toEqual(['vip'])
+  })
+})
+
+// 专用页面使用统一授权，表单不再允许编辑普通密钥的分组配置。
+test('media key creation hides group overrides and sends its independent category', async () => {
+  const payloads: Array<Record<string, unknown>> = []
+  installApiFixtures(payloads)
+  await renderCreateDrawer('media')
+  expect(screen.queryByText('Restore global Auto')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Cross-group retry')).not.toBeInTheDocument()
+  expect(screen.getByText('vip / default')).toBeInTheDocument()
+  changeInput(getControlByLabel('Name'), 'media-key')
+  fireEvent.click(findButton('Save changes', true))
+  await waitFor(() => expect(payloads).toHaveLength(1))
+  expect(payloads[0]).toMatchObject({
+    purpose: 'media',
+    group: 'auto',
+    auto_groups: [],
+    cross_group_retry: true,
   })
 })

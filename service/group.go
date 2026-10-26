@@ -95,6 +95,10 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 // The absence of the context value means that the token inherits the complete
 // global Auto list; a present (even empty) value is an explicit token snapshot.
 func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
+	if value, ok := c.Get("media_key_groups"); ok {
+		groups, _ := value.([]string)
+		return append([]string{}, groups...)
+	}
 	value, ok := common.GetContextKey(c, constant.ContextKeyTokenAutoGroups)
 	if !ok {
 		return GetUserAutoGroup(userGroup)

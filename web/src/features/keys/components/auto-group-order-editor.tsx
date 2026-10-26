@@ -41,6 +41,7 @@ import { GroupRatioBadge } from './auto-group-visuals'
 type AutoGroupOrderEditorProps = Omit<ComponentProps<'div'>, 'onChange'> & {
   value: string[]
   mode: 'inherit' | 'custom'
+  allowInherit?: boolean
   options: ApiKeyGroupOption[]
   globalOptions: ApiKeyGroupOption[]
   maxCount: number
@@ -110,17 +111,19 @@ export function AutoGroupOrderEditor(props: AutoGroupOrderEditorProps) {
                 max: maxCount,
               })}
         </p>
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          disabled={isInheriting}
-          onClick={() => {
-            props.onChange({ groups: [], mode: 'inherit' })
-          }}
-        >
-          {t('Restore global Auto')}
-        </Button>
+        {props.allowInherit !== false && (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={isInheriting}
+            onClick={() => {
+              props.onChange({ groups: [], mode: 'inherit' })
+            }}
+          >
+            {t('Restore global Auto')}
+          </Button>
+        )}
       </div>
 
       <ApiKeyGroupCombobox
@@ -130,7 +133,7 @@ export function AutoGroupOrderEditor(props: AutoGroupOrderEditorProps) {
         placeholder={
           atLimit
             ? t('Maximum {{max}} groups selected', { max: maxCount })
-            : t('Add Auto group')
+            : t(props.allowInherit === false ? 'Add group' : 'Add Auto group')
         }
         disabled={atLimit || candidates.length === 0}
       />
@@ -202,7 +205,9 @@ export function AutoGroupOrderEditor(props: AutoGroupOrderEditorProps) {
             <EmptyTitle>{t('Auto group order')}</EmptyTitle>
             <EmptyDescription>
               {t(
-                'No valid custom Auto groups remain. Add a group or restore global Auto.'
+                props.allowInherit === false
+                  ? 'No available groups'
+                  : 'No valid custom Auto groups remain. Add a group or restore global Auto.'
               )}
             </EmptyDescription>
           </EmptyHeader>

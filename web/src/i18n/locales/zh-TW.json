@@ -7310,6 +7310,10 @@
     "Enable at least one interception rule.": "請至少啟用一項攔截規則。",
     "Enter an integer HTTP status from 400 to 599.": "請輸入 400 到 599 的整數狀態碼。",
     "Enter HTTP status codes from 400 to 599.": "請輸入 400 到 599 的狀態碼或區間。",
-    "Enter an integer cooldown from 0 to 86400.": "請輸入 0 到 86400 的整數冷卻時間。"
+    "Enter an integer cooldown from 0 to 86400.": "請輸入 0 到 86400 的整數冷卻時間。",
+    "Image and video keys": "生圖和影片 Key",
+    "Managed by root": "root 統一管理",
+    "No available groups": "暫無可用群組",
+    "Available groups": "可用群組"
   }
 }

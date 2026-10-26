@@ -41,6 +41,7 @@ import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedLotteryIndexRouteImport } from './routes/_authenticated/lottery/index'
+import { Route as AuthenticatedMediaKeysIndexRouteImport } from './routes/_authenticated/media-keys/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedOrderLogsIndexRouteImport } from './routes/_authenticated/order-logs/index'
@@ -238,6 +239,12 @@ const AuthenticatedLotteryIndexRoute =
   AuthenticatedLotteryIndexRouteImport.update({
     id: '/lottery/',
     path: '/lottery/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedMediaKeysIndexRoute =
+  AuthenticatedMediaKeysIndexRouteImport.update({
+    id: '/media-keys/',
+    path: '/media-keys/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModelsIndexRoute =
@@ -477,6 +484,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/lottery/': typeof AuthenticatedLotteryIndexRoute
+  '/media-keys/': typeof AuthenticatedMediaKeysIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/order-logs/': typeof AuthenticatedOrderLogsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -542,6 +550,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/lottery': typeof AuthenticatedLotteryIndexRoute
+  '/media-keys': typeof AuthenticatedMediaKeysIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/order-logs': typeof AuthenticatedOrderLogsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
@@ -611,6 +620,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/lottery/': typeof AuthenticatedLotteryIndexRoute
+  '/_authenticated/media-keys/': typeof AuthenticatedMediaKeysIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/order-logs/': typeof AuthenticatedOrderLogsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -679,6 +689,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/keys/'
     | '/lottery/'
+    | '/media-keys/'
     | '/models/'
     | '/order-logs/'
     | '/playground/'
@@ -744,6 +755,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/keys'
     | '/lottery'
+    | '/media-keys'
     | '/models'
     | '/order-logs'
     | '/playground'
@@ -812,6 +824,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
     | '/_authenticated/lottery/'
+    | '/_authenticated/media-keys/'
     | '/_authenticated/models/'
     | '/_authenticated/order-logs/'
     | '/_authenticated/playground/'
@@ -1088,6 +1101,13 @@ declare module '@tanstack/react-router' {
       path: '/lottery'
       fullPath: '/lottery/'
       preLoaderRoute: typeof AuthenticatedLotteryIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/media-keys/': {
+      id: '/_authenticated/media-keys/'
+      path: '/media-keys'
+      fullPath: '/media-keys/'
+      preLoaderRoute: typeof AuthenticatedMediaKeysIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/models/': {
@@ -1433,6 +1453,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedLotteryIndexRoute: typeof AuthenticatedLotteryIndexRoute
+  AuthenticatedMediaKeysIndexRoute: typeof AuthenticatedMediaKeysIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedOrderLogsIndexRoute: typeof AuthenticatedOrderLogsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
@@ -1462,6 +1483,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedLotteryIndexRoute: AuthenticatedLotteryIndexRoute,
+  AuthenticatedMediaKeysIndexRoute: AuthenticatedMediaKeysIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedOrderLogsIndexRoute: AuthenticatedOrderLogsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,

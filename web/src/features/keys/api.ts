@@ -37,7 +37,9 @@ export async function getApiKeys(
   params: GetApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
   const { p = 1, size = 10 } = params
-  const res = await api.get(`/api/token/?p=${p}&size=${size}`)
+  const res = await api.get(
+    `/api/token/?p=${p}&size=${size}&purpose=${encodeURIComponent(params.purpose ?? '')}`
+  )
   return res.data
 }
 
@@ -47,6 +49,7 @@ export async function searchApiKeys(
 ): Promise<GetApiKeysResponse> {
   const { keyword = '', token = '', p, size } = params
   const queryParams = new URLSearchParams()
+  if (params.purpose) queryParams.set('purpose', params.purpose)
   if (keyword) queryParams.set('keyword', keyword)
   if (token) queryParams.set('token', token)
   if (p != null) queryParams.set('p', String(p))
@@ -123,5 +126,13 @@ export async function fetchTokenKeysBatch(ids: number[]): Promise<{
   data?: { keys: Record<number, string> }
 }> {
   const res = await api.post('/api/token/batch/keys', { ids })
+  return res.data
+}
+
+// 新入口的分组读取与普通密钥分开，避免沿用普通 Auto 的候选范围。
+export async function getMediaKeyConfig(): Promise<
+  ApiResponse<{ groups: string[]; models: string[] }>
+> {
+  const res = await api.get('/api/token/media-groups')
   return res.data
 }

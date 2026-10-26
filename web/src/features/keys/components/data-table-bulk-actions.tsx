@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import { Copy, Trash2, Loader2 } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
-import { type ApiKey } from '../types'
+import type { ApiKey } from '../types'
 import { ApiKeysMultiDeleteDialog } from './api-keys-multi-delete-dialog'
 import { useApiKeys } from './api-keys-provider'
 
@@ -114,6 +114,9 @@ export function DataTableBulkActions<TData>({
                 variant='destructive'
                 size='icon'
                 onClick={() => setShowDeleteConfirm(true)}
+                disabled={selectedRows.some(
+                  (row) => (row.original as ApiKey).is_default
+                )}
                 className='size-8'
                 aria-label={t('Delete selected API keys')}
               />

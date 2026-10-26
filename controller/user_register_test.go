@@ -40,7 +40,7 @@ func setupUserRegisterTestDB(t *testing.T, dialect string) *gorm.DB {
 
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Option{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Option{}, &model.Log{}, &model.Token{}))
 
 	t.Cleanup(func() {
 		model.DB, model.LOG_DB, common.RedisEnabled = originalDB, originalLogDB, originalRedis
@@ -313,6 +313,9 @@ func TestRegisterInvitationPolicyDatabaseMatrix(t *testing.T) {
 					}
 					require.NoError(t, err)
 					require.Equal(t, common.RoleCommonUser, created.Role)
+					var defaults int64
+					require.NoError(t, db.Model(&model.Token{}).Where("default_for_user = ?", created.Id).Count(&defaults).Error)
+					require.EqualValues(t, 1, defaults)
 					require.NoError(t, db.First(&inviter, inviter.Id).Error)
 					if strings.TrimSpace(code) == "" {
 						require.Zero(t, created.InviterId)
@@ -330,6 +333,20 @@ func TestRegisterInvitationPolicyDatabaseMatrix(t *testing.T) {
 					}
 				})
 			}
+			t.Run("默认密钥补齐幂等且保护删除", func(t *testing.T) {
+				require.NoError(t, model.BackfillDefaultMediaTokens(db))
+				require.NoError(t, model.BackfillDefaultMediaTokens(db))
+				var users, defaults int64
+				require.NoError(t, db.Model(&model.User{}).Count(&users).Error)
+				require.NoError(t, db.Model(&model.Token{}).Where("default_for_user IS NOT NULL").Count(&defaults).Error)
+				require.Equal(t, users, defaults)
+				var token model.Token
+				require.NoError(t, db.Where("default_for_user IS NOT NULL").First(&token).Error)
+				require.Error(t, model.DeleteTokenById(token.Id, token.UserId))
+				_, err := model.BatchDeleteTokens([]int{token.Id}, token.UserId)
+				require.Error(t, err)
+			})
+
 		})
 	}
 }

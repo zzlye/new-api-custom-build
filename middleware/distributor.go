@@ -95,7 +95,9 @@ func Distribute() func(c *gin.Context) {
 						abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
 						return
 					}
-					if playgroundRequest.Group != "" {
+					// 专用密钥的分组由 root 统一授权，操练场参数不能覆盖其路由。
+					_, mediaKey := c.Get("media_key_groups")
+					if playgroundRequest.Group != "" && !mediaKey {
 						if !service.GroupInUserUsableGroups(usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
 							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
 							return
@@ -516,6 +518,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		modelRequest.Model = req.Model
 		modelRequest.Group = req.Group
+		if _, media := c.Get("media_key_groups"); media {
+			modelRequest.Group = "auto"
+		}
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
 	}
 

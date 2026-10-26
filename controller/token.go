@@ -40,6 +40,7 @@ type tokenRequest struct {
 type tokenResponse struct {
 	*model.Token
 	AutoGroups []string `json:"auto_groups"`
+	IsDefault  bool     `json:"is_default,omitempty"`
 }
 
 func maxTokenQuota() int {
@@ -66,7 +67,7 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if len(autoGroups) == 0 {
 		autoGroups = nil
 	}
-	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
+	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups, IsDefault: token.DefaultForUser != nil}
 }
 
 func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
@@ -130,12 +131,12 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), c.Query("purpose"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, _ := model.CountUserTokens(userId, c.Query("purpose"))
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -148,7 +149,7 @@ func SearchTokens(c *gin.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), c.Query("purpose"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -183,6 +184,16 @@ func GetTokenAutoGroups(c *gin.Context) {
 		"groups":    service.GetUserAutoGroup(userGroup),
 		"max_count": setting.GetMaxTokenAutoGroups(),
 	})
+}
+
+// 专用密钥入口只展示 root 授权的分组和其中可用模型。
+func GetMediaKeyConfig(c *gin.Context) {
+	groups, err := model.GetMediaKeyGroups()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"groups": groups, "models": service.GetGroupsEnabledModels(groups)})
 }
 
 func GetTokenKey(c *gin.Context) {
@@ -282,6 +293,19 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	token := request.Token
+	if token.Purpose != "" && token.Purpose != model.TokenPurposeMedia {
+		common.ApiError(c, fmt.Errorf("无效的密钥类别"))
+		return
+	}
+	if token.Purpose == model.TokenPurposeMedia {
+		groups, err := model.GetMediaKeyGroups()
+		if err != nil || len(groups) == 0 {
+			common.ApiError(c, fmt.Errorf("生图和视频 Key 尚未配置可用分组"))
+			return
+		}
+		token.Group, token.CrossGroupRetry = "auto", true
+		request.AutoGroups.Groups = nil
+	}
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
@@ -329,6 +353,7 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
+		Purpose:            token.Purpose,
 		UserId:             c.GetInt("id"),
 		Name:               token.Name,
 		Key:                key,
@@ -412,6 +437,12 @@ func UpdateToken(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	// 类别创建后不可转换，编辑时仍由当前 root 配置决定权限。
+	if cleanToken.Purpose == model.TokenPurposeMedia {
+		token.Group, token.CrossGroupRetry = "auto", true
+		request.AutoGroups.Set = true
+		request.AutoGroups.Groups = nil
 	}
 	params["name"] = cleanToken.Name
 	previous := *cleanToken

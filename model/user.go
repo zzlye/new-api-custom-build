@@ -772,7 +772,10 @@ func (user *User) Insert(inviterId int) error {
 				user.SetSetting(defaultSetting)
 			}
 
-			return tx.Create(user).Error
+			if err := tx.Create(user).Error; err != nil {
+				return err
+			}
+			return EnsureDefaultMediaToken(tx, user.Id)
 		})
 	}); err != nil {
 		return err
@@ -827,7 +830,10 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			user.SetSetting(defaultSetting)
 		}
 
-		return tx.Create(user).Error
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		return EnsureDefaultMediaToken(tx, user.Id)
 	})
 }
 

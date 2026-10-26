@@ -12,6 +12,8 @@ import (
 )
 
 type Token struct {
+	DefaultForUser     *int           `json:"-" gorm:"uniqueIndex"`                                 // 仅默认密钥保存用户 ID，唯一约束防止并发重复创建。
+	Purpose            string         `json:"purpose,omitempty" gorm:"type:varchar(16);default:''"` // 空值为原有密钥，media 为独立入口密钥。
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
@@ -103,10 +105,10 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
-func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
+func GetAllUserTokens(userId int, startIdx int, num int, purpose ...string) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = tokenPurposeScope(DB.Where("user_id = ?", userId), purpose).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -156,7 +158,7 @@ func validateLikePattern(input string) error {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func SearchUserTokens(userId int, keyword string, token string, offset int, limit int, purpose ...string) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -183,7 +185,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := tokenPurposeScope(DB.Model(&Token{}).Where("user_id = ?", userId), purpose)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -325,10 +327,17 @@ func (token *Token) SelectUpdate() (err error) {
 }
 
 func (token *Token) Delete() (err error) {
+	if token.DefaultForUser != nil {
+		return errors.New("默认生图和视频 Key 不能删除，可以停用")
+	}
 	if cacheErr := invalidateTokenCacheForMutation(token.Key); cacheErr != nil {
 		common.SysLog("failed to invalidate token cache before delete: " + cacheErr.Error())
 	}
-	return DB.Delete(token).Error
+	result := DB.Where("default_for_user IS NULL").Delete(token)
+	if result.Error == nil && result.RowsAffected == 0 {
+		return errors.New("密钥不存在或为不可删除的默认密钥")
+	}
+	return result.Error
 }
 
 func (token *Token) IsModelLimitsEnabled() bool {
@@ -435,9 +444,9 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 }
 
 // CountUserTokens returns total number of tokens for the given user, used for pagination
-func CountUserTokens(userId int) (int64, error) {
+func CountUserTokens(userId int, purpose ...string) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	err := tokenPurposeScope(DB.Model(&Token{}).Where("user_id = ?", userId), purpose).Count(&total).Error
 	return total, err
 }
 
@@ -454,11 +463,18 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 		tx.Rollback()
 		return 0, err
 	}
+	// 混合勾选时整批拒绝，避免默认密钥被批量接口绕过保护。
+	for _, token := range tokens {
+		if token.DefaultForUser != nil {
+			tx.Rollback()
+			return 0, errors.New("默认生图和视频 Key 不能删除，可以停用")
+		}
+	}
 	if err := invalidateTokensCache(tokens); err != nil {
 		common.SysLog("failed to invalidate token cache before batch delete: " + err.Error())
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	if err := tx.Where("user_id = ? AND id IN (?) AND default_for_user IS NULL", userId, ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}

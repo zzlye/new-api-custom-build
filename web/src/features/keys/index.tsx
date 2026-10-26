@@ -25,12 +25,14 @@ import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
 import { ApiKeysProvider } from './components/api-keys-provider'
 import { ApiKeysTable } from './components/api-keys-table'
 
-export function ApiKeys() {
+export function ApiKeys(props: { purpose?: string }) {
   const { t } = useTranslation()
   return (
-    <ApiKeysProvider>
+    <ApiKeysProvider key={props.purpose ?? 'standard'} purpose={props.purpose}>
       <SectionPageLayout fixedContent>
-        <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
+        <SectionPageLayout.Title>
+          {t(props.purpose === 'media' ? 'Image and video keys' : 'API Keys')}
+        </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
           <ApiKeysPrimaryButtons />
         </SectionPageLayout.Actions>

@@ -289,6 +289,20 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 		if channel.Status != common.ChannelStatusEnabled {
 			return nil, "", pinnedChannelUnavailable(pin, http.StatusForbidden, i18n.MsgDistributorChannelDisabled)
 		}
+		selectedGroup := ""
+		if _, mediaKey := c.Get("media_key_groups"); mediaKey {
+			// 基于历史任务的续作同样受专用授权约束，不能借原任务渠道绕过分组。
+			for _, group := range GetRequestAutoGroups(c, "") {
+				if model.IsChannelEnabledForGroupModel(group, modelName, channel.Id) {
+					selectedGroup = group
+					break
+				}
+			}
+			if selectedGroup == "" {
+				return nil, "", &ChannelSelectError{StatusCode: http.StatusForbidden, Code: types.ErrorCodeAccessDenied, Message: "原任务渠道不在生图和视频 Key 的允许分组中"}
+			}
+			common.SetContextKey(c, constant.ContextKeyAutoGroup, selectedGroup)
+		}
 		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
 			return nil, "", &ChannelSelectError{
 				StatusCode: http.StatusBadRequest, Code: types.ErrorCode(kind), MessageID: i18n.MsgDistributorNoAvailableChannel,
@@ -296,13 +310,15 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 				FilterKind: kind, Channel: channel,
 			}
 		}
-		return channel, "", nil
+		return channel, selectedGroup, nil
 	}
 
 	usingGroup := retry.TokenGroup
 	var channel *model.Channel
 	var selectGroup string
-	if retry.GetRetry() == 0 {
+	// 专用密钥始终按 root 的分组顺序选路，旧会话亲和不能跳过前面的分组。
+	_, mediaKey := c.Get("media_key_groups")
+	if retry.GetRetry() == 0 && !mediaKey {
 		if preferredChannelID, found := GetPreferredChannelByAffinity(c, modelName, usingGroup); found {
 			affinityUsable := false
 			preferred, err := model.CacheGetChannel(preferredChannelID)

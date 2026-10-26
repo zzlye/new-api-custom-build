@@ -330,12 +330,23 @@ async function renderKeysPage(status = 1, overrides: Partial<ApiKey> = {}) {
   const auth = createRoute({ getParentRoute: () => root, id: '_authenticated' })
   const keysRoute = createRoute({
     getParentRoute: () => auth,
-    path: 'keys/',
-    component: KeysPage,
+    path: overrides.purpose === 'media' ? 'media-keys/' : 'keys/',
+    component:
+      overrides.purpose === 'media'
+        ? () => (
+            <ApiKeysProvider purpose='media'>
+              <ApiKeysTable />
+            </ApiKeysProvider>
+          )
+        : KeysPage,
   })
   const router = createRouter({
     routeTree: root.addChildren([auth.addChildren([keysRoute])]),
-    history: createMemoryHistory({ initialEntries: ['/keys/'] }),
+    history: createMemoryHistory({
+      initialEntries: [
+        overrides.purpose === 'media' ? '/media-keys/' : '/keys/',
+      ],
+    }),
   })
   await router.load()
   render(
@@ -524,4 +535,35 @@ it('keeps mobile quota readable and opens complete model and IP restrictions by 
   details = await screen.findByRole('dialog')
   expect(within(details).getByText('192.0.2.1')).toBeVisible()
   expect(within(details).getByText('2001:db8::1')).toBeVisible()
+})
+
+it('media page uses an independent query scope and displays root-managed routing', async () => {
+  await renderKeysPage(1, { purpose: 'media', group: 'auto' })
+  expect(
+    vi.mocked(api.get).mock.calls.some(([url]) => url.includes('purpose=media'))
+  ).toBe(true)
+  expect(screen.getAllByText('Managed by root').length).toBeGreaterThan(0)
+})
+it('default media key blocks individual and batch deletion while keeping disable available', async () => {
+  const { put } = await renderKeysPage(1, {
+    purpose: 'media',
+    is_default: true,
+  })
+  await userEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+  expect(
+    screen.getByRole('menuitem', { name: /^Delete$/ })
+  ).toHaveAttribute('aria-disabled', 'true')
+  await userEvent.keyboard('{Escape}')
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
+  expect(
+    screen.getByRole('button', { name: 'Delete selected API keys' })
+  ).toBeDisabled()
+  await userEvent.click(screen.getByRole('button', { name: 'Disable' }))
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith('/api/token/?status_only=true', {
+      id: 7,
+      status: 2,
+    })
+  )
+  await screen.findByText('Disabled')
 })

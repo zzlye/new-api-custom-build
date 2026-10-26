@@ -5,6 +5,7 @@ import { ClaudeSettingsCard } from './claude-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
+import { MediaKeySettings } from './media-key-settings'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -36,6 +37,11 @@ function formatJsonForEditor(value: string, fallback: string) {
 }
 
 const MODELS_SECTIONS = [
+  {
+    id: 'media-keys',
+    titleKey: 'Image and video keys',
+    build: () => <MediaKeySettings />,
+  },
   {
     id: 'video-adapters',
     titleKey: 'Video adapters',

@@ -365,11 +365,13 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if migratedToken.Name != "legacy-token" {
 		t.Fatalf("expected migrated token name to be preserved, got %q", migratedToken.Name)
 	}
+	assert.Empty(t, migratedToken.Purpose)
 	if migratedToken.AutoGroups != "" {
 		t.Fatalf("expected legacy token to inherit global Auto groups, got %q", migratedToken.AutoGroups)
 	}
 
 	inserted := model.Token{
+		Purpose:            model.TokenPurposeMedia,
 		UserId:             8,
 		Name:               "long-token",
 		Key:                longKey,
@@ -397,16 +399,62 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if fetched.Key != longKey {
 		t.Fatalf("expected long token key %q, got %q", longKey, fetched.Key)
 	}
+	// 重复迁移不改变旧令牌类别，新类别在三种数据库均可持久化和筛选。
+	require.Equal(t, model.TokenPurposeMedia, fetched.Purpose)
+	for range 2 {
+		migrateTokenControllerTestDB(t, db)
+	}
+	ordinary, err := model.GetAllUserTokens(7, 0, 10, "")
+	require.NoError(t, err)
+	require.Len(t, ordinary, 1)
+	assert.Empty(t, ordinary[0].Purpose)
+	media, err := model.GetAllUserTokens(8, 0, 10, model.TokenPurposeMedia)
+	require.NoError(t, err)
+	require.Len(t, media, 1)
+	assert.Equal(t, inserted.Id, media[0].Id)
+	// 升级后的唯一默认标识在三种数据库均可幂等创建，且不影响普通密钥数量。
+	require.NoError(t, model.EnsureDefaultMediaToken(db, 7))
+	require.NoError(t, model.EnsureDefaultMediaToken(db, 7))
+	var defaults []model.Token
+	require.NoError(t, db.Where("default_for_user = ?", 7).Find(&defaults).Error)
+	require.Len(t, defaults, 1)
+	assert.Equal(t, model.TokenPurposeMedia, defaults[0].Purpose)
+	assert.Equal(t, 7, defaults[0].UserId)
+
 }
 
 func TestTokenAutoMigrateUsesVarchar128KeyColumn(t *testing.T) {
-	db := setupTokenControllerTestDB(t)
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			var db *gorm.DB
+			if dialect == "sqlite" {
+				db = openTokenControllerTestDB(t)
+			} else {
+				dsn := os.Getenv("TEST_" + strings.ToUpper(dialect) + "_DSN")
+				if dsn == "" {
+					t.Skip("需要本地测试数据库")
+				}
+				var managed *bool
+				db, managed = openTokenControllerExternalDB(t, dialect, dsn)
+				*managed = true
+			}
+			// 全新安装使用独立连接，避免重复建表引入 PostgreSQL 旧查询计划。
+			migrateTokenControllerTestDB(t, db)
+			assert.Equal(t, "varchar(128)", getTokenKeyColumnType(t, db, dialect))
+			assert.Equal(t, "text", getTokenAutoGroupsColumnType(t, db, dialect))
+			token := &model.Token{UserId: 9, Key: "fresh-media-key", Purpose: model.TokenPurposeMedia}
+			require.NoError(t, db.Create(token).Error)
+			media, err := model.GetAllUserTokens(9, 0, 10, model.TokenPurposeMedia)
+			require.NoError(t, err)
+			require.Len(t, media, 1)
+			assert.Equal(t, token.Id, media[0].Id)
+			require.NoError(t, model.EnsureDefaultMediaToken(db, 9))
+			require.NoError(t, model.EnsureDefaultMediaToken(db, 9))
+			var defaults int64
+			require.NoError(t, db.Model(&model.Token{}).Where("default_for_user = ?", 9).Count(&defaults).Error)
+			assert.EqualValues(t, 1, defaults)
 
-	if got := getTokenKeyColumnType(t, db, "sqlite"); got != "varchar(128)" {
-		t.Fatalf("expected key column type varchar(128), got %q", got)
-	}
-	if got := getSQLiteColumnType(t, db, "tokens", "auto_groups"); got != "text" {
-		t.Fatalf("expected auto_groups column type text, got %q", got)
+		})
 	}
 }
 

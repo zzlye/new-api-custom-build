@@ -454,7 +454,9 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
-		if tokenGroup != "" {
+		if token.Purpose == model.TokenPurposeMedia {
+			userGroup = "auto"
+		} else if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
 			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
@@ -531,6 +533,22 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, autoGroups)
 		} else if len(autoGroups) > 0 {
 			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, autoGroups)
+		}
+	}
+	if token.Purpose == model.TokenPurposeMedia {
+		groups, err := model.GetMediaKeyGroups()
+		if err != nil || len(groups) == 0 {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "生图和视频 Key 当前没有可用分组")
+			return fmt.Errorf("media key groups unavailable")
+		}
+		// root 的专用授权独立于普通 Key 分组；一次请求固定其顺序，下一请求读取最新设置。
+		c.Set("media_key_groups", groups)
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "auto")
+		common.SetContextKey(c, constant.ContextKeyTokenGroup, "auto")
+		common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, true)
+		if len(parts) > 1 {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "生图和视频 Key 不支持指定渠道")
+			return fmt.Errorf("media key channel override forbidden")
 		}
 	}
 	if len(parts) > 1 {

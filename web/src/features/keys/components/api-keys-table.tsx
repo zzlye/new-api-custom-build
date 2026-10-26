@@ -64,7 +64,6 @@ import { useApiKeys } from './api-keys-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { DataTableRowActions } from './data-table-row-actions'
 
-const route = getRouteApi('/_authenticated/keys/')
 const API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY = 'api-keys:column-visibility'
 const API_KEYS_MOBILE_SKELETON_IDS = Array.from(
   { length: 5 },
@@ -156,6 +155,11 @@ function ApiKeysMobileList({
               <div className='min-w-0'>
                 <div className='text-sm leading-5 font-semibold break-words'>
                   {apiKey.name}
+                  {apiKey.is_default && (
+                    <span className='text-muted-foreground ml-2 text-xs'>
+                      {t('Default')}
+                    </span>
+                  )}
                 </div>
               </div>
               {statusConfig && (
@@ -217,7 +221,12 @@ function ApiKeysMobileList({
 
 export function ApiKeysTable() {
   const { t } = useTranslation()
-  const { refreshTrigger } = useApiKeys()
+  const { refreshTrigger, purpose } = useApiKeys()
+  const route = getRouteApi(
+    purpose === 'media'
+      ? '/_authenticated/media-keys/'
+      : '/_authenticated/keys/'
+  )
   const [now, setNow] = useState(() => Date.now())
   const columns = useApiKeysColumns(now)
 
@@ -264,6 +273,7 @@ export function ApiKeysTable() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'keys',
+      purpose,
       pagination.pageIndex + 1,
       pagination.pageSize,
       globalFilter,
@@ -273,12 +283,14 @@ export function ApiKeysTable() {
     queryFn: async () => {
       const result = shouldSearch
         ? await searchApiKeys({
+            purpose,
             keyword: globalFilter,
             token: tokenFilter,
             p: pagination.pageIndex + 1,
             size: pagination.pageSize,
           })
         : await getApiKeys({
+            purpose,
             p: pagination.pageIndex + 1,
             size: pagination.pageSize,
           })

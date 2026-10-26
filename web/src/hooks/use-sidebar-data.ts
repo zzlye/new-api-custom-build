@@ -89,6 +89,11 @@ export function useSidebarData(): SidebarData {
             icon: Key,
           },
           {
+            title: t('Image and video keys'),
+            url: '/media-keys',
+            icon: Key,
+          },
+          {
             title: t('Usage Logs'),
             url: '/usage-logs/common',
             icon: FileText,

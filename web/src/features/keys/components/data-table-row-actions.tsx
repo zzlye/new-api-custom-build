@@ -277,6 +277,7 @@ export function DataTableRowActions<TData>({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          disabled={apiKey.is_default}
           onClick={() => {
             setCurrentRow(apiKey)
             setOpen('delete')
