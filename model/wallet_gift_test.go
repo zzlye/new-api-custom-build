@@ -63,7 +63,7 @@ func TestGiftWalletDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			sqlDB.SetMaxOpenConns(8)
 			t.Cleanup(func() {
-				_ = db.Migrator().DropTable(&Log{}, &User{}, &Checkin{}, &Task{}, &Midjourney{})
+				_ = db.Migrator().DropTable(&Log{}, &Token{}, &User{}, &Checkin{}, &Task{}, &Midjourney{})
 				_ = sqlDB.Close()
 			})
 			var version string
@@ -73,8 +73,9 @@ func TestGiftWalletDatabaseMatrix(t *testing.T) {
 			}
 			require.NoError(t, db.Raw(versionSQL).Scan(&version).Error)
 			t.Logf("database=%s version=%s", dialect, version)
-			require.NoError(t, db.AutoMigrate(&User{}, &Log{}, &Checkin{}, &Task{}, &Midjourney{}))
-			require.NoError(t, db.AutoMigrate(&User{}, &Log{}, &Checkin{}, &Task{}, &Midjourney{}))
+			// 注册奖励场景会自动创建默认媒体密钥，三个数据库均需准备令牌表。
+			require.NoError(t, db.AutoMigrate(&User{}, &Token{}, &Log{}, &Checkin{}, &Task{}, &Midjourney{}))
+			require.NoError(t, db.AutoMigrate(&User{}, &Token{}, &Log{}, &Checkin{}, &Task{}, &Midjourney{}))
 
 			t.Run("奖励优先消费并按类别退款", func(t *testing.T) {
 				u := User{Username: "gift-spend", AffCode: "gift-spend", Quota: 1000}
