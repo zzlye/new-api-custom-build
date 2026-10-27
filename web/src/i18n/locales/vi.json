@@ -7295,7 +7295,7 @@
     "Enter HTTP status codes from 400 to 599.": "Nhập mã HTTP từ 400 đến 599.",
     "Enter an integer cooldown from 0 to 86400.": "Nhập thời gian chờ nguyên từ 0 đến 86400.",
     "Image and video keys": "Key hình ảnh và video",
-    "Managed by root": "Do root quản lý",
+    "Fixed group": "Cố định",
     "No available groups": "Không có nhóm khả dụng",
     "Available groups": "Nhóm khả dụng"
   }

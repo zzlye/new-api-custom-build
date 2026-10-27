@@ -7295,7 +7295,7 @@
     "Enter HTTP status codes from 400 to 599.": "400 から 599 のステータスコードを入力してください。",
     "Enter an integer cooldown from 0 to 86400.": "0 から 86400 の整数秒を入力してください。",
     "Image and video keys": "画像・動画 Key",
-    "Managed by root": "root が一括管理",
+    "Fixed group": "固定",
     "No available groups": "利用可能なグループはありません",
     "Available groups": "利用可能なグループ"
   }

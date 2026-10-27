@@ -7295,7 +7295,7 @@
     "Enter HTTP status codes from 400 to 599.": "Entrez des codes HTTP entre 400 et 599.",
     "Enter an integer cooldown from 0 to 86400.": "Entrez un délai entier entre 0 et 86400.",
     "Image and video keys": "Clés image et vidéo",
-    "Managed by root": "Géré par root",
+    "Fixed group": "Fixe",
     "No available groups": "Aucun groupe disponible",
     "Available groups": "Groupes disponibles"
   }

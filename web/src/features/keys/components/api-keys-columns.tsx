@@ -161,7 +161,8 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         cell: ({ row }) => {
           const apiKey = row.original
           if (apiKey.purpose === 'media') {
-            return <span>{t('Managed by root')}</span>
+            // 专用密钥统一展示固定分组，具体路由规则由后台配置。
+            return <span>{t('Fixed group')}</span>
           }
           const group = row.getValue('group') as string
           return (

@@ -537,12 +537,12 @@ it('keeps mobile quota readable and opens complete model and IP restrictions by 
   expect(within(details).getByText('2001:db8::1')).toBeVisible()
 })
 
-it('media page uses an independent query scope and displays root-managed routing', async () => {
+it('media page uses an independent query scope and displays a fixed group', async () => {
   await renderKeysPage(1, { purpose: 'media', group: 'auto' })
   expect(
     vi.mocked(api.get).mock.calls.some(([url]) => url.includes('purpose=media'))
   ).toBe(true)
-  expect(screen.getAllByText('Managed by root').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Fixed group').length).toBeGreaterThan(0)
 })
 it('default media key blocks individual and batch deletion while keeping disable available', async () => {
   const { put } = await renderKeysPage(1, {
@@ -550,9 +550,10 @@ it('default media key blocks individual and batch deletion while keeping disable
     is_default: true,
   })
   await userEvent.click(screen.getByRole('button', { name: 'Open menu' }))
-  expect(
-    screen.getByRole('menuitem', { name: /^Delete$/ })
-  ).toHaveAttribute('aria-disabled', 'true')
+  expect(screen.getByRole('menuitem', { name: /^Delete$/ })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  )
   await userEvent.keyboard('{Escape}')
   await userEvent.click(screen.getByRole('checkbox', { name: 'Select all' }))
   expect(

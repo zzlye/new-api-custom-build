@@ -7335,7 +7335,7 @@
     "Enter HTTP status codes from 400 to 599.": "请输入 400 到 599 的状态码或区间。",
     "Enter an integer cooldown from 0 to 86400.": "请输入 0 到 86400 的整数冷却时间。",
     "Image and video keys": "生图和视频 Key",
-    "Managed by root": "root 统一管理",
+    "Fixed group": "固定",
     "No available groups": "暂无可用分组",
     "Available groups": "可用分组"
   }
