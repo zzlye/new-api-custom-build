@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -515,7 +515,20 @@ export function RechargeFormCard({
               htmlFor='redemption-code'
               className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
             >
-              {t('Have a Code?')}
+              {/* 购买入口使用独立标签页，保留当前兑换码输入内容。 */}
+              <Trans
+                i18nKey='Click <shop>Go to shop</shop> to purchase a redemption code'
+                components={{
+                  shop: (
+                    <a
+                      href='https://catfk.com/shop/GOKNGSCL'
+                      target='_blank'
+                      rel='noopener noreferrer'
+                      className='text-primary underline underline-offset-4'
+                    />
+                  ),
+                }}
+              />
             </Label>
           </div>
           <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
