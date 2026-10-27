@@ -54,7 +54,8 @@ beforeEach(() => {
   keyLookupError = null
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
     switch (url) {
-      case '/api/token/?p=1&size=10':
+      // 普通密钥查询显式携带空用途，与媒体密钥列表隔离。
+      case '/api/token/?p=1&size=10&purpose=':
         if (keyLookupError) throw keyLookupError
         return {
           data: {

@@ -99,7 +99,8 @@ beforeEach(() => {
         }
       case '/api/notice':
         return { data: { success: true, data: 'System notice fixture' } }
-      case '/api/token/?p=1&size=10':
+      // 普通密钥查询显式携带空用途，与媒体密钥列表隔离。
+      case '/api/token/?p=1&size=10&purpose=':
         return { data: { success: true, data: { items: [] } } }
       case '/api/user/models':
       case '/api/data/self':
