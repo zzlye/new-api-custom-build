@@ -312,11 +312,22 @@ func ListModels(c *gin.Context, modelType int) {
 			"nextPageToken": nil,
 		})
 	default:
-		c.JSON(200, gin.H{
+		response := gin.H{
 			"success": true,
 			"data":    userOpenAiModels,
 			"object":  "list",
-		})
+		}
+		// 专用 Key 直接读取自己的分组与报价，不要求客户端另存账号管理凭据。
+		if _, media := c.Get("media_key_groups"); media {
+			catalog, err := mediaCatalogForRequest(c, userModelNames, ownerGroups, groups.userGroup)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			catalog["status"] = mediaCatalogCurrency()
+			response["media_catalog"] = catalog
+		}
+		c.JSON(200, response)
 	}
 }
 
