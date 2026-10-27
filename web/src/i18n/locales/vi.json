@@ -7297,6 +7297,11 @@
     "Image and video keys": "Key hình ảnh và video",
     "Fixed group": "Cố định",
     "No available groups": "Không có nhóm khả dụng",
-    "Available groups": "Nhóm khả dụng"
+    "Available groups": "Nhóm khả dụng",
+    "Enter a valid channel ID.": "Nhập ID kênh hợp lệ.",
+    "Shared by all users of this channel.": "Giới hạn chung cho mọi người dùng của kênh.",
+    "Successful requests only. 0 = unlimited.": "Chỉ tính yêu cầu thành công. 0 = không giới hạn.",
+    "Configure rate limiting rules for groups, models or channels.": "Cấu hình giới hạn cho nhóm, mô hình hoặc kênh.",
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "Cả hai giá trị từ 0 đến 2.147.483.647."
   }
 }

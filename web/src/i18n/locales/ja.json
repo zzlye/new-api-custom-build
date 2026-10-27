@@ -7297,6 +7297,11 @@
     "Image and video keys": "画像・動画 Key",
     "Fixed group": "固定",
     "No available groups": "利用可能なグループはありません",
-    "Available groups": "利用可能なグループ"
+    "Available groups": "利用可能なグループ",
+    "Enter a valid channel ID.": "有効なチャネル ID を入力してください。",
+    "Shared by all users of this channel.": "このチャネルのすべてのユーザーで共有します。",
+    "Successful requests only. 0 = unlimited.": "成功したリクエストのみ。0 は無制限。",
+    "Configure rate limiting rules for groups, models or channels.": "グループ、モデル、チャネルのレート制限を設定します。",
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "両方とも 0～2,147,483,647。"
   }
 }

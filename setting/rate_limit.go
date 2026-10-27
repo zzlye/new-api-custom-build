@@ -3,6 +3,7 @@ package setting
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -25,6 +26,7 @@ var ModelRequestRateLimitCount = 0
 var ModelRequestRateLimitSuccessCount = 1000
 var ModelRequestRateLimitGroup = map[string][2]int{}
 var ModelRequestRateLimitModel = map[string][2]int{}
+var ModelRequestRateLimitChannel = map[string][2]int{}
 var ModelRequestRateLimitMutex sync.RWMutex
 
 func ModelRequestRateLimitGroup2JSONString() string {
@@ -125,11 +127,48 @@ func parseModelRequestRateLimitMap(jsonStr, scopeType string) (map[string][2]int
 	}
 	limits := make(map[string][2]int, len(rawLimits))
 	for scope, values := range rawLimits {
-		if strings.TrimSpace(scope) == "" || len(values) != 2 || values[0] < 0 || values[1] < 1 ||
+		if strings.TrimSpace(scope) == "" || len(values) != 2 || values[0] < 0 || values[1] < 0 || (scopeType != "channel" && values[1] < 1) ||
 			values[0] > math.MaxInt32 || values[1] > math.MaxInt32 {
 			return nil, fmt.Errorf("invalid %s rate limit for %q", scopeType, scope)
+		}
+		if scopeType == "channel" {
+			id, err := strconv.ParseInt(scope, 10, 32)
+			if err != nil || id <= 0 || strconv.FormatInt(id, 10) != scope {
+				return nil, fmt.Errorf("渠道 ID 必须是正整数：%q", scope)
+			}
 		}
 		limits[scope] = [2]int{values[0], values[1]}
 	}
 	return limits, nil
+}
+
+// 渠道规则以渠道 ID 为键，所有用户共享；两个上限均允许用零关闭。
+func ModelRequestRateLimitChannel2JSONString() string {
+	ModelRequestRateLimitMutex.RLock()
+	defer ModelRequestRateLimitMutex.RUnlock()
+	b, _ := common.Marshal(ModelRequestRateLimitChannel)
+	return string(b)
+}
+
+func UpdateModelRequestRateLimitChannelByJSONString(value string) error {
+	limits, err := parseModelRequestRateLimitMap(value, "channel")
+	if err != nil {
+		return err
+	}
+	ModelRequestRateLimitMutex.Lock()
+	defer ModelRequestRateLimitMutex.Unlock()
+	ModelRequestRateLimitChannel = limits
+	return nil
+}
+
+func CheckModelRequestRateLimitChannel(value string) error {
+	_, err := parseModelRequestRateLimitMap(value, "channel")
+	return err
+}
+
+func GetChannelRateLimit(channelID int) (int, int, bool) {
+	ModelRequestRateLimitMutex.RLock()
+	defer ModelRequestRateLimitMutex.RUnlock()
+	limits, found := ModelRequestRateLimitChannel[strconv.Itoa(channelID)]
+	return limits[0], limits[1], found
 }

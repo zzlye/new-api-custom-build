@@ -434,6 +434,7 @@ export type SecuritySettings = {
   ModelRequestRateLimitDurationMinutes: number
   ModelRequestRateLimitGroup: string
   ModelRequestRateLimitModel: string
+  ModelRequestRateLimitChannel: string
   CheckSensitiveEnabled: boolean
   CheckSensitiveOnPromptEnabled: boolean
   SensitiveWords: string

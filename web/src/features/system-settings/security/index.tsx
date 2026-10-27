@@ -32,6 +32,7 @@ const defaultSecuritySettings: SecuritySettings = {
   ModelRequestRateLimitDurationMinutes: 1,
   ModelRequestRateLimitGroup: '',
   ModelRequestRateLimitModel: '',
+  ModelRequestRateLimitChannel: '',
   CheckSensitiveEnabled: false,
   CheckSensitiveOnPromptEnabled: false,
   SensitiveWords: '',

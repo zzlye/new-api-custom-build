@@ -433,6 +433,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 
 	requestBody := bytes.NewBuffer(jsonData)
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
+	// 管理员测试也占用真实上游额度，不能绕过渠道速率限制。
+	if _, _, rateErr := service.ReserveChannelForRequest(c, channel, nil, true); rateErr != nil {
+		return testResult{context: c, localErr: rateErr, newAPIError: rateErr}
+	}
+	defer service.FinishChannelRateLimit(c, false)
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return testResult{
@@ -495,6 +500,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
+	service.FinishChannelRateLimit(c, true)
 	info.SetEstimatePromptTokens(usage.PromptTokens)
 
 	quota, tieredResult := settleTestQuota(info, priceData, usage)
@@ -924,6 +930,11 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 	result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
 	milliseconds := time.Since(tik).Milliseconds()
 	if ctx.Err() != nil {
+		return summary
+	}
+
+	// 本地限流不代表渠道故障，也不参与自动封禁和响应时间统计。
+	if result.newAPIError != nil && (result.newAPIError.GetErrorCode() == "channel_rate_limit_exceeded" || result.newAPIError.GetErrorCode() == "channel_rate_limit_unavailable") {
 		return summary
 	}
 

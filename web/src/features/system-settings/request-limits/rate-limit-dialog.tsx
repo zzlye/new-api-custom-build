@@ -36,23 +36,43 @@ import {
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-export type RateLimitTargetType = 'group' | 'model'
+export type RateLimitTargetType = 'group' | 'model' | 'channel'
 
 const createRateLimitDialogSchema = (t: (key: string) => string) =>
-  z.object({
-    targetType: z.enum(['group', 'model']),
-    target: z.string().trim().min(1, t('Target name is required')),
-    maxRequests: z
-      .number()
-      .int(t('Must be an integer'))
-      .min(0, 'Must be ≥ 0')
-      .max(2147483647, 'Must be ≤ 2,147,483,647'),
-    maxSuccess: z
-      .number()
-      .int(t('Must be an integer'))
-      .min(1, 'Must be ≥ 1')
-      .max(2147483647, 'Must be ≤ 2,147,483,647'),
-  })
+  z
+    .object({
+      targetType: z.enum(['group', 'model', 'channel']),
+      target: z.string().trim().min(1, t('Target name is required')),
+      maxRequests: z
+        .number()
+        .int(t('Must be an integer'))
+        .min(0, 'Must be ≥ 0')
+        .max(2147483647, 'Must be ≤ 2,147,483,647'),
+      maxSuccess: z
+        .number()
+        .int(t('Must be an integer'))
+        .min(0, 'Must be ≥ 0')
+        .max(2147483647, 'Must be ≤ 2,147,483,647'),
+    })
+    .superRefine((value, ctx) => {
+      if (
+        value.targetType === 'channel' &&
+        (!/^[1-9]\d*$/.test(value.target) || Number(value.target) > 2147483647)
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['target'],
+          message: t('Enter a valid channel ID.'),
+        })
+      }
+      if (value.targetType !== 'channel' && value.maxSuccess < 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['maxSuccess'],
+          message: t('Must be ≥ 1'),
+        })
+      }
+    })
 
 type RateLimitDialogFormValues = z.infer<
   ReturnType<typeof createRateLimitDialogSchema>
@@ -102,11 +122,12 @@ export function RateLimitTargetTypeToggle({
       )}
       {...props}
     >
-      {(['group', 'model'] as const).map((targetType) => {
+      {(['group', 'model', 'channel'] as const).map((targetType) => {
         const isActive = targetType === value
         return (
-          <button
+          <Button
             key={targetType}
+            variant='ghost'
             type='button'
             aria-pressed={isActive}
             onClick={() => onChange(targetType)}
@@ -117,8 +138,10 @@ export function RateLimitTargetTypeToggle({
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            {t(targetType === 'group' ? 'Group' : 'Model')}
-          </button>
+            {t(
+              { group: 'Group', model: 'Model', channel: 'Channel' }[targetType]
+            )}
+          </Button>
         )
       })}
     </div>
@@ -173,7 +196,9 @@ export function RateLimitDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={isEditMode ? t('Edit rate limit') : t('Add rate limit')}
-      description={t('Configure rate limiting rules for a group or model.')}
+      description={t(
+        'Configure rate limiting rules for groups, models or channels.'
+      )}
       contentClassName='sm:max-w-[500px]'
       contentHeight='auto'
       bodyClassName='space-y-4'
@@ -229,16 +254,22 @@ export function RateLimitDialog({
                   <FormLabel>{t('Target')}</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder={
-                        targetType === 'group'
-                          ? t('e.g., default, vip, premium')
-                          : t('e.g., gpt-4o, claude-sonnet')
-                      }
+                      placeholder={t(
+                        {
+                          group: 'e.g., default, vip, premium',
+                          model: 'e.g., gpt-4o, claude-sonnet',
+                          channel: 'Channel ID',
+                        }[targetType]
+                      )}
                       {...field}
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Unique identifier for this target.')}
+                    {t(
+                      form.watch('targetType') === 'channel'
+                        ? 'Shared by all users of this channel.'
+                        : 'Unique identifier for this target.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -256,13 +287,12 @@ export function RateLimitDialog({
                   <div className='flex items-center gap-2'>
                     <Input
                       type='number'
+                      aria-label={t('Max Requests (including failures)')}
                       min={0}
                       max={2147483647}
                       step={1}
                       {...field}
-                      onChange={(e) =>
-                        field.onChange(Number.parseInt(e.target.value) || 0)
-                      }
+                      onChange={(e) => field.onChange(Number(e.target.value))}
                     />
                     <span className='text-muted-foreground text-sm'>
                       {t('times')}
@@ -287,13 +317,12 @@ export function RateLimitDialog({
                   <div className='flex items-center gap-2'>
                     <Input
                       type='number'
-                      min={1}
+                      aria-label={t('Max Successful Requests')}
+                      min={form.watch('targetType') === 'channel' ? 0 : 1}
                       max={2147483647}
                       step={1}
                       {...field}
-                      onChange={(e) =>
-                        field.onChange(Number.parseInt(e.target.value) || 1)
-                      }
+                      onChange={(e) => field.onChange(Number(e.target.value))}
                     />
                     <span className='text-muted-foreground text-sm'>
                       {t('times')}
@@ -301,7 +330,11 @@ export function RateLimitDialog({
                   </div>
                 </FormControl>
                 <FormDescription>
-                  {t('Only successful requests count toward this limit.')}
+                  {t(
+                    form.watch('targetType') === 'channel'
+                      ? 'Successful requests only. 0 = unlimited.'
+                      : 'Only successful requests count toward this limit.'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

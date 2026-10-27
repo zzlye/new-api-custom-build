@@ -20,11 +20,14 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
@@ -797,4 +800,40 @@ func TestExecuteTaskSubmissionRefundsWhenFinalReserveFails(t *testing.T) {
 	assert.Equal(t, []string{"reserve", "refund"}, events)
 	assert.Equal(t, 1, billing.refunds)
 	assert.False(t, c.Writer.Written())
+}
+
+// 渠道限流必须在实际提交前拦住，失败提交仍消耗总额度且归还成功额度。
+func TestExecuteTaskSubmissionChannelRateLimit(t *testing.T) {
+	oldEnabled, oldRedis, oldClient := setting.ModelRequestRateLimitEnabled, common.RedisEnabled, common.RDB
+	oldRules := setting.ModelRequestRateLimitChannel2JSONString()
+	server := miniredis.RunT(t)
+	testClient := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	common.RDB = testClient
+	setting.ModelRequestRateLimitEnabled, common.RedisEnabled = true, true
+	require.NoError(t, setting.UpdateModelRequestRateLimitChannelByJSONString(`{"987654":[2,1]}`))
+	t.Cleanup(func() {
+		setting.ModelRequestRateLimitEnabled, common.RedisEnabled, common.RDB = oldEnabled, oldRedis, oldClient
+		_ = testClient.Close()
+		require.NoError(t, setting.UpdateModelRequestRateLimitChannelByJSONString(oldRules))
+	})
+	submitted := 0
+	for attempt := range 3 {
+		c := taskSubmissionTestContext()
+		c.Set("id", attempt+1)
+		info := taskSubmissionRelayInfo(nil)
+		info.LockedChannel = &model.Channel{Id: 987654, Type: constant.ChannelTypeTaskPlugin}
+		_, taskErr := executeTaskSubmissionWith(c, info, func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+			submitted++
+			return nil, service.TaskErrorWrapperLocal(errors.New("submission rejected"), "rejected", http.StatusBadRequest)
+		})
+		require.NotNil(t, taskErr)
+		if attempt < 2 {
+			assert.Equal(t, "rejected", taskErr.Code)
+		} else {
+			assert.Equal(t, "channel_rate_limit_exceeded", taskErr.Code)
+			assert.Equal(t, http.StatusTooManyRequests, taskErr.StatusCode)
+			assert.True(t, taskErr.LocalError)
+		}
+	}
+	assert.Equal(t, 2, submitted)
 }

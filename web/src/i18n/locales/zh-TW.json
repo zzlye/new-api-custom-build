@@ -7314,6 +7314,11 @@
     "Image and video keys": "生圖和影片 Key",
     "Fixed group": "固定",
     "No available groups": "暫無可用群組",
-    "Available groups": "可用群組"
+    "Available groups": "可用群組",
+    "Enter a valid channel ID.": "請輸入有效的渠道 ID。",
+    "Shared by all users of this channel.": "此渠道所有使用者共用此限制。",
+    "Successful requests only. 0 = unlimited.": "僅統計成功請求，0 表示不限制。",
+    "Configure rate limiting rules for groups, models or channels.": "為分組、模型或渠道設定速率限制。",
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "總請求數和成功請求數均為 0～2,147,483,647。"
   }
 }

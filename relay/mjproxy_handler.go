@@ -227,9 +227,15 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
+	// 派生任务必须沿用原渠道，额度不足时直接返回，不转发到其他渠道。
+	if _, _, rateErr := service.ReserveChannelForRequest(c, &model.Channel{Id: c.GetInt("channel_id")}, nil, true); rateErr != nil {
+		return &dto.MidjourneyResponse{Code: rateErr.StatusCode, Description: rateErr.Error()}
+	}
+	defer service.FinishChannelRateLimit(c, false)
 	service.RequestPolicy(c).BeginAttempt(&model.Channel{Id: c.GetInt("channel_id")}, info.UsingGroup)
 	mjResp, _, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	accepted := service.RecordMidjourneyPolicyResponse(c, mjResp, err)
+	service.FinishChannelRateLimit(c, accepted)
 	if err != nil {
 		return &mjResp.Response
 	}
@@ -547,9 +553,15 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
+	// 派生任务必须沿用原渠道，额度不足时直接返回，不转发到其他渠道。
+	if _, _, rateErr := service.ReserveChannelForRequest(c, &model.Channel{Id: c.GetInt("channel_id")}, nil, true); rateErr != nil {
+		return &dto.MidjourneyResponse{Code: rateErr.StatusCode, Description: rateErr.Error()}
+	}
+	defer service.FinishChannelRateLimit(c, false)
 	service.RequestPolicy(c).BeginAttempt(&model.Channel{Id: c.GetInt("channel_id")}, relayInfo.UsingGroup)
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	accepted := service.RecordMidjourneyPolicyResponse(c, midjResponseWithStatus, err)
+	service.FinishChannelRateLimit(c, accepted)
 	if err != nil {
 		return &midjResponseWithStatus.Response
 	}

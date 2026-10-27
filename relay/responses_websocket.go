@@ -226,6 +226,7 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 
 func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) (apiErr *types.NewAPIError) {
 	policy := service.RequestPolicy(c)
+	defer func() { service.FinishChannelRateLimit(c, apiErr == nil && policy.Successful) }()
 	modelName := create.Request.Model
 	started := time.Now()
 	var info *relaycommon.RelayInfo
@@ -262,6 +263,9 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 	if s.lockedChannelID != 0 {
 		if apiErr = s.restoreConnectionContext(c, modelName); apiErr != nil {
 			return apiErr
+		}
+		if _, _, rateErr := service.ReserveChannelForRequest(c, &appmodel.Channel{Id: s.lockedChannelID}, nil, true); rateErr != nil {
+			return rateErr
 		}
 		info = relaycommon.GenRelayInfoResponses(c, &create.Request)
 		info.IsStream = true
@@ -931,6 +935,10 @@ func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *serv
 			code = types.ErrorCodeGetChannelFailed
 		}
 		return nil, types.NewErrorWithStatusCode(errors.New(message), code, selectErr.StatusCode, types.ErrOptionWithSkipRetry())
+	}
+	channel, _, rateErr := service.ReserveChannelForRequest(c, channel, retryParam, false)
+	if rateErr != nil {
+		return nil, rateErr
 	}
 	if err := middleware.SetupContextForSelectedChannel(c, channel, modelName); err != nil {
 		return nil, err

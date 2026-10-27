@@ -7297,6 +7297,11 @@
     "Image and video keys": "Clés image et vidéo",
     "Fixed group": "Fixe",
     "No available groups": "Aucun groupe disponible",
-    "Available groups": "Groupes disponibles"
+    "Available groups": "Groupes disponibles",
+    "Enter a valid channel ID.": "Saisissez un ID de canal valide.",
+    "Shared by all users of this channel.": "Limite partagée par tous les utilisateurs de ce canal.",
+    "Successful requests only. 0 = unlimited.": "Requêtes réussies uniquement. 0 = illimité.",
+    "Configure rate limiting rules for groups, models or channels.": "Configurez les limites par groupe, modèle ou canal.",
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "Les deux valeurs sont comprises entre 0 et 2 147 483 647."
   }
 }

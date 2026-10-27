@@ -54,19 +54,29 @@ import {
 } from './rate-limit-dialog'
 import { RateLimitVisualEditor } from './rate-limit-visual-editor'
 
-const isValidJSON = (value: string | undefined) => {
+const isValidJSON = (value: string | undefined, channel = false) => {
   if (!value || value.trim() === '') return true
   try {
     const parsed = JSON.parse(value)
-    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+    if (
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed)
+    ) {
       return false
     }
     for (const [target, val] of Object.entries(parsed)) {
       if (!target.trim()) return false
+      if (
+        channel &&
+        (!/^[1-9]\d*$/.test(target) || Number(target) > 2147483647)
+      ) {
+        return false
+      }
       if (!Array.isArray(val) || val.length !== 2) return false
       if (typeof val[0] !== 'number' || typeof val[1] !== 'number') return false
       if (!Number.isInteger(val[0]) || !Number.isInteger(val[1])) return false
-      if (val[0] < 0 || val[1] < 1) return false
+      if (val[0] < 0 || val[1] < (channel ? 0 : 1)) return false
       if (val[0] > 2147483647 || val[1] > 2147483647) return false
     }
     return true
@@ -89,13 +99,19 @@ const createRateLimitSchema = (t: (key: string) => string) =>
     ModelRequestRateLimitGroup: z
       .string()
       .optional()
-      .refine(isValidJSON, {
+      .refine((value) => isValidJSON(value), {
         message: t('Invalid JSON format or values out of allowed range'),
       }),
     ModelRequestRateLimitModel: z
       .string()
       .optional()
-      .refine(isValidJSON, {
+      .refine((value) => isValidJSON(value), {
+        message: t('Invalid JSON format or values out of allowed range'),
+      }),
+    ModelRequestRateLimitChannel: z
+      .string()
+      .optional()
+      .refine((value) => isValidJSON(value, true), {
         message: t('Invalid JSON format or values out of allowed range'),
       }),
   })
@@ -324,6 +340,15 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                 <RateLimitVisualEditor
                   groupValue={form.watch('ModelRequestRateLimitGroup') || ''}
                   modelValue={form.watch('ModelRequestRateLimitModel') || ''}
+                  channelValue={
+                    form.watch('ModelRequestRateLimitChannel') || ''
+                  }
+                  onChannelChange={(value) =>
+                    form.setValue('ModelRequestRateLimitChannel', value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
                   onGroupChange={(value) =>
                     form.setValue('ModelRequestRateLimitGroup', value, {
                       shouldDirty: true,
@@ -353,6 +378,15 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                     )}
                   </p>
                 )}
+                {form.formState.errors.ModelRequestRateLimitChannel
+                  ?.message && (
+                  <p className='text-destructive text-sm'>
+                    {t('Channel')}:{' '}
+                    {String(
+                      form.formState.errors.ModelRequestRateLimitChannel.message
+                    )}
+                  </p>
+                )}
               </>
             ) : (
               <div className='space-y-4'>
@@ -367,20 +401,38 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                 <FormField
                   control={form.control}
                   name={
-                    jsonTargetType === 'group'
-                      ? 'ModelRequestRateLimitGroup'
-                      : 'ModelRequestRateLimitModel'
+                    (
+                      {
+                        group: 'ModelRequestRateLimitGroup',
+                        model: 'ModelRequestRateLimitModel',
+                        channel: 'ModelRequestRateLimitChannel',
+                      } as const
+                    )[jsonTargetType]
                   }
                   render={({ field }) => {
-                    const isGroup = jsonTargetType === 'group'
-                    const targetName = isGroup ? 'groupName' : 'modelName'
-                    const example = isGroup
-                      ? `{"default": [200, 100], "vip": [0, 1000]}`
-                      : `{"gpt-4o": [200, 100], "claude-sonnet": [0, 1000]}`
+                    const isChannel = jsonTargetType === 'channel'
+                    const targetName = {
+                      group: 'groupName',
+                      channel: 'channelId',
+                      model: 'modelName',
+                    }[jsonTargetType]
+                    const example = {
+                      group: `{"default": [200, 100], "vip": [0, 1000]}`,
+                      channel: `{"175": [2, 0]}`,
+                      model: `{"gpt-4o": [200, 100], "claude-sonnet": [0, 1000]}`,
+                    }[jsonTargetType]
 
                     return (
                       <FormItem>
-                        <FormLabel>{t(isGroup ? 'Group' : 'Model')}</FormLabel>
+                        <FormLabel>
+                          {t(
+                            {
+                              group: 'Group',
+                              model: 'Model',
+                              channel: 'Channel',
+                            }[jsonTargetType]
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <JsonCodeEditor
                             value={field.value || ''}
@@ -388,7 +440,7 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                             name={field.name}
                             onBlur={field.onBlur}
                             textareaRef={field.ref}
-                            placeholder={`{\n  "${isGroup ? 'default' : 'gpt-4o'}": [200, 100]\n}`}
+                            placeholder={example}
                             aria-invalid={Boolean(
                               form.formState.errors[field.name]
                             )}
@@ -408,12 +460,16 @@ export function RateLimitSection({ defaultValues }: RateLimitSectionProps) {
                             </span>
                             <span className='block'>
                               {t(
-                                'maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647'
+                                isChannel
+                                  ? 'maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647'
+                                  : 'maxRequests ≥ 0, maxSuccess ≥ 1, both ≤ 2,147,483,647'
                               )}
                             </span>
                             <span className='block'>
                               {t(
-                                'Target config overrides global limits and shares the same period.'
+                                isChannel
+                                  ? 'Shared by all users of this channel.'
+                                  : 'Target config overrides global limits and shares the same period.'
                               )}
                             </span>
                           </span>

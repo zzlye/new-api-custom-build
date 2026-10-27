@@ -66,6 +66,7 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	defer service.FinishChannelRateLimit(c, false)
 
 	requestId := c.GetString(common.RequestIdKey)
 	// 媒体生成默认入队，后台执行上下文会直接进入原有处理和计费流程。
@@ -241,10 +242,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			service.MarkRequestPolicySuccess(c, relayInfo.StreamStatus)
+			service.FinishChannelRateLimit(c, service.RequestPolicy(c).Successful)
 			relayInfo.LastError = nil
 			return
 		}
 
+		service.FinishChannelRateLimit(c, false)
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		// 针对已开启错误拦截的分组，命中上游 400/524 等错误时停止内部重试并写入冷却缓存。
 		middleware.ObserveGroupUpstreamError(c, newAPIError)
@@ -306,6 +309,25 @@ var upgrader = websocket.Upgrader{
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
+	channel, apiErr := getChannelWithoutRateLimit(c, info, retryParam)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	selected, _, apiErr := service.ReserveChannelForRequest(c, channel, retryParam, false)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	if selected.Id != channel.Id {
+		if apiErr = middleware.SetupContextForSelectedChannel(c, selected, info.OriginModelName); apiErr != nil {
+			return nil, apiErr
+		}
+		info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+	}
+	service.RequestPolicy(c).BeginAttempt(selected, info.UsingGroup)
+	return selected, nil
+}
+
+func getChannelWithoutRateLimit(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
@@ -318,7 +340,6 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			Name:    c.GetString("channel_name"),
 			AutoBan: &autoBanInt,
 		}
-		service.RequestPolicy(c).BeginAttempt(channel, info.UsingGroup)
 		return channel, nil
 	}
 	var channel *model.Channel
@@ -338,7 +359,6 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
-	service.RequestPolicy(c).BeginAttempt(channel, selectGroup)
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
 		return nil, newAPIError
@@ -436,6 +456,9 @@ func RelayMidjourney(c *gin.Context) {
 	if mjErr != nil {
 		policy.Successful = false
 		statusCode := http.StatusBadRequest
+		if mjErr.Code == http.StatusTooManyRequests || mjErr.Code == http.StatusServiceUnavailable {
+			statusCode = mjErr.Code
+		}
 		if mjErr.Code == 30 {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
 			statusCode = http.StatusTooManyRequests
@@ -616,6 +639,7 @@ func executeTaskSubmissionWith(
 	relayInfo *relaycommon.RelayInfo,
 	submit taskSubmitAttempt,
 ) (*taskSubmissionOutcome, *taskdto.TaskError) {
+	defer service.FinishChannelRateLimit(c, false)
 	policy := service.RequestPolicy(c)
 	diagnostics := newTaskPluginSubmitDiagnostics(c)
 	diagnostics.start(relayInfo)
@@ -654,7 +678,12 @@ func executeTaskSubmissionWith(
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
-			channel = lockedCh
+			selected, _, rateErr := service.ReserveChannelForRequest(c, lockedCh, retryParam, true)
+			if rateErr != nil {
+				taskErr = service.TaskErrorWrapperLocal(rateErr.Err, string(rateErr.GetErrorCode()), rateErr.StatusCode)
+				break
+			}
+			channel = selected
 			policy.BeginAttempt(channel, relayInfo.UsingGroup)
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
@@ -696,6 +725,7 @@ func executeTaskSubmissionWith(
 			break
 		}
 		result, taskErr = submit(c, relayInfo)
+		service.FinishChannelRateLimit(c, taskErr == nil)
 		if requestErr := c.Request.Context().Err(); requestErr != nil {
 			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)

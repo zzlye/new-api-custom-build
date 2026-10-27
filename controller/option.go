@@ -435,6 +435,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "ModelRequestRateLimitChannel":
+		err = setting.CheckModelRequestRateLimitChannel(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "ModelRequestRateLimitModel":
 		err = setting.CheckModelRequestRateLimitModel(option.Value.(string))
 		if err != nil {

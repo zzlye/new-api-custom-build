@@ -24,6 +24,8 @@ import { StaticDataTable } from '@/components/data-table/static/static-data-tabl
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 
 import { safeJsonParseWithValidation } from '../utils/json-parser'
 import { isObjectRecord } from '../utils/json-validators'
@@ -32,8 +34,10 @@ import { RateLimitDialog, type RateLimitEntryData } from './rate-limit-dialog'
 type RateLimitVisualEditorProps = {
   groupValue: string
   modelValue: string
+  channelValue?: string
   onGroupChange: (value: string) => void
   onModelChange: (value: string) => void
+  onChannelChange?: (value: string) => void
 }
 
 type RateLimitEntry = RateLimitEntryData
@@ -76,21 +80,25 @@ function parseRateLimitEntries(
 export function RateLimitVisualEditor({
   groupValue,
   modelValue,
+  channelValue = '',
   onGroupChange,
   onModelChange,
+  onChannelChange,
 }: RateLimitVisualEditorProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [searchText, setSearchText] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editData, setEditData] = useState<RateLimitEntry | null>(null)
 
   const rateLimits = useMemo(() => {
-    // 两类后端配置在视觉模式下合并展示，保存时仍分别写回原字段。
+    // 三类后端配置在视觉模式下合并展示，保存时仍分别写回原字段。
     return [
       ...parseRateLimitEntries(groupValue, 'group'),
       ...parseRateLimitEntries(modelValue, 'model'),
+      ...parseRateLimitEntries(channelValue, 'channel'),
     ]
-  }, [groupValue, modelValue])
+  }, [groupValue, modelValue, channelValue])
 
   const filteredRateLimits = useMemo(() => {
     if (!searchText) return rateLimits
@@ -117,6 +125,7 @@ export function RateLimitVisualEditor({
     const maps = {
       group: parseRateLimitMap(groupValue),
       model: parseRateLimitMap(modelValue),
+      channel: parseRateLimitMap(channelValue),
     }
     const changedTypes = new Set<RateLimitEntry['targetType']>()
 
@@ -138,11 +147,18 @@ export function RateLimitVisualEditor({
       onModelChange(JSON.stringify(maps.model, null, 2))
     }
 
+    if (changedTypes.has('channel')) {
+      onChannelChange?.(JSON.stringify(maps.channel, null, 2))
+    }
     return null
   }
 
   const handleDelete = (limit: RateLimitEntry) => {
-    const value = limit.targetType === 'group' ? groupValue : modelValue
+    const value = {
+      group: groupValue,
+      model: modelValue,
+      channel: channelValue,
+    }[limit.targetType]
     const parsed = parseRateLimitMap(value)
 
     delete parsed[limit.target]
@@ -150,8 +166,10 @@ export function RateLimitVisualEditor({
     const nextValue = JSON.stringify(parsed, null, 2)
     if (limit.targetType === 'group') {
       onGroupChange(nextValue)
-    } else {
+    } else if (limit.targetType === 'model') {
       onModelChange(nextValue)
+    } else {
+      onChannelChange?.(nextValue)
     }
   }
 
@@ -205,7 +223,11 @@ export function RateLimitVisualEditor({
             header: t('Type'),
             cell: (limit) => (
               <span className='bg-muted rounded-md px-2 py-1 text-xs font-medium'>
-                {t(limit.targetType === 'group' ? 'Group' : 'Model')}
+                {t(
+                  { group: 'Group', model: 'Model', channel: 'Channel' }[
+                    limit.targetType
+                  ]
+                )}
               </span>
             ),
           },
@@ -224,7 +246,7 @@ export function RateLimitVisualEditor({
               <span className='font-mono'>
                 {limit.maxRequests === 0
                   ? t('Unlimited')
-                  : limit.maxRequests.toLocaleString()}
+                  : formatNumber(limit.maxRequests, locale)}
               </span>
             ),
           },
@@ -235,7 +257,9 @@ export function RateLimitVisualEditor({
             cellClassName: 'text-right',
             cell: (limit) => (
               <span className='font-mono'>
-                {limit.maxSuccess.toLocaleString()}
+                {limit.maxSuccess === 0
+                  ? t('Unlimited')
+                  : formatNumber(limit.maxSuccess, locale)}
               </span>
             ),
           },
