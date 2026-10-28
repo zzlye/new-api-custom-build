@@ -249,6 +249,10 @@ func NormalizeGeminiThinkingConfig(model string, generation *dto.GeminiChatGener
 		return "", nil, nil
 	}
 	config := generation.ThinkingConfig
+	// 官方默认枚举表示未指定等级，不应被当成未知强度或与预算冲突。
+	if strings.EqualFold(strings.TrimSpace(config.ThinkingLevel), "THINKING_LEVEL_UNSPECIFIED") {
+		config.ThinkingLevel = ""
+	}
 	capabilities := geminiCapabilitiesFor(model)
 	var diagnostics []types.ConversionDiagnostic
 	if config.ThinkingBudget != nil && config.ThinkingLevel != "" {

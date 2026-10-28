@@ -118,6 +118,7 @@ func (p LocalRequestValidationPolicy) MatchesUpstreamError(statusCode int, error
 }
 
 type localParameterRule struct {
+	models   []string
 	path     string
 	value    string
 	hasValue bool
@@ -125,6 +126,9 @@ type localParameterRule struct {
 
 // 仅允许字段名和数组下标，避免误把错误消息或查询表达式保存成永远不命中的路径。
 var localParameterPathPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)*$`)
+
+// 模型范围只支持精确名称或末尾星号，禁止正则、脚本以及任意表达式。
+var localParameterModelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_./:+-]*\*?$`)
 
 // parseLocalParameterRules 解析逐行的字段路径或字段路径=值，不允许执行表达式或脚本。
 func parseLocalParameterRules(value string) ([]localParameterRule, error) {
@@ -137,6 +141,22 @@ func parseLocalParameterRules(value string) ([]localParameterRule, error) {
 		if line == "" {
 			continue
 		}
+		var models []string
+		condition, parameter, scoped := strings.Cut(line, "&&")
+		field, modelList, hasModelValue := strings.Cut(condition, "=")
+		if scoped && hasModelValue && strings.TrimSpace(field) == "model" {
+			for _, name := range strings.Split(modelList, ",") {
+				name = strings.TrimSpace(name)
+				if len(name) > 256 || !localParameterModelPattern.MatchString(name) || len(models) >= 64 {
+					return nil, fmt.Errorf("本地参数规则第 %d 行的模型范围无效", lineNumber+1)
+				}
+				models = append(models, strings.ToLower(name))
+			}
+			line = strings.TrimSpace(parameter)
+			if strings.Contains(line, "&&") {
+				return nil, fmt.Errorf("本地参数规则第 %d 行仅支持一个模型条件和一个参数条件", lineNumber+1)
+			}
+		}
 		path, expected, hasValue := strings.Cut(line, "=")
 		path = strings.TrimSpace(path)
 		if len(path) > 256 || !localParameterPathPattern.MatchString(path) {
@@ -146,6 +166,7 @@ func parseLocalParameterRules(value string) ([]localParameterRule, error) {
 			return nil, fmt.Errorf("本地参数规则最多支持 1000 行")
 		}
 		rules = append(rules, localParameterRule{
+			models:   models,
 			path:     path,
 			value:    strings.TrimSpace(expected),
 			hasValue: hasValue,
@@ -154,13 +175,28 @@ func parseLocalParameterRules(value string) ([]localParameterRule, error) {
 	return rules, nil
 }
 
-// MatchLocalParameter 检查请求 JSON 是否命中管理员配置的字段存在或字段值规则。
-func (p LocalRequestValidationPolicy) MatchLocalParameter(body []byte) (string, bool) {
+// MatchLocalParameter 按请求的实际入口模型匹配范围，再检查字段存在或字段值。
+// 不带模型条件的旧规则保持原语义，未知模型不套用其他模型的参数限制。
+func (p LocalRequestValidationPolicy) MatchLocalParameter(body []byte, modelName string) (string, bool) {
 	rules, err := parseLocalParameterRules(p.LocalParameterRules)
 	if err != nil {
 		return "", false
 	}
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
 	for _, rule := range rules {
+		if len(rule.models) > 0 {
+			matched := false
+			for _, name := range rule.models {
+				prefix, wildcard := strings.CutSuffix(name, "*")
+				if modelName == name || wildcard && modelName != "" && strings.HasPrefix(modelName, prefix) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
 		value := gjson.GetBytes(body, rule.path)
 		if !value.Exists() {
 			continue
@@ -173,6 +209,9 @@ func (p LocalRequestValidationPolicy) MatchLocalParameter(body []byte) (string, 
 			if !strings.EqualFold(strings.TrimSpace(actual), rule.value) {
 				continue
 			}
+		}
+		if len(rule.models) > 0 {
+			return "model=" + strings.Join(rule.models, ",") + " && " + rule.path, true
 		}
 		return rule.path, true
 	}

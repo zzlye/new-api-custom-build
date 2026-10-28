@@ -117,6 +117,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
+		if validationErr := validateOutboundGeminiRequest(c, info, jsonData); validationErr != nil {
+			return validationErr
+		}
 		logger.LogDebug(c, "requestBody: %s", jsonData)
 		body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 		if err != nil {

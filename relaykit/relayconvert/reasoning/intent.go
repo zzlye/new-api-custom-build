@@ -628,7 +628,12 @@ func FromGemini(req *dto.GeminiChatRequest) (Intent, []types.ConversionDiagnosti
 		return Intent{}, nil, nil
 	}
 	config := req.GenerationConfig.ThinkingConfig
-	if config.ThinkingBudget != nil && config.ThinkingLevel != "" {
+	// 默认枚举是协议里的有效值，跨协议转换时与省略该字段等价。
+	level := strings.TrimSpace(config.ThinkingLevel)
+	if strings.EqualFold(level, "THINKING_LEVEL_UNSPECIFIED") {
+		level = ""
+	}
+	if config.ThinkingBudget != nil && level != "" {
 		return Intent{}, nil, fmt.Errorf("%w: Gemini thinkingBudget and thinkingLevel cannot both be set", ErrEffortConflict)
 	}
 	intent := Intent{
@@ -637,8 +642,8 @@ func FromGemini(req *dto.GeminiChatRequest) (Intent, []types.ConversionDiagnosti
 		Source:          SourceNative,
 		BudgetSource:    SourceNative,
 	}
-	if config.ThinkingLevel != "" {
-		effort, err := ParseEffort(config.ThinkingLevel)
+	if level != "" {
+		effort, err := ParseEffort(level)
 		if err != nil {
 			return Intent{}, nil, err
 		}

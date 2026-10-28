@@ -90,14 +90,19 @@ func ValidateLocalRequestWithPolicy(c *gin.Context, policy operation_setting.Loc
 	if !root.IsObject() {
 		return errors.New("Invalid JSON payload: root must be a JSON object (请求体必须是 JSON 对象)")
 	}
-	if path, matched := policy.MatchLocalParameter(body); matched {
+	modelName := root.Get("model").Str
+	if format == types.RelayFormatGemini {
+		// Gemini 原生接口由 URL 决定模型，不能使用正文中的同名扩展字段改变校验范围。
+		modelName = extractGeminiModelFromPath(path)
+	}
+	if path, matched := policy.MatchLocalParameter(body, modelName); matched {
 		return fmt.Errorf("本地参数规则命中：%s", path)
 	}
 	if err := matchBlockedRequestKeywords(string(body), policy.BlockedKeywords); err != nil {
 		return err
 	}
 	if format == types.RelayFormatGemini {
-		return validateLocalGemini(root, extractGeminiModelFromPath(path), policy)
+		return validateLocalGemini(root, modelName, policy)
 	}
 	// 复用原有必填字段和数量边界，额外检查不会改写提交给上游的参数。
 	if policy.StructureCheckEnabled() || policy.GenerationConfigCheckEnabled() {
@@ -502,11 +507,15 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			return errors.New("The GenerateContentRequest proto is invalid: tools must be an array or object (tools 必须是数组或对象)")
 		}
 	}
-	// Gemini 2.x 与 3.x 模型（如 gemini-3.1-pro-preview、gemini-3.8-flash）的 maxOutputTokens 上限为 65536；gemini-4 系列支持到 1048576。
-	maxOutputLimit := float64(1048576)
-	if strings.HasPrefix(modelName, "gemini-2") || strings.HasPrefix(modelName, "gemini-3") {
-		maxOutputLimit = 65536
+	if len(missingSchemaItems) > 0 {
+		return errors.New(strings.Join(missingSchemaItems, "\n"))
 	}
+	return validateGeminiGenerationConfig(root)
+}
+
+// 入口只检查协议类型与通用边界，不能用客户模型别名推断上游能力。
+func validateGeminiGenerationConfig(root gjson.Result) error {
+	var missingSchemaItems []string
 	for _, name := range []string{"generationConfig", "generation_config"} {
 		config := root.Get(name)
 		if !config.Exists() || config.Type == gjson.Null {
@@ -540,8 +549,9 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			integer  bool
 		}{
 			{"temperature", 0, 2, false}, {"topP", 0, 1, false}, {"top_p", 0, 1, false},
-			{"topK", 1, 500, true}, {"top_k", 1, 500, true},
-			{"maxOutputTokens", 1, maxOutputLimit, true}, {"max_output_tokens", 1, maxOutputLimit, true},
+			// Google 没有统一的 topK 或输出上限；这里只防止本地整数计算溢出。
+			{"topK", 1, math.MaxInt32, true}, {"top_k", 1, math.MaxInt32, true},
+			{"maxOutputTokens", 1, maxTokensLimit, true}, {"max_output_tokens", 1, maxTokensLimit, true},
 			{"candidateCount", 1, maxTokensLimit, true}, {"candidate_count", 1, maxTokensLimit, true},
 		} {
 			value := config.Get(rule.key)
@@ -551,13 +561,13 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			if value.Type != gjson.Number || value.Num < rule.min || value.Num > rule.max || (rule.integer && math.Trunc(value.Num) != value.Num) {
 				switch rule.key {
 				case "maxOutputTokens", "max_output_tokens":
-					return fmt.Errorf("Unable to submit request because it has a maxOutputTokens value of %s but the supported range is from 1 (inclusive) to %d (exclusive). Update the value and try again. (%s.%s 数值或类型无效)", value.Raw, int(rule.max)+1, name, rule.key)
+					return fmt.Errorf("%s.%s 必须是 1 到 %d 的整数；此处为网关计算边界，模型输出上限由上游决定", name, rule.key, int(rule.max))
 				case "temperature":
 					return fmt.Errorf("Unable to submit request because it has a temperature value of %s but the supported range is from 0 (inclusive) to 2.0001 (exclusive). Update the value and try again. (%s.%s 数值或类型无效)", value.Raw, name, rule.key)
 				case "topP", "top_p":
 					return fmt.Errorf("Unable to submit request because it has a topP value of %s but the supported range is from 0 (inclusive) to 1 (inclusive). Update the value and try again. (%s.%s 数值或类型无效)", value.Raw, name, rule.key)
 				case "topK", "top_k":
-					return fmt.Errorf("Unable to submit request because it has a topK value of %s but the supported range is from 1 (inclusive) to 65 (exclusive). Update the value and try again. (%s.%s 数值或类型无效)", value.Raw, name, rule.key)
+					return fmt.Errorf("%s.%s 必须是有效的正整数", name, rule.key)
 				default:
 					return fmt.Errorf("Unable to submit request because %s.%s=%s is invalid (%s.%s 数值或类型无效)", name, rule.key, value.Raw, name, rule.key)
 				}
@@ -570,6 +580,16 @@ func validateLocalGemini(root gjson.Result, modelName string, policy operation_s
 			}
 			if !thinking.IsObject() {
 				return fmt.Errorf("The GenerateContentRequest proto is invalid: %s.%s must be an object (%s.%s 必须是对象)", name, thinkKey, name, thinkKey)
+			}
+			for _, key := range []string{"thinkingLevel", "thinking_level"} {
+				if level := thinking.Get(key); level.Exists() && level.Type != gjson.Null && level.Type != gjson.String {
+					return fmt.Errorf("%s.%s.%s 必须是字符串", name, thinkKey, key)
+				}
+			}
+			for _, key := range []string{"includeThoughts", "include_thoughts"} {
+				if include := thinking.Get(key); include.Exists() && include.Type != gjson.Null && include.Type != gjson.True && include.Type != gjson.False {
+					return fmt.Errorf("%s.%s.%s 必须是布尔值", name, thinkKey, key)
+				}
 			}
 			for _, budgetKey := range []string{"thinkingBudget", "thinking_budget"} {
 				budget := thinking.Get(budgetKey)

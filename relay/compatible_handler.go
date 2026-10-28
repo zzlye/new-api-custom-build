@@ -138,6 +138,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			}
 		}
 
+		if validationErr := validateOutboundGeminiRequest(c, info, jsonData); validationErr != nil {
+			return validationErr
+		}
 		logger.LogDebug(c, "text request body: %s", jsonData)
 
 		body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)

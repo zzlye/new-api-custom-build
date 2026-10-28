@@ -181,6 +181,46 @@ describe('分组本地参数校验与错误拦截设置', () => {
     ).toHaveValue('')
   })
 
+  it('限定模型的参数规则保存后保持范围与关闭状态', async () => {
+    mount()
+    const input = await screen.findByRole('textbox', {
+      name: 'Local parameter rules',
+    })
+    const rules =
+      'model=gemini-3-pro*,gemini-3.1-pro* && generationConfig.thinkingConfig.thinkingLevel=MINIMAL'
+    fireEvent.change(input, { target: { value: rules } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    const saved = JSON.parse(
+      (vi.mocked(api.put).mock.calls[0][1] as { value: string }).value
+    )
+    expect(saved.local_parameter_rules).toBe(rules)
+    expect(saved.enabled).toBe(false)
+    cleanup()
+    mount(JSON.stringify(saved))
+    expect(
+      await screen.findByRole('textbox', { name: 'Local parameter rules' })
+    ).toHaveValue(rules)
+  })
+
+  it.each([
+    'model= && reasoning_effort=minimal',
+    'model=gemini-3-pro*,,gemini-3.1-pro* && reasoning_effort=minimal',
+    'model=gemini*pro && reasoning_effort=minimal',
+    'model=gemini-3-pro* && ',
+  ])('拒绝无效模型范围：%s', async (rules) => {
+    mount()
+    const input = await screen.findByRole('textbox', {
+      name: 'Local parameter rules',
+    })
+    fireEvent.change(input, { target: { value: rules } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await screen.findByText(
+      'Enter one parameter path or path=value per line (up to 1000 lines, 64 KB).'
+    )
+    expect(api.put).not.toHaveBeenCalled()
+  })
+
   it.each([
     'Thinking level is unsupported: THINKING_LEVEL_MINIMAL',
     '=MINIMAL',

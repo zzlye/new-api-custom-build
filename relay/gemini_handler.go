@@ -94,6 +94,16 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
+		// 透传请求也按实际发出的内容校验，不对原始正文做任何改写。
+		if outboundGeminiValidationStatus(c, info) != 0 {
+			body, readErr := storage.Bytes()
+			if readErr != nil {
+				return types.NewErrorWithStatusCode(readErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			if validationErr := validateOutboundGeminiRequest(c, info, body); validationErr != nil {
+				return validationErr
+			}
+		}
 		requestBody = common.NewReplayableBodyReader(storage)
 	} else {
 		// 使用 ConvertGeminiRequest 转换请求格式
@@ -115,6 +125,9 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
+		if validationErr := validateOutboundGeminiRequest(c, info, jsonData); validationErr != nil {
+			return validationErr
+		}
 		logger.LogDebug(c, "Gemini request body: %s", jsonData)
 
 		body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)

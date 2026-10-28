@@ -95,6 +95,24 @@ function isValidLocalParameterRules(value: string): boolean {
     .filter(Boolean)
   if (lines.length > 1000) return false
   return lines.every((line) => {
+    // 模型范围与后端保持一致，避免把某个模型的限制套到整个分组。
+    const separator = line.indexOf('&&')
+    if (separator >= 0 && /^model\s*=/.test(line)) {
+      const modelList = line.slice(0, separator).split('=').slice(1).join('=')
+      const models = modelList.split(',').map((model) => model.trim())
+      if (
+        models.length > 64 ||
+        models.some(
+          (model) =>
+            model.length > 256 ||
+            !/^[A-Za-z0-9][A-Za-z0-9_./:+-]*\*?$/.test(model)
+        )
+      ) {
+        return false
+      }
+      line = line.slice(separator + 2).trim()
+      if (line.includes('&&')) return false
+    }
     const path = line.split('=', 1)[0].trim()
     return (
       path.length <= 256 &&
@@ -422,7 +440,7 @@ function LocalRequestValidationEditor(props: { defaults: Policy }) {
                 <FormControl>
                   <Textarea
                     rows={3}
-                    placeholder='generationConfig.thinkingConfig.thinkingLevel=MINIMAL'
+                    placeholder='model=gemini-3.1-pro-preview && generationConfig.thinkingConfig.thinkingLevel=MINIMAL'
                     value={field.value ?? ''}
                     onChange={field.onChange}
                   />

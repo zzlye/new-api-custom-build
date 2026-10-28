@@ -49,10 +49,15 @@ func TestLocalParameterValidationPayloads(t *testing.T) {
 		{"素材类型错误", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"inlineData":{"data":"YWJj"}}]}]}`, "mimeType"},
 		{"素材URI为空", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"fileData":{"fileUri":""}}]}]}`, "fileUri"},
 		{"参数超出范围", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"temperature":3}}`, "temperature"},
-		{"输出Token超出65536上限_3.1", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":128000}}`, "supported range is from 1 (inclusive) to 65537 (exclusive)"},
-		{"输出Token超出65536上限_3.8", "/v1beta/models/gemini-3.8-flash:streamGenerateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":128000}}`, "supported range is from 1 (inclusive) to 65537 (exclusive)"},
+		{"入口不按3.1别名限制输出", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":128000}}`, ""},
+		{"入口不按3.8别名限制输出", "/v1beta/models/gemini-3.8-flash:streamGenerateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":128000}}`, ""},
 		{"Gemini4支持128000输出Token", "/v1beta/models/gemini-4-argon:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":128000}}`, ""},
-		{"TopK超出上限", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"topK":1000}}`, "topK"},
+		{"不臆造TopK模型上限", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"topK":1000}}`, ""},
+		{"TopK必须为整数", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"topK":1.5}}`, "topK"},
+		{"思考等级类型错误", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":true}}}`, "thinkingLevel"},
+		{"思考摘要类型错误", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"includeThoughts":"true"}}}`, "includeThoughts"},
+		{"思考预算不能为小数", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingBudget":2.5}}}`, "thinkingBudget"},
+		{"不硬编码候选数量为一", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"candidateCount":2}}`, ""},
 		{"参数类型错误", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":"100"}}`, "maxOutputTokens"},
 		{"思考预算越界", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingBudget":-5}}}`, "thinkingBudget"},
 		{"原生生图合法", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"},{"inlineData":{"mimeType":"image/png","data":"YWJj"}}]}],"generationConfig":{"responseModalities":["IMAGE"],"temperature":0,"imageConfig":{"imageSize":"4K"}}}`, ""},
@@ -291,6 +296,48 @@ func TestLocalParameterValidationRules(t *testing.T) {
 	}
 }
 
+// 相同分组内只拦截规则指定模型，原生接口模型以路径为准，正文不能改写规则范围。
+func TestLocalParameterValidationModelScope(t *testing.T) {
+	rules := "model=gemini-3-pro*,gemini-3.1-pro* && generationConfig.thinkingConfig.thinkingLevel=MINIMAL\n" +
+		"model=gemini-3-pro*,gemini-3.1-pro* && reasoning_effort=minimal"
+	encoded, err := common.Marshal(map[string]string{"local_parameter_rules": rules})
+	require.NoError(t, err)
+	policy, err := operation_setting.ParseLocalRequestValidationPolicy(string(encoded))
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name, path, body string
+		blocked          bool
+	}{
+		{"原生Flash合法minimal", "/v1beta/models/gemini-3-flash:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`, false},
+		{"原生Flash预览合法minimal", "/v1beta/models/gemini-3-flash-preview:streamGenerateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal"}}}`, false},
+		{"原生Flash不被正文Pro模型误伤", "/v1/models/gemini-3-flash:generateContent", `{"model":"gemini-3.1-pro-preview","contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal"}}}`, false},
+		{"原生Pro命中minimal", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal"}}}`, true},
+		{"原生Pro不被正文Flash绕过", "/v1beta/models/gemini-3-pro-preview:generateContent", `{"model":"gemini-3-flash","contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal"}}}`, true},
+		{"原生Pro合法high", "/v1beta/models/gemini-3.1-pro-preview:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"thinkingConfig":{"thinkingLevel":"high"}}}`, false},
+		{"兼容Flash合法minimal", "/v1/chat/completions", `{"model":"gemini-3-flash","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"minimal"}`, false},
+		{"兼容Pro命中minimal", "/v1/chat/completions", `{"model":"gemini-3.1-pro-preview","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"minimal"}`, true},
+		{"未知模型不套用Pro限制", "/v1/chat/completions", `{"model":"custom-flash","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"minimal"}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			defer common.CleanupBodyStorage(c)
+			err := helper.ValidateLocalRequestWithPolicy(c, policy)
+			if tc.blocked {
+				require.ErrorContains(t, err, "本地参数规则命中")
+			} else {
+				require.NoError(t, err)
+			}
+			storage, err := common.GetBodyStorage(c)
+			require.NoError(t, err)
+			body, err := storage.Bytes()
+			require.NoError(t, err)
+			assert.Equal(t, tc.body, string(body))
+		})
+	}
+}
+
 func TestLocalParameterValidationMultipart(t *testing.T) {
 	// 校验后继续读取同一上传素材，防止提前解析耗尽编辑图片请求的文件流。
 	var body bytes.Buffer
@@ -327,6 +374,11 @@ func TestLocalParameterValidationPolicy(t *testing.T) {
 		`{"local_parameter_rules":"Thinking level is unsupported: THINKING_LEVEL_MINIMAL"}`,
 		`{"local_parameter_rules":"generationConfig..candidateCount=2"}`,
 		`{"local_parameter_rules":"candidateCount>1"}`,
+		`{"local_parameter_rules":"model= && reasoning_effort=minimal"}`,
+		`{"local_parameter_rules":"model=gemini*pro && reasoning_effort=minimal"}`,
+		`{"local_parameter_rules":"model=gemini-3-pro*,,gemini-3.1-pro* && reasoning_effort=minimal"}`,
+		`{"local_parameter_rules":"model=gemini-3-pro* && "}`,
+		`{"local_parameter_rules":"model=gemini-3-pro* && model=gemini-3.1-pro* && reasoning_effort=minimal"}`,
 		`{"local_parameter_rules":"` + strings.Repeat("x\\n", 1001) + `"}`,
 		`{"local_parameter_rules":"` + strings.Repeat("x", 65537) + `"}`,
 		`{"rules":[{"group":"gemini","status_code":400},{"group":"gemini","status_code":422}]}`,

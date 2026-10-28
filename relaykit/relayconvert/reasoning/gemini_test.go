@@ -8,6 +8,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 默认枚举应保留动态预算语义，不能在跨协议转换时被误判为未知等级或双字段冲突。
+func TestGeminiUnspecifiedThinkingLevel(t *testing.T) {
+	request := &dto.GeminiChatRequest{GenerationConfig: dto.GeminiChatGenerationConfig{
+		ThinkingConfig: &dto.GeminiThinkingConfig{ThinkingLevel: "THINKING_LEVEL_UNSPECIFIED", ThinkingBudget: intPtr(-1)},
+	}}
+	intent, _, err := FromGemini(request)
+	require.NoError(t, err)
+	assert.Empty(t, intent.Effort)
+	require.NotNil(t, intent.BudgetTokens)
+	assert.Equal(t, -1, *intent.BudgetTokens)
+	assert.Equal(t, "THINKING_LEVEL_UNSPECIFIED", request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+	_, _, err = NormalizeGeminiThinkingConfig("gemini-2.5-flash", &request.GenerationConfig)
+	require.NoError(t, err)
+	assert.Empty(t, request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+	assert.Equal(t, -1, *request.GenerationConfig.ThinkingConfig.ThinkingBudget)
+}
+
 func TestRenderGeminiMapsAndClampsInsteadOfRejecting(t *testing.T) {
 	t.Parallel()
 
