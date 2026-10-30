@@ -31,6 +31,7 @@ const POLICY_SECTIONS = [
     build: (settings: RequestPolicySettings) => (
       <LocalRequestValidationSection
         value={settings.LocalRequestValidationPolicy}
+        mappingValue={settings.CooldownErrorMappingPolicy}
       />
     ),
   },

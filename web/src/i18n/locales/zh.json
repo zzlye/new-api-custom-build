@@ -7343,6 +7343,14 @@
     "Shared by all users of this channel.": "该渠道所有用户共用此限制。",
     "Successful requests only. 0 = unlimited.": "仅统计成功请求，0 表示不限制。",
     "Configure rate limiting rules for groups, models or channels.": "为分组、模型或渠道配置速率限制。",
-    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "总请求数和成功请求数均为 0～2,147,483,647。"
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "总请求数和成功请求数均为 0～2,147,483,647。",
+    "Cooldown error mapping": "冷却错误映射",
+    "Enable cooldown error mapping": "启用冷却错误映射",
+    "Mapped usernames": "映射用户名",
+    "One username per line": "每行一个用户名",
+    "Response error": "返回错误",
+    "Each username must be at most 64 characters without line breaks.": "用户名不能超过 64 字符，且不能包含换行。",
+    "Enter up to 1000 usernames.": "最多添加 1000 个用户名。",
+    "Usernames must not be duplicated.": "用户名不能重复。"
   }
 }

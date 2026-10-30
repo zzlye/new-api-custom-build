@@ -7303,6 +7303,14 @@
     "Shared by all users of this channel.": "このチャネルのすべてのユーザーで共有します。",
     "Successful requests only. 0 = unlimited.": "成功したリクエストのみ。0 は無制限。",
     "Configure rate limiting rules for groups, models or channels.": "グループ、モデル、チャネルのレート制限を設定します。",
-    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "両方とも 0～2,147,483,647。"
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "両方とも 0～2,147,483,647。",
+    "Cooldown error mapping": "Cooldown error mapping",
+    "Enable cooldown error mapping": "Enable cooldown error mapping",
+    "Mapped usernames": "Mapped usernames",
+    "One username per line": "One username per line",
+    "Response error": "Response error",
+    "Each username must be at most 64 characters without line breaks.": "Each username must be at most 64 characters without line breaks.",
+    "Enter up to 1000 usernames.": "Enter up to 1000 usernames.",
+    "Usernames must not be duplicated.": "Usernames must not be duplicated."
   }
 }

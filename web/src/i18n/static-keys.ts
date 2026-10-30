@@ -19,6 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // 冷却错误映射表单校验消息由公共表单组件翻译。
+  'Each username must be at most 64 characters without line breaks.',
+  'Enter up to 1000 usernames.',
+  'Usernames must not be duplicated.',
   // 人工补单表单的校验消息由公共 FormMessage 动态翻译。
   'Enter a valid amount with up to two decimals.',
   'Amount must be greater than zero and no more than 100001.',

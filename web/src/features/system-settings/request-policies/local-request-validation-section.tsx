@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getGroups } from '@/features/users/api'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -54,6 +55,7 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { safeNumberFieldProps } from '../utils/numeric-field'
+import { CooldownErrorMappingSection } from './cooldown-error-mapping-section'
 
 // 校验上游错误状态码表达式是否由 400-599 的整数或区间组成
 function isValidUpstreamStatusCodes(value: string): boolean {
@@ -165,8 +167,12 @@ type Policy = z.output<typeof policySchema>
 type PolicyInput = z.input<typeof policySchema>
 
 // 本地参数校验与错误拦截设置入口组件，仅超级管理员可见
-export function LocalRequestValidationSection(props: { value: string }) {
+export function LocalRequestValidationSection(props: {
+  value: string
+  mappingValue?: string
+}) {
   const { t } = useTranslation()
+  const [tab, setTab] = useState('validation')
   const root = useAuthStore(
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
   )
@@ -179,11 +185,36 @@ export function LocalRequestValidationSection(props: { value: string }) {
   }, [props.value])
   if (!root) return null
   if (!defaults) return <ErrorState title={t('Failed to load settings')} />
-  return <LocalRequestValidationEditor defaults={defaults} />
+  return (
+    <Tabs value={tab} onValueChange={(value) => setTab(String(value))}>
+      <TabsList>
+        <TabsTrigger value='validation'>
+          {t('Local parameter validation')}
+        </TabsTrigger>
+        <TabsTrigger value='mapping'>{t('Cooldown error mapping')}</TabsTrigger>
+      </TabsList>
+      {/* 保留两个分页的草稿，只在当前分页显示对应的保存按钮。 */}
+      <TabsContent value='validation' keepMounted>
+        <LocalRequestValidationEditor
+          defaults={defaults}
+          active={tab === 'validation'}
+        />
+      </TabsContent>
+      <TabsContent value='mapping' keepMounted>
+        <CooldownErrorMappingSection
+          value={props.mappingValue ?? '{"enabled":false,"usernames":[]}'}
+          active={tab === 'mapping'}
+        />
+      </TabsContent>
+    </Tabs>
+  )
 }
 
 // 本地参数校验与错误拦截策略编辑器
-function LocalRequestValidationEditor(props: { defaults: Policy }) {
+function LocalRequestValidationEditor(props: {
+  defaults: Policy
+  active: boolean
+}) {
   const { t } = useTranslation()
   const client = useQueryClient()
   const [search, setSearch] = useState('')
@@ -263,7 +294,9 @@ function LocalRequestValidationEditor(props: { defaults: Policy }) {
   return (
     <Form {...form}>
       <SettingsCard title={t('Local parameter validation')}>
-        <SettingsPageFormActions onSave={submit} isSaving={save.isPending} />
+        {props.active && (
+          <SettingsPageFormActions onSave={submit} isSaving={save.isPending} />
+        )}
         <fieldset disabled={save.isPending} className='min-w-0 space-y-4'>
           <FormField
             control={form.control}

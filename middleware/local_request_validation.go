@@ -307,8 +307,29 @@ func abortLocalValidationRequest(c *gin.Context, group string, modelName string,
 	if cooldown {
 		other.SetPublic("cooldown_intercepted", true)
 	}
+	// 映射只改变冷却拒绝的客户端响应，真实原因与状态继续保留在后台日志和策略事件中。
+	mapped := cooldown && operation_setting.ShouldMapCooldownError(common.GetContextKeyString(c, constant.ContextKeyUserName))
+	if mapped {
+		other.SetPublic("response_status_code", http.StatusTooManyRequests)
+		other.SetPublic("response_error_code", "RESOURCE_EXHAUSTED")
+	}
 	// 拒绝请求留在现有错误日志中；不保存请求体、素材或密钥，也不生成空任务。
 	model.RecordErrorLog(c, c.GetInt("id"), 0, modelName, c.GetString("token_name"), message, c.GetInt("token_id"), 0, false, group, other)
+	if mapped {
+		// Gemini 使用原生错误结构，其余接口保留各自协议的错误外壳。
+		errorBody := gin.H{"message": "resource exhaust", "type": "RESOURCE_EXHAUSTED", "code": "RESOURCE_EXHAUSTED"}
+		response := gin.H{"error": errorBody}
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/") {
+			errorBody = gin.H{"code": http.StatusTooManyRequests, "message": "resource exhaust", "status": "RESOURCE_EXHAUSTED"}
+			response["error"] = errorBody
+		} else if path == "/v1/messages" {
+			response["type"] = "error"
+			errorBody["type"] = "rate_limit_error"
+		}
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, response)
+		return
+	}
 	if c.Request.URL.Path == "/v1/messages" {
 		c.AbortWithStatusJSON(status, gin.H{"type": "error", "error": gin.H{"type": "invalid_request_error", "message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey))}})
 	} else {

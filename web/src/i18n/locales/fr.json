@@ -7303,6 +7303,14 @@
     "Shared by all users of this channel.": "Limite partagée par tous les utilisateurs de ce canal.",
     "Successful requests only. 0 = unlimited.": "Requêtes réussies uniquement. 0 = illimité.",
     "Configure rate limiting rules for groups, models or channels.": "Configurez les limites par groupe, modèle ou canal.",
-    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "Les deux valeurs sont comprises entre 0 et 2 147 483 647."
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "Les deux valeurs sont comprises entre 0 et 2 147 483 647.",
+    "Cooldown error mapping": "Cooldown error mapping",
+    "Enable cooldown error mapping": "Enable cooldown error mapping",
+    "Mapped usernames": "Mapped usernames",
+    "One username per line": "One username per line",
+    "Response error": "Response error",
+    "Each username must be at most 64 characters without line breaks.": "Each username must be at most 64 characters without line breaks.",
+    "Enter up to 1000 usernames.": "Enter up to 1000 usernames.",
+    "Usernames must not be duplicated.": "Usernames must not be duplicated."
   }
 }

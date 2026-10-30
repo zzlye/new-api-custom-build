@@ -607,7 +607,108 @@ func TestLocalParameterValidationDatabase(t *testing.T) {
 			// 关闭策略立即恢复原有行为，已记录的错误仍留在日志里。
 			require.NoError(t, model.UpdateOption(operation_setting.LocalRequestValidationOption, strings.Replace(policy, `"enabled":true`, `"enabled":false`, 1)))
 			assert.Zero(t, operation_setting.LocalRequestValidationStatus("gemini"))
+			t.Run("冷却错误用户名映射", func(t *testing.T) { verifyCooldownErrorMapping(t, user) })
 			t.Log(fmt.Sprintf("%s：设置权限、持久化、分组拦截、524冷却防刷、上游零请求及错误日志通过", kind))
+		})
+	}
+}
+
+// verifyCooldownErrorMapping 验证真实冷却链路、配置持久化与各协议对外错误契约。
+func verifyCooldownErrorMapping(t *testing.T, user *model.User) {
+	t.Helper()
+	policy := `{"enabled":true,"rules":[{"group":"gemini","enabled":true,"status_code":422}],"upstream_cooldown_seconds":60,"upstream_status_codes":"400,524"}`
+	require.NoError(t, model.UpdateOption(operation_setting.LocalRequestValidationOption, policy))
+	mapping := fmt.Sprintf(`{"enabled":true,"usernames":[%q]}`, user.Username)
+	for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser, common.RoleRootUser} {
+		response := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(response)
+		c.Set("role", role)
+		payload, err := common.Marshal(map[string]string{"key": operation_setting.CooldownErrorMappingOption, "value": mapping})
+		require.NoError(t, err)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/option/", bytes.NewReader(payload))
+		UpdateOption(c)
+		if role == common.RoleRootUser {
+			require.Contains(t, response.Body.String(), `"success":true`)
+		} else {
+			assert.Equal(t, http.StatusForbidden, response.Code)
+		}
+	}
+	var saved model.Option
+	require.NoError(t, model.DB.Where(&model.Option{Key: operation_setting.CooldownErrorMappingOption}).First(&saved).Error)
+	assert.Equal(t, mapping, saved.Value)
+	for _, invalid := range []string{`null`, `{"enabled":true,"usernames":[""]}`, `{"usernames":["a","a"]}`, `{"usernames":[" a"]}`, `{"usernames":[123]}`} {
+		require.Error(t, model.UpdateOption(operation_setting.CooldownErrorMappingOption, invalid))
+		assert.True(t, operation_setting.ShouldMapCooldownError(user.Username), "无效保存不得覆盖已有配置")
+	}
+	for _, tc := range []struct {
+		name, path, body, want string
+		upstreamStatus         int
+	}{
+		{"Gemini原生", "/v1beta/models/gemini:generateContent", `{"contents":[{"parts":[{"text":"hi"}]}]}`, `{"error":{"code":429,"message":"resource exhaust","status":"RESOURCE_EXHAUSTED"}}`, 400},
+		{"Gemini原生流式", "/v1/models/gemini:streamGenerateContent", `{"contents":[{"parts":[{"text":"hi"}]}]}`, `{"error":{"code":429,"message":"resource exhaust","status":"RESOURCE_EXHAUSTED"}}`, 429},
+		{"OpenAI兼容", "/v1/chat/completions", `{"model":"gemini","messages":[{"role":"user","content":"hi"}]}`, `{"error":{"code":"RESOURCE_EXHAUSTED","message":"resource exhaust","type":"RESOURCE_EXHAUSTED"}}`, 524},
+		{"Claude兼容", "/v1/messages", `{"model":"gemini","messages":[{"role":"user","content":"hi"}],"max_tokens":10}`, `{"type":"error","error":{"code":"RESOURCE_EXHAUSTED","message":"resource exhaust","type":"rate_limit_error"}}`, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			middleware.ClearUpstreamErrorCooldownCache()
+			require.NoError(t, model.UpdateOption(operation_setting.CooldownErrorMappingOption, mapping))
+			calls := 0
+			username := user.Username
+			router := gin.New()
+			router.Use(middleware.BodyStorageCleanup(), func(c *gin.Context) {
+				c.Set("id", user.Id)
+				common.SetContextKey(c, constant.ContextKeyUserName, username)
+				common.SetContextKey(c, constant.ContextKeyUsingGroup, "gemini")
+				if middleware.CheckLocalRequestParameters(c) {
+					return
+				}
+				c.Next()
+			})
+			router.POST(tc.path, func(c *gin.Context) {
+				calls++
+				apiErr := types.NewOpenAIError(fmt.Errorf("upstream failure, retry in 60 s"), types.ErrorCodeBadResponseStatusCode, tc.upstreamStatus)
+				middleware.ObserveGroupUpstreamError(c, apiErr)
+				c.JSON(tc.upstreamStatus, gin.H{"error": apiErr.ToOpenAIError()})
+			})
+			request := func(body string) *httptest.ResponseRecorder {
+				resp := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				router.ServeHTTP(resp, req)
+				return resp
+			}
+			first := request(tc.body)
+			assert.Equal(t, tc.upstreamStatus, first.Code)
+			assert.Contains(t, first.Body.String(), "upstream failure", "首次上游错误不得映射")
+			second := request(tc.body)
+			assert.Equal(t, 429, second.Code)
+			assert.JSONEq(t, tc.want, second.Body.String())
+			assert.Equal(t, 1, calls, "冷却拒绝不得进入上游")
+			var log model.Log
+			require.NoError(t, model.LOG_DB.Order("id desc").First(&log).Error)
+			assert.Contains(t, log.Content, "upstream failure", "后台必须保留原始失败原因")
+			assert.Contains(t, log.Other, `"response_status_code":429`)
+			assert.Contains(t, log.Other, `"cooldown_intercepted":true`)
+			// 移除用户名或关闭映射后，原来的冷却仍然有效，不得多发一次上游请求。
+			for _, disabled := range []string{`{"enabled":true,"usernames":[]}`, strings.Replace(mapping, `"enabled":true`, `"enabled":false`, 1)} {
+				require.NoError(t, model.UpdateOption(operation_setting.CooldownErrorMappingOption, disabled))
+				resp := request(tc.body)
+				assert.Contains(t, resp.Body.String(), "upstream failure")
+				assert.NotContains(t, resp.Body.String(), "RESOURCE_EXHAUSTED")
+				assert.Equal(t, 1, calls)
+			}
+			require.NoError(t, model.UpdateOption(operation_setting.CooldownErrorMappingOption, mapping))
+			username = "not-mapped"
+			assert.NotContains(t, request(tc.body).Body.String(), "RESOURCE_EXHAUSTED")
+			username = user.Username
+			middleware.ClearUpstreamErrorCooldownCache()
+			invalid := request(`{}`)
+			assert.Equal(t, 422, invalid.Code)
+			assert.Contains(t, invalid.Body.String(), "本地参数校验失败")
+			assert.NotContains(t, invalid.Body.String(), "resource exhaust")
+			assert.Equal(t, 1, calls)
+			assert.Equal(t, tc.upstreamStatus, request(tc.body).Code, "冷却清理后正常转发")
+			assert.Equal(t, 2, calls)
 		})
 	}
 }

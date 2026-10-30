@@ -23,11 +23,17 @@ let actions: HTMLDivElement
 const empty = '{"enabled":false,"rules":[]}'
 
 // 挂载本地参数校验与错误拦截设置组件
-function mount(value = empty) {
+function mount(
+  value = empty,
+  mappingValue = '{"enabled":false,"usernames":[]}'
+) {
   const tree = (config: string) => (
     <QueryClientProvider client={client}>
       <SettingsPageProvider actionsContainer={actions}>
-        <LocalRequestValidationSection value={config} />
+        <LocalRequestValidationSection
+          value={config}
+          mappingValue={mappingValue}
+        />
       </SettingsPageProvider>
     </QueryClientProvider>
   )
@@ -61,6 +67,96 @@ afterEach(async () => {
 })
 
 describe('分组本地参数校验与错误拦截设置', () => {
+  it('冷却映射分页独立保存用户名，切换分页保留草稿且只有一个保存按钮', async () => {
+    const user = userEvent.setup()
+    mount()
+    const original = await screen.findByRole('textbox', {
+      name: 'Local parameter rules',
+    })
+    fireEvent.change(original, { target: { value: 'reasoning_effort=high' } })
+    await user.click(
+      screen.getByRole('tab', { name: 'Cooldown error mapping' })
+    )
+    expect(
+      screen.getByRole('tab', { name: 'Cooldown error mapping' })
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(
+      screen.getAllByRole('button', { name: 'Save Changes' })
+    ).toHaveLength(1)
+    const names = screen.getByRole('textbox', { name: 'Mapped usernames' })
+    await user.type(names, 'Alice{Enter}bob')
+    await user.click(
+      screen.getByRole('switch', { name: 'Enable cooldown error mapping' })
+    )
+    await user.click(
+      screen.getByRole('tab', { name: 'Local parameter validation' })
+    )
+    expect(
+      screen.getByRole('textbox', { name: 'Local parameter rules' })
+    ).toHaveValue('reasoning_effort=high')
+    await user.click(
+      screen.getByRole('tab', { name: 'Cooldown error mapping' })
+    )
+    expect(
+      screen.getByRole('textbox', { name: 'Mapped usernames' })
+    ).toHaveValue('Alice\nbob')
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    const saved = vi.mocked(api.put).mock.calls[0][1] as {
+      key: string
+      value: string
+    }
+    expect(saved.key).toBe('CooldownErrorMappingPolicy')
+    expect(JSON.parse(saved.value)).toEqual({
+      enabled: true,
+      usernames: ['Alice', 'bob'],
+    })
+  })
+
+  it('冷却映射拒绝重复用户名，支持清空名单并保存', async () => {
+    const user = userEvent.setup()
+    mount(empty, '{"enabled":true,"usernames":["Alice"]}')
+    await user.click(
+      screen.getByRole('tab', { name: 'Cooldown error mapping' })
+    )
+    const names = screen.getByRole('textbox', { name: 'Mapped usernames' })
+    expect(names).toHaveValue('Alice')
+    fireEvent.change(names, { target: { value: 'Alice\nAlice' } })
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(
+      await screen.findByText('Usernames must not be duplicated.')
+    ).toBeVisible()
+    expect(api.put).not.toHaveBeenCalled()
+    fireEvent.change(names, { target: { value: '' } })
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.put).toHaveBeenCalled())
+    const saved = vi.mocked(api.put).mock.calls[0][1] as { value: string }
+    expect(JSON.parse(saved.value).usernames).toEqual([])
+  })
+
+  it('冷却映射保存失败时保留输入并可重试', async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.click(
+      screen.getByRole('tab', { name: 'Cooldown error mapping' })
+    )
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Mapped usernames' }),
+      { target: { value: 'Alice' } }
+    )
+    vi.mocked(api.put).mockResolvedValueOnce({
+      data: { success: false, message: 'Save rejected' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('textbox', { name: 'Mapped usernames' })
+    ).toHaveValue('Alice')
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+  })
+
   it('支持一键勾选 Gemini 分组、配置状态码与上游 400/524 拦截项并完整保存', async () => {
     const user = userEvent.setup()
     mount()

@@ -7303,6 +7303,14 @@
     "Shared by all users of this channel.": "Общий лимит для всех пользователей канала.",
     "Successful requests only. 0 = unlimited.": "Только успешные запросы. 0 = без ограничений.",
     "Configure rate limiting rules for groups, models or channels.": "Настройте лимиты для групп, моделей или каналов.",
-    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "Оба значения: от 0 до 2 147 483 647."
+    "maxRequests ≥ 0, maxSuccess ≥ 0, both ≤ 2,147,483,647": "Оба значения: от 0 до 2 147 483 647.",
+    "Cooldown error mapping": "Cooldown error mapping",
+    "Enable cooldown error mapping": "Enable cooldown error mapping",
+    "Mapped usernames": "Mapped usernames",
+    "One username per line": "One username per line",
+    "Response error": "Response error",
+    "Each username must be at most 64 characters without line breaks.": "Each username must be at most 64 characters without line breaks.",
+    "Enter up to 1000 usernames.": "Enter up to 1000 usernames.",
+    "Usernames must not be duplicated.": "Usernames must not be duplicated."
   }
 }

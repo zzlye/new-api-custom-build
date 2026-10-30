@@ -21,6 +21,7 @@ import type { SecuritySettings } from '../types'
 
 export type RetrySettings = {
   LocalRequestValidationPolicy: string
+  CooldownErrorMappingPolicy: string
   AsyncMediaRetryPolicy: string
   RetryTimes: number
   AutomaticRetryStatusCodes: string
@@ -50,6 +51,7 @@ export type RequestPolicySettings = RetrySettings &
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
   LocalRequestValidationPolicy: '{"enabled":false,"rules":[]}',
+  CooldownErrorMappingPolicy: '{"enabled":false,"usernames":[]}',
   AsyncMediaRetryPolicy:
     '{"enabled":false,"max_retries":2,"same_channel_retries":1,"channel_status_codes":{},"channel_ids":[],"selected_channels_only":true}',
   RetryTimes: 0,
