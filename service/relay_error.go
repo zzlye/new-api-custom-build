@@ -30,7 +30,7 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 	if err == nil {
 		return PolicyDecision{Action: "stop", Reason: "request_completed", Source: "system"}
 	}
-	if c.GetString(model.AsyncRelayContextKey) != "" {
+	if UsesChannelRetryPolicy(c) {
 		return DecideAsyncMediaRetry(c, retryTimes, types.IsSkipRetryError(err))
 	}
 	if c.GetBool("configured_video_protocol") {

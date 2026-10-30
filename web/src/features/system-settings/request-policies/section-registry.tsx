@@ -37,7 +37,7 @@ const POLICY_SECTIONS = [
   },
   {
     id: 'media-retry',
-    titleKey: 'Media task retries',
+    titleKey: 'Channel retries',
     build: (settings: RequestPolicySettings) => (
       <AsyncMediaRetrySection value={settings.AsyncMediaRetryPolicy} />
     ),

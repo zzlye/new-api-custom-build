@@ -198,7 +198,7 @@ func ObserveGroupUpstreamError(c *gin.Context, apiErr *types.NewAPIError) {
 	now := time.Now()
 	// 当上游返回带有明确等待秒数的 429 熔断提示时，自动开启对应时长的本地拦截，到点后自动关闭恢复。
 	if apiErr.StatusCode == http.StatusTooManyRequests && policy.CooldownSeconds() > 0 {
-		types.ErrOptionWithSkipRetry()(apiErr)
+		// 上游 429 由重试策略决定是否重发；这里只记录最终失败的冷却，不禁用内部重试。
 		waitSeconds := extractUpstreamRetrySeconds(apiErr.Error())
 		rlKey := computeUserModelRateLimitKey(c, group, resolveValidationModelName(c))
 		if rlKey != "" && waitSeconds > 0 {

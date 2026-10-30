@@ -75,7 +75,7 @@ describe('媒体任务路由详情', () => {
     expect(screen.getByText('媒体路由记录')).toBeVisible()
     expect(screen.getByText('换渠道重试')).toBeVisible()
     expect(screen.getByText('1,234 ms')).toBeVisible()
-    expect(i18next.t('Media task retries')).toBe('媒体任务重试')
+    expect(i18next.t('Channel retries')).toBe('渠道重试')
     expect(i18next.t('Retry HTTP error codes')).toBe('触发重试的 HTTP 错误码')
     await act(async () => {
       await i18next.changeLanguage('en')

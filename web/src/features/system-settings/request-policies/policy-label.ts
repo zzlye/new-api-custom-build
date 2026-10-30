@@ -26,7 +26,7 @@ export function policyLabel(t: TFunction, value: string): string {
     case 'retry_same_channel':
       return t('Status matches the rules; retry the current channel')
     case 'media_retry_disabled':
-      return t('Media channel failover is disabled')
+      return t('Channel retries are disabled')
     case 'no_retry_channel':
       return t('No untried eligible channel remains')
     case 'channel_not_selected':
@@ -36,7 +36,7 @@ export function policyLabel(t: TFunction, value: string): string {
     case 'response_started_or_cancelled':
       return t('Response already started or execution was cancelled')
     case 'async_media':
-      return t('Media task retries')
+      return t('Channel retries')
     case 'upstream_failure':
       return t('Upstream request failed')
     case 'request_failed':

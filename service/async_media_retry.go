@@ -25,7 +25,7 @@ type asyncMediaResponse struct {
 	rejected bool
 }
 
-// AsyncMediaRetryConfig 固定一次后台执行的策略快照，运行中修改设置只影响新执行的任务。
+// AsyncMediaRetryConfig 固定一次请求的策略快照，运行中修改设置只影响新请求。
 func AsyncMediaRetryConfig(c *gin.Context) operation_setting.AsyncMediaRetryPolicy {
 	if value, ok := c.Get(asyncMediaRetryPolicyKey); ok {
 		return value.(operation_setting.AsyncMediaRetryPolicy)
@@ -35,8 +35,14 @@ func AsyncMediaRetryConfig(c *gin.Context) operation_setting.AsyncMediaRetryPoli
 	return policy
 }
 
+// UsesChannelRetryPolicy 同步请求与异步任务共用渠道规则；关闭后同步请求保留全局策略。
+// 保留原配置键和日志来源，避免升级丢失已保存的渠道规则与历史记录。
+func UsesChannelRetryPolicy(c *gin.Context) bool {
+	return c.GetString(model.AsyncRelayContextKey) != "" || AsyncMediaRetryConfig(c).Enabled
+}
+
 func RelayRetryLimit(c *gin.Context) int {
-	if c.GetString(model.AsyncRelayContextKey) == "" {
+	if !UsesChannelRetryPolicy(c) {
 		return common.RetryTimes
 	}
 	policy := AsyncMediaRetryConfig(c)
@@ -49,7 +55,7 @@ func RelayRetryLimit(c *gin.Context) int {
 
 // BeginAsyncMediaAttempt 清除上一渠道的响应证据，并在发送前持久化路由记录。
 func BeginAsyncMediaAttempt(c *gin.Context) error {
-	if c.GetString(model.AsyncRelayContextKey) == "" {
+	if !UsesChannelRetryPolicy(c) {
 		return nil
 	}
 	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), asyncMediaResponseKey{}, &asyncMediaResponse{}))
@@ -229,10 +235,10 @@ func SelectAsyncMediaRetryChannel(param *RetryParam) (*model.Channel, string, er
 		if err != nil || channel != nil {
 			return channel, group, err
 		}
-		// 原渠道不可用时允许直接切换，但不能突破配置的备用渠道数量。
-		if len(excluded) > AsyncMediaRetryConfig(c).MaxRetries {
-			return nil, group, nil
-		}
+	}
+	// 每次选择备用渠道都检查预算，避免原渠道重试遭遇本地限流后绕过换渠道次数。
+	if len(excluded) > AsyncMediaRetryConfig(c).MaxRetries {
+		return nil, param.TokenGroup, nil
 	}
 	for _, group := range groups {
 		channel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, 0, filters)

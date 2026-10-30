@@ -32,7 +32,7 @@ type AsyncMediaRetryPolicy struct {
 func ParseAsyncMediaRetryPolicy(value string) (AsyncMediaRetryPolicy, error) {
 	var policy AsyncMediaRetryPolicy
 	if err := common.UnmarshalJsonStr(value, &policy); err != nil {
-		return policy, fmt.Errorf("媒体重试设置格式无效")
+		return policy, fmt.Errorf("渠道重试设置格式无效")
 	}
 	if policy.MaxRetries < 0 {
 		return policy, fmt.Errorf("换渠道重试次数必须是非负整数")
@@ -99,7 +99,7 @@ func parseAsyncMediaRetryCodes(codes string) ([]StatusCodeRange, error) {
 	}
 	for _, r := range ranges {
 		if r.Start < 400 || r.End > 599 {
-			return nil, fmt.Errorf("媒体重试仅接受 400 到 599 的错误码")
+			return nil, fmt.Errorf("渠道重试仅接受 400 到 599 的错误码")
 		}
 	}
 	return ranges, nil

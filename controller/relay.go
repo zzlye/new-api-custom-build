@@ -200,7 +200,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
-			if c.GetString(model.AsyncRelayContextKey) != "" && newAPIError != nil {
+			if service.UsesChannelRetryPolicy(c) && newAPIError != nil {
 				service.RequestPolicy(c).AddEvent(service.PolicyEvent{Decision: service.PolicyDecision{Action: "stop", Reason: "no_retry_channel", Source: "async_media"}})
 				break
 			}
@@ -249,8 +249,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		service.FinishChannelRateLimit(c, false)
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
-		// 针对已开启错误拦截的分组，命中上游 400/524 等错误时停止内部重试并写入冷却缓存。
-		middleware.ObserveGroupUpstreamError(c, newAPIError)
+		// 启用渠道规则后先按真实上游状态码重试，不能让中间失败提前写入用户冷却。
+		// 未启用时保留旧参数错误拦截；普通上游 429 同样留到重试结束后再观测。
+		if !service.UsesChannelRetryPolicy(c) && newAPIError.StatusCode != http.StatusTooManyRequests {
+			middleware.ObserveGroupUpstreamError(c, newAPIError)
+		}
 		relayInfo.LastError = newAPIError
 
 		decision := service.DecideRelayRetry(c, newAPIError, retryLimit-retryParam.GetRetry())
@@ -260,6 +263,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if decision.Action != "retry" {
 			break
 		}
+	}
+	// 成功路径已经返回；只有最终失败才建立冷却，包含没有可用备用渠道的情况。
+	if newAPIError != nil && (service.UsesChannelRetryPolicy(c) || newAPIError.StatusCode == http.StatusTooManyRequests) {
+		middleware.ObserveGroupUpstreamError(c, newAPIError)
 	}
 
 	useChannel := c.GetStringSlice("use_channel")
@@ -345,7 +352,7 @@ func getChannelWithoutRateLimit(c *gin.Context, info *relaycommon.RelayInfo, ret
 	var channel *model.Channel
 	var selectGroup string
 	var err error
-	if c.GetString(model.AsyncRelayContextKey) != "" && retryParam.GetRetry() > 0 {
+	if service.UsesChannelRetryPolicy(c) && retryParam.GetRetry() > 0 {
 		channel, selectGroup, err = service.SelectAsyncMediaRetryChannel(retryParam)
 	} else {
 		channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(retryParam)
@@ -367,7 +374,7 @@ func getChannelWithoutRateLimit(c *gin.Context, info *relaycommon.RelayInfo, ret
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
-	if c.GetString(model.AsyncRelayContextKey) != "" {
+	if service.UsesChannelRetryPolicy(c) {
 		return service.DecideRelayRetry(c, openaiErr, retryTimes).Action == "retry"
 	}
 	if openaiErr == nil {
@@ -696,7 +703,7 @@ func executeTaskSubmissionWith(
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				if c.GetString(model.AsyncRelayContextKey) != "" && taskErr != nil {
+				if service.UsesChannelRetryPolicy(c) && taskErr != nil {
 					policy.AddEvent(service.PolicyEvent{Decision: service.PolicyDecision{Action: "stop", Reason: "no_retry_channel", Source: "async_media"}})
 					break
 				}
@@ -979,7 +986,7 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
-	if c.GetString(model.AsyncRelayContextKey) != "" {
+	if service.UsesChannelRetryPolicy(c) {
 		return decideTaskRetry(c, taskErr, retryTimes).Action == "retry"
 	}
 	// 可配置渠道只执行一次创建，协议/网络异常不能通过再次付费提交来探测。
@@ -1042,7 +1049,7 @@ func taskSubmissionAPIError(taskErr *taskdto.TaskError) *types.NewAPIError {
 // decideTaskRetry is the single retry decision for task submissions. The
 // reason is recorded in the request policy decision events of the log details.
 func decideTaskRetry(c *gin.Context, taskErr *taskdto.TaskError, retryTimes int) service.PolicyDecision {
-	if taskErr != nil && c.GetString(model.AsyncRelayContextKey) != "" {
+	if taskErr != nil && service.UsesChannelRetryPolicy(c) {
 		return service.DecideAsyncMediaRetry(c, retryTimes, taskErr.NoRetry || taskErr.LocalError)
 	}
 	stop := service.PolicyDecision{Action: "stop", Source: "system"}

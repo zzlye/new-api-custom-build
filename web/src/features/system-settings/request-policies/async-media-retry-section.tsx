@@ -229,14 +229,14 @@ function AsyncMediaRetryEditor(props: { defaults: AsyncMediaRetryValues }) {
         isSaving={save.isPending}
         isSaveDisabled={!channels.data}
       />
-      <SettingsCard title={t('Media task retries')}>
+      <SettingsCard title={t('Channel retries')}>
         <fieldset disabled={save.isPending} className='min-w-0 space-y-5'>
           <FormField
             control={form.control}
             name='enabled'
             render={({ field }) => (
               <FormItem className='flex items-center justify-between gap-3'>
-                <FormLabel>{t('Enable media channel failover')}</FormLabel>
+                <FormLabel>{t('Enable channel retries')}</FormLabel>
                 <FormControl>
                   <Switch
                     checked={field.value}

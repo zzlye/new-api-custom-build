@@ -174,7 +174,7 @@ describe('媒体换渠道重试设置', () => {
       screen.queryByText('Limit failover to selected channels')
     ).not.toBeInTheDocument()
     await user.click(
-      screen.getByRole('switch', { name: 'Enable media channel failover' })
+      screen.getByRole('switch', { name: 'Enable channel retries' })
     )
     await user.click(screen.getByRole('checkbox', { name: /Banana/ }))
     fireEvent.change(
@@ -311,7 +311,7 @@ describe('媒体换渠道重试设置', () => {
     )
     expect(api.put).not.toHaveBeenCalled()
     await userEvent.click(
-      screen.getByRole('switch', { name: 'Enable media channel failover' })
+      screen.getByRole('switch', { name: 'Enable channel retries' })
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
@@ -359,7 +359,7 @@ describe('媒体换渠道重试设置', () => {
       'Select at least one channel before enabling failover.'
     )
     await userEvent.click(
-      screen.getByRole('switch', { name: 'Enable media channel failover' })
+      screen.getByRole('switch', { name: 'Enable channel retries' })
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2))

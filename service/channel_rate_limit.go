@@ -169,8 +169,8 @@ func ReserveChannelForRequest(c *gin.Context, channel *model.Channel, retry *Ret
 		}
 		seen[channel.Id] = true
 		GetChannelConstraints(c).AddFilter(dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: map[int]bool{channel.Id: true}})
-		// 异步重试沿用原有分组和已尝试渠道约束，不能借限流重新回到失败渠道。
-		if c.GetString(model.AsyncRelayContextKey) != "" && retry.GetRetry() > 0 {
+		// 渠道重试沿用原有分组和已尝试渠道约束，不能借限流重新回到失败渠道。
+		if UsesChannelRetryPolicy(c) && retry.GetRetry() > 0 {
 			next, selected, selectErr := SelectAsyncMediaRetryChannel(retry)
 			if selectErr != nil || next == nil {
 				return nil, group, limited
