@@ -115,6 +115,7 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		want                                      int
 		unit                                      billingexpr.BillingUnit
 		requestedImages, actualImages             int
+		svg                                       bool
 	}{
 		{name: "missing usage charges once", expression: flat, want: 5000, unit: billingexpr.BillingUnitRequest},
 		{name: "zero usage charges once", expression: flat, usage: &dto.Usage{}, want: 5000, unit: billingexpr.BillingUnitRequest},
@@ -141,6 +142,9 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		{name: "image quantity exceeds one-image wallet before submission", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 4, wallet: 20000, insufficient: true},
 		{name: "image override reserves extra quantity", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 1, outboundImages: 4, want: 80000, unit: billingexpr.BillingUnitRequest},
 		{name: "image override cannot exceed remaining wallet", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 1, outboundImages: 4, wallet: 40000, reserveInsufficient: true, refund: true},
+		{name: "SVG作者费用与图片合并结算且推理不重复计费", expression: imageExpression, estimate: 10000, usage: imageUsage, svg: true, want: 6113, unit: billingexpr.BillingUnitToken},
+		{name: "SVG按次套餐不追加作者费用", expression: flat, usage: imageUsage, svg: true, want: 5000, unit: billingexpr.BillingUnitRequest},
+		{name: "SVG失败退还图片与作者预留", expression: imageExpression, estimate: 10000, svg: true, refund: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			quota := startingQuota
@@ -193,6 +197,15 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 				held, err := model.GetUserQuota(user.Id, true)
 				require.NoError(t, err)
 				assert.Equal(t, quota-reservation, held)
+				if tc.svg {
+					// 在真实预扣、退款和落日志链路中验证作者费用，避免只测试计算函数。
+					info.PriceData.QuotaToPreConsume = reservation
+					ctx.Set("user_model_pricing_snapshot", map[string]model.PricingValues{
+						"svg-test-author": {"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": "p * 2 + c * 10"},
+					})
+					require.Nil(t, PrepareImageSVGBilling(ctx, info, []byte(`{"output_format":"svg","svg":{"model":"svg-test-author"}}`)))
+					info.ImageSVGUsage = &dto.ImageSVGUsage{Model: "svg-test-author", InputTokens: 1000, OutputTokens: 200, ReasoningTokens: 100, TotalTokens: 1200}
+				}
 				if tc.outboundImages > 0 {
 					reserveErr := PrepareImageBillingForRequest(ctx, info, tc.outboundImages)
 					if tc.reserveInsufficient {
@@ -246,6 +259,19 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 					var other map[string]any
 					require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
 					assert.Equal(t, string(tc.unit), other["billing_unit"])
+					if tc.svg {
+						detail, ok := other["svg_usage"].(map[string]any)
+						require.True(t, ok)
+						assert.Equal(t, "svg-test-author", detail["model"])
+						assert.NotContains(t, detail, "error")
+						if tc.unit == billingexpr.BillingUnitRequest {
+							assert.Equal(t, true, detail["included_in_fixed_price"])
+							assert.EqualValues(t, 0, detail["quota"])
+						} else {
+							assert.EqualValues(t, 2000, detail["quota"])
+							assert.EqualValues(t, 4113, detail["image_quota"])
+						}
+					}
 					if tc.requestedImages > 0 {
 						count := tc.actualImages
 						if count == 0 {

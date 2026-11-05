@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatQuota, formatTimestampToDate } from '@/lib/format'
 
 import { useTaskDetails } from '../hooks/use-task-details'
 import type { TaskMedia } from '../types'
@@ -43,6 +43,14 @@ const PARAMETER_LABELS: Record<string, string> = {
   seed: 'Seed',
   negative_prompt: 'Negative prompt',
   stream: 'Streaming',
+  complexity: 'Image complexity',
+  frame_count: 'Frame count',
+  frame_duration_ms: 'Frame duration (ms)',
+  output_compression: 'Output compression',
+  partial_images: 'Partial images',
+  input_fidelity: 'Input fidelity',
+  'svg.model': 'SVG author model',
+  'svg.reasoning.effort': 'SVG reasoning effort',
 }
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Queued',
@@ -58,6 +66,10 @@ const REFERENCE_LABELS: Record<TaskMedia['kind'], string> = {
   image: 'Reference image {{number}}',
   video: 'Reference video {{number}}',
   audio: 'Reference audio {{number}}',
+}
+const REFERENCE_ROLE_LABELS: Record<string, string> = {
+  mask: 'Mask image',
+  markup: 'Markup image',
 }
 
 function TaskMediaGallery(props: {
@@ -84,8 +96,8 @@ function TaskMediaGallery(props: {
               className='text-muted-foreground mb-2 truncate text-xs'
               title={media.name}
             >
-              {media.role === 'mask'
-                ? t('Mask image')
+              {REFERENCE_ROLE_LABELS[media.role || '']
+                ? t(REFERENCE_ROLE_LABELS[media.role || ''])
                 : t(REFERENCE_LABELS[media.kind] || REFERENCE_LABELS.image, {
                     number: index + 1,
                   })}
@@ -207,12 +219,43 @@ export function TaskDetailsContent(props: { taskId: string }) {
         </div>
       </dl>
       <TaskRoutingHistory events={details.routing_events} />
-      <section className='grid gap-2' aria-label={t('Complete task parameters')}>
-        <h3 className='text-sm font-semibold'>{t('Complete task parameters')}</h3>
+      <section
+        className='grid gap-2'
+        aria-label={t('Complete task parameters')}
+      >
+        <h3 className='text-sm font-semibold'>
+          {t('Complete task parameters')}
+        </h3>
         <pre className='bg-muted/20 max-h-96 overflow-auto rounded-lg border p-4 font-mono text-xs leading-5 break-words whitespace-pre-wrap'>
           {JSON.stringify(details.full_parameters, null, 2)}
         </pre>
       </section>
+      {details.svg_billing && (
+        <section className='grid gap-2' aria-label={t('SVG usage')}>
+          <h3 className='text-sm font-semibold'>{t('SVG usage')}</h3>
+          <dl className='grid grid-cols-2 gap-2 text-sm'>
+            <dt>{t('SVG author model')}</dt>
+            <dd>{details.svg_billing.model}</dd>
+            <dt>{t('Input tokens')}</dt>
+            <dd>{details.svg_billing.input_tokens}</dd>
+            <dt>{t('Output tokens')}</dt>
+            <dd>{details.svg_billing.output_tokens}</dd>
+            <dt>{t('Reasoning tokens')}</dt>
+            <dd>{details.svg_billing.reasoning_tokens}</dd>
+            <dt>{t('Image cost')}</dt>
+            <dd>{formatQuota(details.svg_billing.image_quota)}</dd>
+            <dt>{t('SVG author cost')}</dt>
+            <dd>
+              {details.svg_billing.included_in_fixed_price
+                ? t('Included in fixed price')
+                : formatQuota(details.svg_billing.quota)}
+            </dd>
+          </dl>
+          {details.svg_billing.error && (
+            <p role='alert'>{details.svg_billing.error}</p>
+          )}
+        </section>
+      )}
       {details.error && (
         <p
           role='alert'

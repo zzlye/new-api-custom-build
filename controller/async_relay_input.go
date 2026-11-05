@@ -15,11 +15,11 @@ import (
 	"github.com/QuantumNous/new-api/service"
 )
 
-var asyncRequestParameterNames = []string{"model", "size", "quality", "n", "output_format", "response_format", "background", "moderation", "seconds", "duration", "aspect_ratio", "resolution", "seed", "negative_prompt", "stream"}
+var asyncRequestParameterNames = []string{"model", "size", "quality", "n", "output_format", "response_format", "background", "moderation", "seconds", "duration", "aspect_ratio", "resolution", "seed", "negative_prompt", "stream", "complexity", "frame_count", "frame_duration_ms", "output_compression", "partial_images", "input_fidelity"}
 
 // 只采集协议明确的素材字段，普通提示词、回调地址和鉴权字段不会成为参考素材。
 var asyncReferenceFields = []string{
-	"image", "images", "image_url", "image_urls", "input_image", "input_reference", "reference_image", "reference_images", "first_frame", "last_frame", "image_end", "mask",
+	"image", "images", "image_url", "image_urls", "input_image", "input_reference", "reference_image", "reference_images", "first_frame", "last_frame", "image_end", "mask", "markup",
 	"video", "videos", "video_url", "video_urls", "input_video", "reference_video", "reference_videos",
 	"audio", "audios", "audio_url", "audio_urls", "input_audio", "reference_audio", "reference_audios",
 }
@@ -91,6 +91,21 @@ func captureAsyncRequestDetails(task *model.AsyncRelayTask) model.AsyncRelayRequ
 		return details
 	}
 	_ = common.Unmarshal(fields["prompt"], &details.Prompt)
+	// 仅展示矢量作者模型和推理档位，不把任意嵌套字段写入日志。
+	var svg struct {
+		Model     string `json:"model"`
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+	}
+	if common.Unmarshal(fields["svg"], &svg) == nil {
+		if svg.Model != "" {
+			details.Parameters["svg.model"] = svg.Model
+		}
+		if svg.Reasoning.Effort != "" {
+			details.Parameters["svg.reasoning.effort"] = svg.Reasoning.Effort
+		}
+	}
 	for _, key := range asyncRequestParameterNames {
 		value, exists := fields[key]
 		if !exists {
@@ -201,6 +216,9 @@ func saveAsyncReferenceFile(reader io.Reader, name, field string) model.AsyncRel
 	if field == "mask" {
 		reference.Role = "mask"
 	}
+	if field == "markup" {
+		reference.Role = "markup"
+	}
 	path, file, err := common.CreateAsyncMediaFile()
 	if err != nil {
 		reference.Error = "参考素材保存失败"
@@ -241,6 +259,9 @@ func appendAsyncReferences(value any, field string, references *[]model.AsyncRel
 	role, kind := "reference", asyncReferenceKind(field)
 	if field == "mask" {
 		role = "mask"
+	}
+	if field == "markup" {
+		role = "markup"
 	}
 	switch item := value.(type) {
 	case string:

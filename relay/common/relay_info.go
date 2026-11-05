@@ -186,6 +186,10 @@ type RelayInfo struct {
 	// ImageQuotaBeforeGroup is the frozen legacy estimate before request ratios.
 	ImageRequestCount     int
 	ImageQuotaBeforeGroup float64
+	// 矢量作者用量与图片用量分别结算，价格在发送前冻结。
+	ImageSVGUsage     *dto.ImageSVGUsage
+	ImageSVGPrices    map[string]string
+	ImageSVGRequested bool
 
 	Request dto.Request
 

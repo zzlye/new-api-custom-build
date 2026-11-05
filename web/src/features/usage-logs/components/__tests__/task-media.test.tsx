@@ -490,6 +490,35 @@ describe('任务生成结果', () => {
     ])
     assert.ok(getCalls.every((url) => url.startsWith('/api/task/')))
   })
+  test('新图片参数、标注层和SVG独立费用在同一任务详情显示', async () => {
+    taskDetails.parameters = {
+      complexity: 'low',
+      frame_count: '9',
+      frame_duration_ms: '200',
+      'svg.model': 'author',
+    }
+    taskDetails.references[0].role = 'markup'
+    taskDetails.svg_billing = {
+      model: 'author',
+      input_tokens: 1000,
+      output_tokens: 200,
+      reasoning_tokens: 100,
+      image_quota: 10000,
+      quota: 2000,
+    }
+    await renderTaskDetails()
+    await openTaskDetails()
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog?.textContent?.includes('Image complexity'))
+    assert.ok(dialog?.textContent?.includes('Frame duration (ms)'))
+    assert.ok(dialog?.textContent?.includes('Markup image'))
+    const usage = document.querySelector('section[aria-label="SVG usage"]')
+    assert.ok(usage?.textContent?.includes('author'))
+    assert.ok(usage?.textContent?.includes('1000'))
+    assert.ok(usage?.textContent?.includes('Image cost'))
+    assert.ok(usage?.textContent?.includes('SVG author cost'))
+    assert.ok(!usage?.textContent?.includes('Included in fixed price'))
+  })
   test('列表刷新重建单元格后已打开的任务详情保持展示，直到用户主动关闭', async () => {
     await renderTaskDetails()
     await openTaskDetails()

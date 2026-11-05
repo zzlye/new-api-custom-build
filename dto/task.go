@@ -118,6 +118,7 @@ type FetchReq struct {
 
 // AsyncTaskDetails 是任务日志的完整记录，不包含上游密钥、内部路径或原始请求头。
 type AsyncTaskDetails struct {
+	SVGBilling         map[string]any             `json:"svg_billing,omitempty"`
 	FullParameters     AsyncTaskParameterSnapshot `json:"full_parameters"`
 	RoutingEvents      []TaskRoutingEvent         `json:"routing_events,omitempty"`
 	TaskID             string                     `json:"task_id"`

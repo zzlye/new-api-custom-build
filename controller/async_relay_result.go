@@ -224,6 +224,15 @@ func inspectAsyncMediaWithAudio(path string, allowAudio bool) (string, string, e
 		return "", "", fmt.Errorf("生成媒体文件为空")
 	}
 	contentType := http.DetectContentType(prefix[:n])
+	// XML/SVG 通过完整结构校验后再归档，不依赖上游声称的媒体类型。
+	if contentType == "text/xml; charset=utf-8" || contentType == "text/plain; charset=utf-8" || strings.Contains(string(prefix[:n]), "<svg") {
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return "", "", err
+		}
+		if err := validateAsyncSVG(io.LimitReader(file, common.AsyncMediaMaxFileBytes+1)); err == nil {
+			return "image/svg+xml", "image", nil
+		}
+	}
 	if allowAudio {
 		if strings.HasPrefix(contentType, "audio/") {
 			return contentType, "audio", nil

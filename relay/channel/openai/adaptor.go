@@ -608,31 +608,35 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 				_ = file.Close()
 			}
 
-			// Handle mask file if present
-			if maskFiles, exists := mf.File["mask"]; exists && len(maskFiles) > 0 {
-				maskFile, err := maskFiles[0].Open()
-				if err != nil {
-					return nil, errors.New("failed to open mask file")
+			// 蒙版和标注层均作为独立文件转发，保留原字段语义。
+			for _, attachmentField := range []string{"mask", "markup"} {
+				if maskFiles, exists := mf.File[attachmentField]; exists && len(maskFiles) > 0 {
+					maskFile, err := maskFiles[0].Open()
+					if err != nil {
+						return nil, errors.New("failed to open mask file")
+					}
+					// 复制完立即关闭，避免在循环内使用 defer 占用资源
+
+					// 按附件文件名确定媒体类型。
+					mimeType := detectImageMimeType(maskFiles[0].Filename)
+
+					// 保留蒙版或标注层原始字段名。
+					h := make(textproto.MIMEHeader)
+					h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, attachmentField, maskFiles[0].Filename))
+					h.Set("Content-Type", mimeType)
+
+					maskPart, err := writer.CreatePart(h)
+					if err != nil {
+						_ = maskFile.Close()
+						return nil, errors.New("create form file failed for mask")
+					}
+
+					_, copyErr := io.Copy(maskPart, maskFile)
+					_ = maskFile.Close()
+					if copyErr != nil {
+						return nil, errors.New("copy mask file failed")
+					}
 				}
-				// 复制完立即关闭，避免在循环内使用 defer 占用资源
-
-				// Determine MIME type for mask file
-				mimeType := detectImageMimeType(maskFiles[0].Filename)
-
-				// Create a form file with the appropriate content type
-				h := make(textproto.MIMEHeader)
-				h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="mask"; filename="%s"`, maskFiles[0].Filename))
-				h.Set("Content-Type", mimeType)
-
-				maskPart, err := writer.CreatePart(h)
-				if err != nil {
-					return nil, errors.New("create form file failed for mask")
-				}
-
-				if _, err := io.Copy(maskPart, maskFile); err != nil {
-					return nil, errors.New("copy mask file failed")
-				}
-				_ = maskFile.Close()
 			}
 		} else {
 			return nil, errors.New("no multipart form data found")

@@ -25,6 +25,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	info.InitChannelMeta(c)
 	info.BillingImageCount = nil
 	info.ImageRequestCount = 0
+	info.ImageSVGUsage, info.ImageSVGPrices, info.ImageSVGRequested = nil, nil, false
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -126,6 +127,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		requestBody = body
 	}
 	if billingErr := service.PrepareImageBillingForRequest(c, info, imageCount); billingErr != nil {
+		return billingErr
+	}
+	if billingErr := service.PrepareImageSVGBilling(c, info, jsonData); billingErr != nil {
 		return billingErr
 	}
 

@@ -557,6 +557,16 @@ export interface UserInfo {
 
 // 完整任务详情由独立接口按需加载，列表只携带轻量摘要。
 export interface TaskDetails {
+  svg_billing?: {
+    model: string
+    input_tokens: number
+    output_tokens: number
+    reasoning_tokens: number
+    quota: number
+    image_quota: number
+    included_in_fixed_price?: boolean
+    error?: string
+  }
   full_parameters: AsyncTaskParameterSnapshot
   routing_events?: TaskRoutingEvent[]
   task_id: string

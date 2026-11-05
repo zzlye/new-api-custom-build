@@ -97,6 +97,7 @@ func GetAsyncRelayTaskDetails(c *gin.Context) {
 		Parameters: input.Parameters, References: references, Media: asyncRelayMediaLinks(task, "/api/task/"), MediaExpired: expired,
 		SubmitTime: task.CreatedAt, StartTime: task.StartedAt, ResponseTime: responseTime, FinishTime: task.FinishedAt, ResponseStatusCode: task.ResponseStatusCode}
 	response.FullParameters = fullParameters
+	response.SVGBilling = input.SVGBilling
 	if task.FinishedAt > 0 {
 		response.ExpiresAt = task.FinishedAt + common.AsyncMediaRetentionSeconds()
 	}

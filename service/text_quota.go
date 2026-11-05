@@ -440,6 +440,18 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		}
 	}
 
+	svgQuota, svgDetail := imageSVGCharge(relayInfo, summary.FixedPriceBilling || (relayInfo.TieredBillingSnapshot == nil && relayInfo.PriceData.UsePrice))
+	if svgDetail != nil {
+		svgDetail["image_quota"] = summary.Quota
+		if reason, ok := svgDetail["error"]; ok {
+			logger.LogError(ctx, fmt.Sprintf("SVG 独立计费失败: %v", reason))
+		}
+		total, clamp := common.QuotaFromDecimalChecked(decimal.NewFromInt(int64(summary.Quota)).Add(decimal.NewFromInt(int64(svgQuota))))
+		noteQuotaClamp(relayInfo, clamp)
+		summary.Quota = total
+		ctx.Set("async_relay_svg_billing", svgDetail)
+		extraContent = append(extraContent, fmt.Sprintf("SVG 作者 %v，输入 %v，输出 %v，独立费用 %s", svgDetail["model"], svgDetail["input_tokens"], svgDetail["output_tokens"], logger.LogQuota(svgQuota)))
+	}
 	for _, item := range summary.ToolSurchargeItems {
 		q := decimal.NewFromFloat(item.Price).
 			Mul(decimal.NewFromInt(int64(item.Count))).
@@ -458,7 +470,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", logger.LogQuota(common.QuotaFromDecimal(q))))
 	}
 
-	if !summary.hasBillableUsage() {
+	if !summary.hasBillableUsage() && svgQuota == 0 {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
@@ -506,6 +518,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other.SetPublic("image_output", summary.ImageTokens)
 	}
 	appendToolSurchargeLogInfo(other, summary.ToolSurchargeItems)
+	if svgDetail != nil {
+		other.SetPublic("svg_usage", svgDetail)
+	}
 	if summary.AudioInputPrice > 0 && summary.AudioTokens > 0 {
 		other.SetPublic("audio_input_seperate_price", true)
 		other.SetPublic("audio_input_token_count", summary.AudioTokens)

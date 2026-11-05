@@ -4,6 +4,8 @@ import "github.com/QuantumNous/new-api/dto"
 
 // AsyncRelayRequestDetails 只保留展示所需的输入信息，鉴权头和未列入白名单的字段不进入详情。
 type AsyncRelayRequestDetails struct {
+	// 独立用量随原详情保存，不新增数据库字段。
+	SVGBilling    map[string]any         `json:"svg_billing,omitempty"`
 	RoutingEvents []dto.TaskRoutingEvent `json:"routing_events,omitempty"`
 	Prompt        string                 `json:"prompt,omitempty"`
 	PromptSource  string                 `json:"prompt_source,omitempty"`

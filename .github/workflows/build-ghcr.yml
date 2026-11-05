@@ -70,6 +70,12 @@ jobs:
           go build ./...
           go test ./...
 
+      - name: 验证图片与SVG费用的三库实际扣费
+        env:
+          TEST_FIXED_MYSQL_DSN: ${{ env.TEST_MYSQL_DSN }}
+          TEST_FIXED_POSTGRES_DSN: ${{ env.TEST_POSTGRES_DSN }}
+        run: go test -v ./service -run '^TestFixedPriceBillingDatabaseMatrix$' -count=1 -timeout 10m
+
   frontend:
     name: 前端兼容性验证
     runs-on: ubuntu-latest

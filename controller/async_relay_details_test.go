@@ -92,6 +92,33 @@ func TestAsyncTaskDetailsKeepPromptReferencesAndPermissionBoundary(t *testing.T)
 	assert.NotContains(t, after.Body.String(), "/reference/0")
 }
 
+// 新字段与标注层进入详情，鉴权字段不进入日志；独立费用在媒体过期后仍保留。
+func TestAsyncImage26TaskDetails(t *testing.T) {
+	prepareAsyncMediaController(t)
+	body := fmt.Sprintf(`{"model":"gpt-image-2.6-sunburst","prompt":"draw","complexity":"low","frame_count":9,"frame_duration_ms":200,"output_format":"gif","svg":{"model":"author","reasoning":{"effort":"high"}},"markup":{"image_url":"data:image/png;base64,%s"},"safety_identifier":"private-id"}`, asyncFixturePNG)
+	task := enqueueDetailFixture(t, []byte(body), "application/json")
+	var saved model.AsyncRelayRequestDetails
+	require.NoError(t, common.UnmarshalJsonStr(task.RequestDetails, &saved))
+	require.Equal(t, "low", saved.Parameters["complexity"])
+	require.Equal(t, "9", saved.Parameters["frame_count"])
+	require.Equal(t, "200", saved.Parameters["frame_duration_ms"])
+	require.Equal(t, "author", saved.Parameters["svg.model"])
+	require.Equal(t, "high", saved.Parameters["svg.reasoning.effort"])
+	require.Len(t, saved.References, 1)
+	require.Equal(t, "markup", saved.References[0].Role)
+	require.FileExists(t, saved.References[0].Path)
+	require.NotContains(t, task.RequestDetails, "private-id")
+	saved.SVGBilling = map[string]any{"model": "author", "quota": 100, "image_quota": 200, "input_tokens": 10, "output_tokens": 20}
+	encoded, err := common.Marshal(saved)
+	require.NoError(t, err)
+	task.RequestDetails = string(encoded)
+	require.NoError(t, model.DB.Save(task).Error)
+	response := asyncControllerRequest(GetAsyncRelayTaskDetails, http.MethodGet, "/details", 31, common.RoleCommonUser, gin.Params{{Key: "task_id", Value: task.TaskID}}, "")
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Contains(t, response.Body.String(), "\"svg_billing\"")
+	require.Contains(t, response.Body.String(), "\"image_quota\":200")
+}
+
 func TestAsyncTaskDetailsExposeCompleteParameterSnapshot(t *testing.T) {
 	prepareAsyncMediaController(t)
 	task := enqueueDetailFixture(t, []byte(fmt.Sprintf(`{"model":"nano-banana-pro","prompt":"生成一张图片","aspect_ratio":"3:2","resolution":"2K","image":"data:image/png;base64,%s"}`, asyncFixturePNG)), "application/json")

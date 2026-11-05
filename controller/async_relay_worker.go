@@ -275,6 +275,17 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 	defer common.CleanupBodyStorage(worker)
 	worker.Set(service.AsyncMediaRoutingPersistKey, func() error { return persistAsyncRelayRouting(task, worker) })
 	executionErr := executeAsyncRelayRequest(ctx, task, worker, requestFile)
+	if billing, ok := worker.Get("async_relay_svg_billing"); ok {
+		var details model.AsyncRelayRequestDetails
+		if common.UnmarshalJsonStr(task.RequestDetails, &details) == nil {
+			if data, ok := billing.(map[string]any); ok {
+				details.SVGBilling = data
+			}
+			if encoded, err := common.Marshal(details); err == nil {
+				task.RequestDetails = string(encoded)
+			}
+		}
+	}
 	if err := persistAsyncRelayRouting(task, worker); err != nil {
 		common.SysError("保存媒体路由记录失败: " + err.Error())
 	}

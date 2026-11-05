@@ -184,6 +184,11 @@ func serveAsyncRelayMedia(c *gin.Context, task *model.AsyncRelayTask, indexValue
 		return
 	}
 	c.Header("Content-Type", media.ContentType)
+	if media.ContentType == "image/svg+xml" {
+		// 新窗口打开仍禁止脚本与外部资源，预览只使用静态图片上下文。
+		c.Header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")
+		c.Header("Content-Disposition", `inline; filename="generated.svg"`)
+	}
 	http.ServeContent(c.Writer, c.Request, "generated-media", info.ModTime(), file)
 }
 

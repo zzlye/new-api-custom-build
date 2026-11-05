@@ -40,7 +40,14 @@ type ImageRequest struct {
 	Images            json.RawMessage `json:"images,omitempty"`
 	Mask              json.RawMessage `json:"mask,omitempty"`
 	InputFidelity     json.RawMessage `json:"input_fidelity,omitempty"`
-	Watermark         *bool           `json:"watermark,omitempty"`
+	// 新版图片参数显式声明，避免序列化时被未知字段过滤。
+	Complexity       *string         `json:"complexity,omitempty"`
+	FrameCount       *int            `json:"frame_count,omitempty"`
+	FrameDurationMS  *int            `json:"frame_duration_ms,omitempty"`
+	Markup           json.RawMessage `json:"markup,omitempty"`
+	SVG              json.RawMessage `json:"svg,omitempty"`
+	SafetyIdentifier json.RawMessage `json:"safety_identifier,omitempty"`
+	Watermark        *bool           `json:"watermark,omitempty"`
 	// zhipu 4v
 	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
 	UserId           json.RawMessage `json:"user_id,omitempty"`
@@ -190,6 +197,15 @@ type ImageResponse struct {
 	Data     []ImageData     `json:"data"`
 	Created  int64           `json:"created"`
 	Metadata json.RawMessage `json:"metadata,omitempty"`
+}
+
+// ImageSVGUsage 是矢量作者独立用量，推理 token 已包含在输出中，不能重复相加。
+type ImageSVGUsage struct {
+	Model           string `json:"model"`
+	InputTokens     int    `json:"input_tokens"`
+	OutputTokens    int    `json:"output_tokens"`
+	ReasoningTokens int    `json:"reasoning_tokens"`
+	TotalTokens     int    `json:"total_tokens"`
 }
 type ImageData struct {
 	Url           string `json:"url"`

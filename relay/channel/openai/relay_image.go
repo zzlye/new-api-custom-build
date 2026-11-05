@@ -42,6 +42,15 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 	}
 
 	info.UpdateImageCount(openaiImageResponseCount(responseBody))
+	// 只读取上游返回的独立作者用量，正文仍按原样回传。
+	if info.ImageSVGRequested {
+		var extra struct {
+			SVGUsage *dto.ImageSVGUsage `json:"svg_usage"`
+		}
+		if common.Unmarshal(responseBody, &extra) == nil {
+			info.ImageSVGUsage = extra.SVGUsage
+		}
+	}
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
