@@ -330,7 +330,10 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 			return nil
 		}
 		if _, err := io.Copy(c.Writer, resp.Body); err != nil {
+			// 正文已开始传输时不能再写 JSON；标记归档失败，防止半截视频被当成成功文件。
+			c.Set("video_proxy_stream_error", true)
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream task media: %v", err))
+			return err
 		}
 		return nil
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -622,8 +625,10 @@ func setTaskMediaResponseSecurityHeaders(header http.Header) {
 }
 
 func writeTaskMediaProxyError(c *gin.Context, err error) {
+	// 断流发生在响应头写出后，保留原始流错误供异步归档器处理。
 	if c.Writer.Written() {
-		logger.LogError(c.Request.Context(), err.Error())
+		c.Set("video_proxy_stream_error", true)
+		c.Abort()
 		return
 	}
 	var proxyErr *taskMediaProxyError

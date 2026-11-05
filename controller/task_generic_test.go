@@ -469,6 +469,27 @@ func TestProxyTaskMediaForwardsRangeAndFiltersResponseHeaders(t *testing.T) {
 	assert.Empty(t, recorder.Header().Get("X-Provider-Secret"))
 }
 
+// 上游正文截断必须通知异步归档器，不能把 HTTP 200 的半截内容当作成功。
+func TestProxyTaskMediaRejectsTruncatedArchive(t *testing.T) {
+	task := setupGenericTaskTest(t)
+	allowPrivateTaskMediaTest(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte("partial"))
+	}))
+	defer upstream.Close()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task_truncated/content", nil)
+	err := proxyTaskMedia(c, task, &relaychannel.TaskContentRequest{URL: upstream.URL, Method: http.MethodGet})
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	assert.True(t, c.GetBool("video_proxy_stream_error"))
+	writeTaskMediaProxyError(c, err)
+	assert.Equal(t, "partial", recorder.Body.String())
+	assert.True(t, c.IsAborted())
+}
+
 func TestProxyTaskMediaPassesThroughUnsatisfiedRange(t *testing.T) {
 	task := setupGenericTaskTest(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
