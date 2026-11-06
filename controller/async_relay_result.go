@@ -462,3 +462,45 @@ func beginAsyncRelayMediaSave(task *model.AsyncRelayTask) bool {
 	task.MediaAttempts = 1
 	return true
 }
+
+// beginAsyncVideoArchive 每次下载前持久化次数；崩溃和多节点抢占也不能绕过重试上限。
+func beginAsyncVideoArchive(task *model.AsyncRelayTask) bool {
+	if !task.IsNativeVideoArchive() || task.MediaAttempts < 0 || task.MediaAttempts >= model.AsyncVideoArchiveMaxAttempts {
+		failAsyncRelayTask(task, "视频已生成，多次取回失败，原任务编号已保留，请检查下载服务")
+		return false
+	}
+	now := common.GetTimestamp()
+	result := model.DB.Model(&model.AsyncRelayTask{}).
+		Where("id = ? AND status = ? AND worker_id = ?", task.ID, model.AsyncRelayTaskStatusProcessing, task.WorkerID).
+		Where("COALESCE(media_attempts, 0) = ?", task.MediaAttempts).
+		Where("next_attempt_at IS NULL OR next_attempt_at <= ?", now).
+		Updates(map[string]any{"media_attempts": task.MediaAttempts + 1, "next_attempt_at": 0, "updated_at": now})
+	if result.Error != nil || result.RowsAffected != 1 {
+		// 未获得执行机会时不发下载请求，等待持久租约恢复，不能覆盖其他执行者。
+		if result.Error != nil {
+			common.SysError("保存视频下载次数失败: " + result.Error.Error())
+		}
+		return false
+	}
+	task.MediaAttempts++
+	task.NextAttemptAt = 0
+	return true
+}
+
+// retryAsyncVideoArchive 仅安排再次读取同一视频，永远不进入生成、结算或退款路径。
+func retryAsyncVideoArchive(task *model.AsyncRelayTask, reason string) {
+	if task.MediaAttempts >= model.AsyncVideoArchiveMaxAttempts {
+		failAsyncRelayTask(task, "视频已生成，多次取回失败，原任务编号已保留，请检查下载服务")
+		return
+	}
+	delay := []int64{15, 30, 60, 120, 300}[max(0, min(task.MediaAttempts-1, 4))]
+	task.Status = model.AsyncRelayTaskStatusWaiting
+	task.Error = "视频已生成，文件取回暂未完成，正在重试"
+	task.NextAttemptAt = common.GetTimestamp() + delay
+	task.FinishedAt = 0
+	if _, err := task.UpdateWithStatus(model.AsyncRelayTaskStatusProcessing); err != nil {
+		common.SysError("保存视频下载重试状态失败: " + err.Error())
+	}
+	// 只记录内部错误类别，不输出上游签名地址和授权内容。
+	common.SysLog(fmt.Sprintf("视频归档重试 task=%s attempt=%d reason=%s", task.TaskID, task.MediaAttempts, reason))
+}

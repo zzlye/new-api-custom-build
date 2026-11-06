@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestAsyncRelayNoAutomaticRetryRecovery(t *testing.T) {
 					RequestFormat: string(relaytypes.RelayFormatOpenAIImage), WorkerID: "旧执行者",
 					ResultFilePath: path, ResultContentType: "application/json", MediaAttempts: attempts}
 				if attempts == 0 {
-					task.NextAttemptAt = common.GetTimestamp() + 3600
+					task.NextAttemptAt = common.GetTimestamp() - 1
 				}
 				require.NoError(t, task.InsertWithLog("default", "IMAGE"))
 				require.NoError(t, model.DB.Model(task).Update("updated_at", common.GetTimestamp()-1200).Error)
@@ -113,7 +114,7 @@ func TestAsyncRelayNoAutomaticRetryRecovery(t *testing.T) {
 	}
 }
 
-// 原生任务的正常等待不占保存机会；成功后的文件下载失败则直接结束。
+// 原生任务正常等待不占保存机会；视频下载临时失败只重新归档，绘图仍保持原行为。
 func TestAsyncRelayNoAutomaticRetryNativeMedia(t *testing.T) {
 	for _, video := range []bool{false, true} {
 		t.Run(fmt.Sprintf("video_%t", video), func(t *testing.T) {
@@ -169,6 +170,16 @@ func TestAsyncRelayNoAutomaticRetryNativeMedia(t *testing.T) {
 			require.Equal(t, 1, count)
 			saved, err := model.GetAsyncRelayTaskByTaskID(parent.TaskID)
 			require.NoError(t, err)
+			if video {
+				assert.Equal(t, model.AsyncRelayTaskStatusWaiting, saved.Status)
+				assert.Greater(t, saved.NextAttemptAt, common.GetTimestamp())
+				assert.Zero(t, saved.FinishedAt)
+				count, err = ProcessAsyncRelayTasks(context.Background(), 1)
+				require.NoError(t, err)
+				assert.Zero(t, count, "退避期间不能领取任务")
+				assert.Equal(t, int32(1), downloads.Load())
+				return
+			}
 			assert.Equal(t, model.AsyncRelayTaskStatusFailed, saved.Status)
 			assert.Contains(t, saved.Error, "自动重试已关闭")
 			assert.Zero(t, saved.NextAttemptAt)
@@ -183,6 +194,155 @@ func TestAsyncRelayNoAutomaticRetryNativeMedia(t *testing.T) {
 			require.NoError(t, model.DB.First(&taskLog, saved.LogID).Error)
 			assert.Equal(t, 123, taskLog.Quota, "保存失败不能抹除已经生成的计费记录")
 			assert.Equal(t, model.TaskStatus(model.TaskStatusFailure), taskLog.Status)
+		})
+	}
+}
+
+// 通过真实领取、下载、归档和日志链路验证：只重试已有文件，原订单和余额不变。
+func TestAsyncVideoArchiveRecovery(t *testing.T) {
+	for _, scenario := range []string{"临时错误", "响应头超时", "断流", "权限拒绝", "文件删除", "次数耗尽", "进程中断", "完整检查点"} {
+		t.Run(scenario, func(t *testing.T) {
+			prepareAsyncMediaController(t)
+			if os.Getenv("TEST_TASK_DB_DIALECT") != "" {
+				previousDB, previousLogDB := model.DB, model.LOG_DB
+				mainType, logType := common.MainDatabaseType(), common.LogDatabaseType()
+				db, dialect := openTaskDialectDatabase(t, &model.AsyncRelayTask{}, &model.Task{}, &model.Channel{}, &model.User{}, &model.Token{}, &model.Log{})
+				model.DB, model.LOG_DB = db, db
+				common.SetDatabaseTypes(dialect, dialect)
+				t.Cleanup(func() { model.DB, model.LOG_DB = previousDB, previousLogDB; common.SetDatabaseTypes(mainType, logType) })
+			}
+			allowPrivateTaskMediaTest(t)
+			oldTimeout := asyncVideoArchiveHeaderTimeout
+			asyncVideoArchiveHeaderTimeout = 20 * time.Millisecond
+			// 非超时用例保留足够等待时间，避免数据库测试环境变慢引入偶发失败。
+			if scenario != "响应头超时" {
+				asyncVideoArchiveHeaderTimeout = time.Second
+			}
+			t.Cleanup(func() { asyncVideoArchiveHeaderTimeout = oldTimeout })
+			video := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+			var gets, posts atomic.Int32
+			source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					posts.Add(1)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				attempt := gets.Add(1)
+				assert.Equal(t, "/video.mp4", r.URL.Path)
+				if scenario == "次数耗尽" || attempt == 1 && scenario == "临时错误" {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				if scenario == "权限拒绝" {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				if scenario == "文件删除" {
+					w.WriteHeader(http.StatusGone)
+					return
+				}
+				if scenario == "响应头超时" && attempt == 1 {
+					<-r.Context().Done()
+					return
+				}
+				w.Header().Set("Content-Type", "video/mp4")
+				if scenario == "断流" && attempt == 1 {
+					w.Header().Set("Content-Length", "1000")
+				}
+				_, err := w.Write(video)
+				assert.NoError(t, err)
+			}))
+			t.Cleanup(source.Close)
+			user := &model.User{Username: "archive-owner", Quota: 1000}
+			require.NoError(t, model.DB.Create(user).Error)
+			token := &model.Token{UserId: user.Id, Key: "archive-test-key", RemainQuota: 900}
+			require.NoError(t, model.DB.Create(token).Error)
+			channel := &model.Channel{Type: constant.ChannelTypeOpenAI, Key: "fixture", Status: common.ChannelStatusEnabled, BaseURL: &source.URL}
+			require.NoError(t, model.DB.Create(channel).Error)
+			parent := &model.AsyncRelayTask{UserID: user.Id, TokenID: token.Id, NodeID: common.NodeName, RequestFormat: string(relaytypes.RelayFormatTask), RequestPath: "/v1/videos"}
+			require.NoError(t, parent.InsertWithLog("default", "VIDEO"))
+			child := &model.Task{TaskID: "native_" + parent.TaskID, UserId: user.Id, ChannelId: channel.Id, Status: model.TaskStatusSuccess, Quota: 123, PrivateData: model.TaskPrivateData{UpstreamTaskID: "provider-fixture", ResultURL: source.URL + "/video.mp4"}}
+			_, won, err := model.ClaimAsyncRelayTask(parent.ID, "archive-fixture")
+			require.NoError(t, err)
+			require.True(t, won)
+			require.NoError(t, model.AttachAsyncRelayNativeTask(parent.TaskID, child))
+			require.NoError(t, model.DB.First(parent, parent.ID).Error)
+			if scenario == "进程中断" || scenario == "完整检查点" {
+				updates := map[string]any{"media_attempts": 1, "updated_at": common.GetTimestamp() - 120}
+				if scenario == "完整检查点" {
+					path, file, err := common.CreateAsyncMediaFile()
+					require.NoError(t, err)
+					_, err = file.Write(video)
+					require.NoError(t, err)
+					require.NoError(t, file.Close())
+					updates["result_file_path"], updates["result_content_type"] = path, "video/mp4"
+				}
+				require.NoError(t, model.DB.Model(parent).Updates(updates).Error)
+				count, err := model.RecoverStaleAsyncRelayTasks(60)
+				require.NoError(t, err)
+				require.EqualValues(t, 1, count)
+				countProcessed, err := ProcessAsyncRelayTasks(context.Background(), 1)
+				require.NoError(t, err)
+				require.Zero(t, countProcessed)
+			} else {
+				parent.Status = model.AsyncRelayTaskStatusWaiting
+				won, err := parent.UpdateWithStatus(model.AsyncRelayTaskStatusProcessing)
+				require.NoError(t, err)
+				require.True(t, won)
+			}
+			limit := 2
+			if scenario == "次数耗尽" {
+				limit = model.AsyncVideoArchiveMaxAttempts
+			}
+			for step := 0; step < limit; step++ {
+				// 模拟退避期到期，不靠真实长时间等待测试后台调度。
+				require.NoError(t, model.DB.Model(parent).Updates(map[string]any{"next_attempt_at": common.GetTimestamp() - 1, "updated_at": common.GetTimestamp() - 10}).Error)
+				processed, err := ProcessAsyncRelayTasks(context.Background(), 1)
+				require.NoError(t, err)
+				require.Equal(t, 1, processed)
+				require.NoError(t, model.DB.First(parent, parent.ID).Error)
+				if parent.Status.IsTerminal() {
+					break
+				}
+				require.Equal(t, model.AsyncRelayTaskStatusWaiting, parent.Status)
+				require.Greater(t, parent.NextAttemptAt, common.GetTimestamp())
+				require.Empty(t, parent.ResultFilePath, "失败片段不能作为可见文件")
+				processed, err = ProcessAsyncRelayTasks(context.Background(), 1)
+				require.NoError(t, err)
+				require.Zero(t, processed)
+			}
+			terminalFailure := scenario == "权限拒绝" || scenario == "文件删除" || scenario == "次数耗尽"
+			if terminalFailure {
+				require.Equal(t, model.AsyncRelayTaskStatusFailed, parent.Status)
+				require.Empty(t, parent.ResultFilePath)
+				want := int32(1)
+				if scenario == "次数耗尽" {
+					want = model.AsyncVideoArchiveMaxAttempts
+				}
+				assert.Equal(t, want, gets.Load())
+			} else {
+				require.Equal(t, model.AsyncRelayTaskStatusSucceeded, parent.Status, parent.Error)
+				content, err := os.ReadFile(parent.ResultFilePath)
+				require.NoError(t, err)
+				assert.Equal(t, video, content)
+				if scenario == "完整检查点" {
+					assert.Zero(t, gets.Load())
+				}
+			}
+			assert.Zero(t, posts.Load(), "不能再次提交生成")
+			require.NoError(t, model.DB.First(user, user.Id).Error)
+			assert.Equal(t, 1000, user.Quota)
+			require.NoError(t, model.DB.First(token, token.Id).Error)
+			assert.Equal(t, 900, token.RemainQuota)
+			require.NoError(t, model.DB.First(child, child.ID).Error)
+			assert.Equal(t, 123, child.Quota)
+			assert.Equal(t, model.TaskStatus(model.TaskStatusSuccess), child.Status)
+			var taskLog model.Task
+			require.NoError(t, model.DB.First(&taskLog, parent.LogID).Error)
+			assert.Equal(t, 123, taskLog.Quota)
+			var logs int64
+			require.NoError(t, model.LOG_DB.Model(&model.Log{}).Count(&logs).Error)
+			assert.Zero(t, logs)
 		})
 	}
 }

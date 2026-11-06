@@ -13,6 +13,8 @@ type AsyncRelayTaskStatus string
 const (
 	// AsyncRelayTaskDefaultProcessingTimeoutSeconds 是处理任务的默认租约时长。
 	AsyncRelayTaskDefaultProcessingTimeoutSeconds int64 = 10 * 60
+	// 视频下载最多尝试六次；不影响生成请求的提交次数。
+	AsyncVideoArchiveMaxAttempts = 6
 
 	AsyncRelayTaskStatusPending    AsyncRelayTaskStatus = "pending"
 	AsyncRelayTaskStatusProcessing AsyncRelayTaskStatus = "processing"
@@ -31,7 +33,7 @@ const (
 // AsyncRelayTask 保存需要后台处理的图片、视频以及 Gemini 生图请求。
 // 文件字段只保存服务器本地路径或对象存储地址，不把大文件直接写入数据库。
 type AsyncRelayTask struct {
-	// 保存前占用唯一执行机会；旧版重试字段保留，用于识别并结束历史待重试记录。
+	// 视频归档保存下载次数和退避时间，不用于重新提交生成请求。
 	MediaAttempts int    `json:"-"`
 	NextAttemptAt int64  `json:"-" gorm:"bigint;index"`
 	ID            int64  `json:"id" gorm:"primaryKey"`
@@ -78,6 +80,11 @@ type AsyncRelayTask struct {
 	UpdatedAt  int64                `json:"updated_at" gorm:"bigint;index"`
 	StartedAt  int64                `json:"started_at,omitempty" gorm:"bigint;index"`
 	FinishedAt int64                `json:"finished_at,omitempty" gorm:"bigint;index"`
+}
+
+// IsNativeVideoArchive 限定可恢复范围为已有原生编号的视频，排除绘图和未知生成结果。
+func (task *AsyncRelayTask) IsNativeVideoArchive() bool {
+	return task.RequestFormat == "task" && task.LinkedTaskID != "" && task.RequestPath != "/v1/midjourney/generations"
 }
 
 // IsTerminal 判断任务是否已经进入不可继续执行的终态。
@@ -226,7 +233,11 @@ func RecoverStaleAsyncRelayTasks(timeoutSeconds ...int64) (int64, error) {
 	for _, task := range tasks {
 		previousWorker := task.WorkerID
 		task.Status, task.WorkerID = AsyncRelayTaskStatusPending, ""
-		if task.MediaAttempts > 0 || task.NextAttemptAt > 0 {
+		if task.IsNativeVideoArchive() {
+			// 只恢复原任务的下载，后续执行仍会验证子任务已生成成功。
+			task.Status = AsyncRelayTaskStatusWaiting
+			task.NextAttemptAt = max(task.NextAttemptAt, common.GetTimestamp()+15)
+		} else if task.MediaAttempts > 0 || task.NextAttemptAt > 0 {
 			// 已开始保存或旧版安排过重试的任务不能重新保存文件。
 			task.Status = AsyncRelayTaskStatusFailed
 			task.Error = "文件保存曾失败或中断，自动重试已关闭"

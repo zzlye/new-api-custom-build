@@ -230,7 +230,12 @@ func processAsyncRelayTask(parent context.Context, task *model.AsyncRelayTask) {
 		}
 		delivery.finish(task.Error)
 	}()
-	// 升级前的等待重试记录和已开始保存的中断任务直接结束，不再重复下载。
+	// 已有原生视频编号时只继续查询或归档，不会重新执行生成请求。
+	if task.IsNativeVideoArchive() {
+		pollLinkedAsyncRelayTask(ctx, task)
+		return
+	}
+	// 其他协议保留原有保存策略，避免误重放未知结果的生成请求。
 	if task.MediaAttempts > 0 || task.NextAttemptAt > 0 {
 		failAsyncRelayTask(task, "文件保存曾失败或中断，自动重试已关闭")
 		return
@@ -581,10 +586,10 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 			_, _ = task.UpdateWithStatus(model.AsyncRelayTaskStatusProcessing)
 			return
 		}
-		if !beginAsyncRelayMediaSave(task) {
-			return
-		}
 		if task.RequestPath == "/v1/midjourney/generations" {
+			if !beginAsyncRelayMediaSave(task) {
+				return
+			}
 			// 只归档有序单图，拼图和上游私有编号不进入对外结果。
 			type midjourneyTaskResult struct {
 				Result struct {
@@ -632,6 +637,16 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 			}
 			return
 		}
+		// 完整下载已落盘但状态提交前进程退出时，优先完成原文件归档。
+		if task.ResultFilePath != "" {
+			if _, kind, err := inspectAsyncMedia(task.ResultFilePath); err == nil && kind == "video" {
+				finalizeAsyncRelayResult(ctx, task, task.ResultFilePath, task.ResultContentType)
+				return
+			}
+		}
+		if !beginAsyncVideoArchive(task) {
+			return
+		}
 		path, file, err := common.CreateAsyncMediaFile()
 		if err != nil {
 			failAsyncRelayTask(task, "创建视频结果文件失败")
@@ -639,7 +654,10 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 		}
 		writer := &asyncRelayFileWriter{file: file, header: make(http.Header)}
 		c, _ := gin.CreateTestContext(writer)
-		c.Request, _ = http.NewRequestWithContext(ctx, http.MethodGet, "/v1/videos/"+child.TaskID+"/content", nil)
+		// 总时长有界，避免下载无响应永久占用后台并发名额。
+		downloadCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+		c.Request, _ = http.NewRequestWithContext(downloadCtx, http.MethodGet, "/v1/videos/"+child.TaskID+"/content", nil)
 		c.Params = gin.Params{{Key: "task_id", Value: child.TaskID}}
 		c.Set("id", task.UserID)
 		c.Set(model.AsyncRelayContextKey, task.TaskID)
@@ -648,7 +666,11 @@ func pollLinkedAsyncRelayTask(ctx context.Context, task *model.AsyncRelayTask) {
 		closeErr := file.Close()
 		if writer.err != nil || syncErr != nil || closeErr != nil || writer.status != http.StatusOK || writer.size == 0 || c.GetBool("video_proxy_stream_error") {
 			_ = common.RemoveAsyncMediaFile(path)
-			failAsyncRelayTask(task, "视频已生成，保存视频文件失败，自动重试已关闭")
+			if writer.err == nil && syncErr == nil && closeErr == nil && c.GetBool("video_archive_safe_method") && (c.GetBool("video_archive_retryable") || writer.status == http.StatusOK && writer.size == 0) {
+				retryAsyncVideoArchive(task, c.GetString("video_archive_error"))
+			} else {
+				failAsyncRelayTask(task, "视频已生成，保存失败，请检查下载权限、文件状态或存储空间")
+			}
 			return
 		}
 		contentType := writer.header.Get("Content-Type")

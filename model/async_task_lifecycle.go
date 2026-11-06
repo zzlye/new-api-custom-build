@@ -49,7 +49,7 @@ func (task *AsyncRelayTask) SyncLog(tx *gorm.DB) error {
 	}
 	status, progress := TaskStatusInProgress, "10%"
 	// 收到完整结果后正在保存文件，不再显示为刚开始生成。
-	if task.ResultFilePath != "" {
+	if task.ResultFilePath != "" || task.IsNativeVideoArchive() && task.MediaAttempts > 0 {
 		progress = "90%"
 	}
 	switch task.Status {
@@ -71,6 +71,7 @@ func ClaimAsyncRelayTaskForNode(nodeID, workerID string) (*AsyncRelayTask, error
 	for retry := 0; retry < 4; retry++ {
 		var candidate AsyncRelayTask
 		err := DB.Where("(node_id = ? OR node_id = ? OR node_id IS NULL) AND status IN ?", nodeID, "", []AsyncRelayTaskStatus{AsyncRelayTaskStatusPending, AsyncRelayTaskStatusWaiting}).
+			Where("next_attempt_at IS NULL OR next_attempt_at <= ?", common.GetTimestamp()).
 			Where("status = ? OR updated_at <= ?", AsyncRelayTaskStatusPending, common.GetTimestamp()-5).
 			Order("updated_at asc, id asc").First(&candidate).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {

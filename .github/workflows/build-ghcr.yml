@@ -76,6 +76,12 @@ jobs:
           TEST_FIXED_POSTGRES_DSN: ${{ env.TEST_POSTGRES_DSN }}
         run: go test -v ./service -run '^TestFixedPriceBillingDatabaseMatrix$' -count=1 -timeout 10m
 
+      - name: 验证视频归档重试与重启恢复的三库兼容性
+        run: |
+          for dialect in sqlite mysql postgres; do
+            TEST_TASK_DB_DIALECT="$dialect" go test -v ./controller -run '^TestAsyncVideoArchiveRecovery$' -count=1 -timeout 10m
+          done
+
   frontend:
     name: 前端兼容性验证
     runs-on: ubuntu-latest

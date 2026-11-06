@@ -29,13 +29,17 @@ import (
 var errTaskMediaRequestRejected = errors.New("task media request rejected")
 
 var taskMediaResponseHeaderTimeout = 60 * time.Second
+
+// 后台归档可以等待上游准备文件；正文另由归档上下文限制总时长。
+var asyncVideoArchiveHeaderTimeout = 5 * time.Minute
 var taskMediaDataURLMaxEncodedBytes = 64 << 20
 
 type taskMediaProxyError struct {
-	status  int
-	code    string
-	message string
-	err     error
+	retryable bool
+	status    int
+	code      string
+	message   string
+	err       error
 }
 
 func (e *taskMediaProxyError) Error() string {
@@ -225,6 +229,8 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 	if method == "" {
 		method = c.Request.Method
 	}
+	// 自动归档重试仅用于读取，不重放插件可能声明的 POST 内容操作。
+	c.Set("video_archive_safe_method", method == http.MethodGet || method == http.MethodHead)
 	switch method {
 	case http.MethodGet, http.MethodHead, http.MethodPost:
 	default:
@@ -298,7 +304,18 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 	client = taskMediaRedirectClient(client, proxy, c, clientHeaders, descriptor.Credentialless)
 	clientWithoutBodyTimeout := *client
 	clientWithoutBodyTimeout.Timeout = 0
-	resp, err := doTaskMediaRequest(&clientWithoutBodyTimeout, req, taskMediaResponseHeaderTimeout)
+	headerTimeout := taskMediaResponseHeaderTimeout
+	if c.GetString(model.AsyncRelayContextKey) != "" {
+		headerTimeout = asyncVideoArchiveHeaderTimeout
+		// 保留原拨号、代理和 SSRF 校验，只隔离过短的通用响应头超时。
+		if transport, ok := clientWithoutBodyTimeout.Transport.(*http.Transport); ok && transport.ResponseHeaderTimeout > 0 && transport.ResponseHeaderTimeout < headerTimeout {
+			archiveTransport := transport.Clone()
+			archiveTransport.ResponseHeaderTimeout = headerTimeout
+			clientWithoutBodyTimeout.Transport = archiveTransport
+			defer archiveTransport.CloseIdleConnections()
+		}
+	}
+	resp, err := doTaskMediaRequest(&clientWithoutBodyTimeout, req, headerTimeout)
 	if err != nil {
 		if errors.Is(err, errTaskMediaRequestRejected) {
 			return &taskMediaProxyError{
@@ -310,12 +327,14 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout() {
 			return &taskMediaProxyError{
 				status: http.StatusGatewayTimeout, code: "artifact_upstream_timeout",
-				message: "Artifact upstream request timed out", err: err,
+				retryable: true,
+				message:   "Artifact upstream request timed out", err: err,
 			}
 		}
 		return &taskMediaProxyError{
 			status: http.StatusBadGateway, code: "artifact_upstream_error",
-			message: "Failed to fetch artifact content", err: err,
+			retryable: true,
+			message:   "Failed to fetch artifact content", err: err,
 		}
 	}
 	defer resp.Body.Close()
@@ -353,12 +372,14 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		}
 		return &taskMediaProxyError{
 			status: http.StatusServiceUnavailable, code: "artifact_upstream_busy",
-			message: "Artifact upstream is busy",
+			retryable: true,
+			message:   "Artifact upstream is busy",
 		}
 	default:
 		return &taskMediaProxyError{
 			status: http.StatusBadGateway, code: "artifact_upstream_error",
-			message: fmt.Sprintf("Artifact upstream returned status %d", resp.StatusCode),
+			retryable: resp.StatusCode >= 500 || resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusTooEarly,
+			message:   fmt.Sprintf("Artifact upstream returned status %d", resp.StatusCode),
 		}
 	}
 }
@@ -625,6 +646,15 @@ func setTaskMediaResponseSecurityHeaders(header http.Header) {
 }
 
 func writeTaskMediaProxyError(c *gin.Context, err error) {
+	// 保留结构化原因，后台不能把鉴权拒绝、地址校验失败当作可重试网络错误。
+	var archiveErr *taskMediaProxyError
+	if errors.As(err, &archiveErr) {
+		c.Set("video_archive_retryable", archiveErr.retryable)
+		c.Set("video_archive_error", archiveErr.code)
+	} else {
+		c.Set("video_archive_retryable", true)
+		c.Set("video_archive_error", "artifact_stream_interrupted")
+	}
 	// 断流发生在响应头写出后，保留原始流错误供异步归档器处理。
 	if c.Writer.Written() {
 		c.Set("video_proxy_stream_error", true)
