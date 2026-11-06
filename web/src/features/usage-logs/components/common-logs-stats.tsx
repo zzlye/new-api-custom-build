@@ -78,7 +78,8 @@ export function CommonLogsStats() {
 
   if (isLoading) {
     return (
-      <div className='flex items-center gap-2'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
@@ -86,12 +87,21 @@ export function CommonLogsStats() {
     )
   }
 
+  // 发布切换期间旧接口可能尚无退款字段，未知值不冒充零退款。
+  const refund =
+    stats?.refund_quota == null ? '—' : formatLogQuota(stats.refund_quota)
+
   return (
     <div className='flex flex-wrap items-center gap-2'>
       <StatBadge
         label={t('Usage')}
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
         accent='bg-sky-500/70'
+      />
+      <StatBadge
+        label={t('Refund')}
+        value={sensitiveVisible ? refund : '••••'}
+        accent='bg-amber-500/70'
       />
       <StatBadge
         label={t('RPM')}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -16,17 +19,118 @@ func openLogDetailFilterTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	previousType := common.LogDatabaseType()
 	previousLogDB := LOG_DB
-	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
+	dialect := common.DatabaseType(os.Getenv("TEST_LOG_STATS_DIALECT"))
+	var driver gorm.Dialector
+	switch dialect {
+	case "", common.DatabaseTypeSQLite:
+		dialect, driver = common.DatabaseTypeSQLite, sqlite.Open(":memory:")
+	case common.DatabaseTypeMySQL:
+		require.NotEmpty(t, os.Getenv("TEST_MYSQL_DSN"))
+		driver = mysql.Open(os.Getenv("TEST_MYSQL_DSN"))
+	case common.DatabaseTypePostgreSQL:
+		require.NotEmpty(t, os.Getenv("TEST_POSTGRES_DSN"))
+		driver = postgres.Open(os.Getenv("TEST_POSTGRES_DSN"))
+	default:
+		t.Fatalf("未知测试数据库 %q", dialect)
+	}
+	common.SetLogDatabaseType(dialect)
+	initCol()
 	t.Cleanup(func() {
 		common.SetLogDatabaseType(previousType)
+		initCol()
 		LOG_DB = previousLogDB
 	})
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(driver, &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	require.NoError(t, db.AutoMigrate(&Log{}))
+	// 外部数据库仅由独立测试库运行，清理本次日志表以隔离下一用例。
+	t.Cleanup(func() { require.NoError(t, db.Migrator().DropTable(&Log{})) })
+	versionQuery := "SELECT version()"
+	if dialect == common.DatabaseTypeSQLite {
+		versionQuery = "SELECT sqlite_version()"
+	}
+	var version string
+	require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
+	t.Logf("database: %s %s", dialect, version)
 	LOG_DB = db
 	return db
+}
+
+// 退款是正数流水，汇总必须区分扣费与退款，不能把退款叠加到用量或漏掉跨日退款。
+func TestLogStatsRefundTotals(t *testing.T) {
+	db := openLogDetailFilterTestDB(t)
+	now := time.Now().Unix()
+	base := Log{UserId: 10, Username: "alice", ModelName: "video", ChannelId: 223, Group: "video-group", TokenName: "video-key", CreatedAt: now, Content: "match", Other: `{}`}
+	consume, refund, partial := base, base, base
+	consume.Type, consume.Quota, consume.PromptTokens = LogTypeConsume, 107, 5
+	refund.Type, refund.Quota, refund.PromptTokens = LogTypeRefund, 60, 100
+	partial.Type, partial.Quota = LogTypeRefund, 12
+	rows := []Log{consume, refund, partial}
+	// 每个筛选维度放一条不应计入的退款，避免只验证无筛选的总数。
+	for _, field := range []string{"user", "model", "channel", "group", "token", "time", "detail", "type"} {
+		row := refund
+		row.Quota = 1000
+		switch field {
+		case "user":
+			row.Username = "bob"
+		case "model":
+			row.ModelName = "other"
+		case "channel":
+			row.ChannelId = 224
+		case "group":
+			row.Group = "other"
+		case "token":
+			row.TokenName = "other"
+		case "time":
+			row.CreatedAt = now - 86400
+		case "detail":
+			row.Content = "different"
+		case "type":
+			row.Type = LogTypeTopup
+		}
+		rows = append(rows, row)
+	}
+	require.NoError(t, db.Create(&rows).Error)
+	for _, logType := range []int{LogTypeUnknown, LogTypeConsume, LogTypeRefund} {
+		// 类型只控制下方流水列表；总览始终同时展示扣费和退款，沿用原统计口径。
+		stat, err := SumUsedQuota(logType, now-1, now+1, "video", "alice", "video-key", 223, "video-group", "match", false)
+		require.NoError(t, err)
+		encoded, err := common.Marshal(stat)
+		require.NoError(t, err)
+		var values map[string]int
+		require.NoError(t, common.Unmarshal(encoded, &values))
+		assert.Equal(t, 107, values["quota"])
+		assert.Equal(t, 72, values["refund_quota"])
+		assert.Equal(t, 1, stat.Rpm, "退款不能增加请求速率")
+		assert.Equal(t, 5, stat.Tpm, "退款不能增加 Token 速率")
+	}
+	for _, tc := range []struct {
+		name          string
+		quota, refund int
+	}{
+		{"empty", 0, 0}, {"full", 30, 30}, {"cross-day", 0, 30},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := base, base
+			a.ModelName, b.ModelName = tc.name, tc.name
+			a.Type, a.Quota, b.Type, b.Quota = LogTypeConsume, tc.quota, LogTypeRefund, tc.refund
+			if tc.name != "empty" {
+				require.NoError(t, db.Create(&[]Log{a, b}).Error)
+			}
+			stat, err := SumUsedQuota(0, now-1, now+1, tc.name, "alice", "", 0, "", "", false)
+			require.NoError(t, err)
+			encoded, err := common.Marshal(stat)
+			require.NoError(t, err)
+			var values map[string]int
+			require.NoError(t, common.Unmarshal(encoded, &values))
+			assert.Equal(t, tc.quota, values["quota"])
+			assert.Equal(t, tc.refund, values["refund_quota"])
+		})
+	}
 }
 
 func findLogIDsByDetail(t *testing.T, db *gorm.DB, detail string, includeFullOther bool) []int {
